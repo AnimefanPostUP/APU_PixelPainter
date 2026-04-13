@@ -333,7 +333,7 @@ def draw_test_tool_shape_outline(context, state):
     *state* is the module-level _state dict from core.py, passed in to avoid
     a circular import.
     """
-    if state.get('sub_mode') or state.get('shift_pick_active'):
+    if state.get('sub_mode') or state.get('ctrl_pick_active'):
         return
 
     cx = state['current_cx']
@@ -431,7 +431,7 @@ def draw_test_tool_shape_outline(context, state):
     }.get(mode, (1.0, 1.0, 0.0, 0.9))      # default yellow
 
     def _outline_pixels_at(ix, iy):
-        if (mode == 'LINE' or state.get('ctrl_line_active')) and state['start_position'] is not None:
+        if mode == 'LINE' and state['start_position'] is not None:
             shape = state['last_shape']
             tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
             x0, y0 = state['start_position']
@@ -1061,37 +1061,37 @@ def draw_sub_mode_overlay(context, state):
 
 
 # ---------------------------------------------------------------------------
-# Shift eyedropper overlay
+# Hold-Ctrl eyedropper overlay
 # ---------------------------------------------------------------------------
 
-def draw_shift_pick_overlay(context, state):
-    """Draw the split circle near the cursor while the shift eyedropper is active.
+def draw_ctrl_pick_overlay(context, state):
+    """Draw the split circle near the cursor while the hold-Ctrl eyedropper is active.
 
     Bottom half = primary (left) + secondary (right), top half = image color
     under cursor.
-    Positioned 40 px above the cursor so it doesn't obscure the sampled pixel.
+    Positioned above the cursor so it doesn't obscure the sampled pixel.
     """
-    if not state.get('shift_pick_active'):
+    if not state.get('ctrl_pick_active'):
         return
-    hovered = state.get('shift_hovered_color')
+    hovered = state.get('ctrl_hovered_color')
     if hovered is None:
         return
-    rx = state.get('shift_region_x')
-    ry = state.get('shift_region_y')
+    rx = state.get('ctrl_region_x')
+    ry = state.get('ctrl_region_y')
     if rx is None or ry is None:
         return
 
     try:
         brush = context.tool_settings.image_paint.brush
-        prim  = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
-        sec   = tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
+        prim = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
+        sec = tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
     except Exception:
         prim = (1.0, 1.0, 1.0)
         sec = (0.0, 0.0, 0.0)
 
-    cx     = rx
-    cy     = ry + 50   # offset above cursor
-    radius = 38  # ~75 px diameter (1.5×)
+    cx = rx
+    cy = ry + 50
+    radius = 38
 
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
@@ -1100,7 +1100,6 @@ def draw_shift_pick_overlay(context, state):
     _draw_filled_arc(cx, cy, radius, (*sec, 1.0), math.pi * 1.5, math.tau)
     _draw_filled_half_circle(cx, cy, radius, (*hovered, 1.0), top=True)
 
-    # Grid-snapped corner highlighter at the sampled image pixel.
     px = state.get('current_cx')
     py = state.get('current_cy')
     if px is not None and py is not None:
@@ -1111,6 +1110,7 @@ def draw_shift_pick_overlay(context, state):
     gpu.state.blend_set('NONE')
     gpu.state.depth_test_set('LESS_EQUAL')
     gpu.state.line_width_set(1.0)
+
 
 
 # ---------------------------------------------------------------------------

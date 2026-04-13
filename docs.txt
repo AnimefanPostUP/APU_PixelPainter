@@ -67,7 +67,8 @@ manipulation, giving full control over every pixel placed.
   │ Right Mouse  │ Paint with secondary color                                 │
   │ B            │ Switch to Brush (dot) mode                                 │
   │ C            │ Switch to Circle mode                                      │
-  │ V            │ Switch to Line mode                                        │
+  │ Hold Alt     │ Temporary line draw while held                             │
+  │ Hold Ctrl    │ Pick image color into primary/secondary brush color        │
   │ Ctrl+Z       │ Undo last stroke                                           │
   │ Q / ESC      │ Stop the modal operator                                    │
   └──────────────┴────────────────────────────────────────────────────────────┘
@@ -78,7 +79,8 @@ manipulation, giving full control over every pixel placed.
   ├──────────────┼────────────────────────────────────────────────────────────┤
   │ Left Mouse   │ Paint brush shape / start line                             │
   │ W            │ Open pie menu to switch between Square and Circle modes    │
-  │ V            │ Switch to Line mode                                        │
+  │ Hold Alt     │ Temporary line draw while held                             │
+  │ Hold Ctrl    │ Pick image color into primary/secondary brush color        │
   │ F            │ Blender's native brush size adjust (scales radius)         │
   │ Q / ESC      │ Stop the modal operator                                    │
   └──────────────┴────────────────────────────────────────────────────────────┘
@@ -105,10 +107,11 @@ manipulation, giving full control over every pixel placed.
   3. The modal operator starts automatically on left or right click.
   4. Move the cursor over the image — a yellow square shows the target pixel.
   5. Left-click or drag to paint with the primary color.
-  6. Press V to switch to line mode, click to set start, drag to preview line,
-     release to commit.
-  7. Press C for circle mode: click sets center, drag sets radius, release draws.
-  8. Press Ctrl+Z to undo. Press Q or ESC to exit the tool.
+    6. Hold Alt to draw a line, click to set start, drag to preview line,
+      release to commit.
+    7. Hold Ctrl and click to pick a color from the image.
+    8. Press C for circle mode: click sets center, drag sets radius, release draws.
+    9. Press Ctrl+Z to undo. Press Q or ESC to exit the tool.
 
   TEST TOOL:
   1. Open the Image Editor, switch to Paint mode, load an image.
@@ -117,10 +120,11 @@ manipulation, giving full control over every pixel placed.
   4. Move the cursor — a yellow outline previews the brush shape at that position.
   5. Left-click to stamp the shape. Hold and drag to paint continuously.
   6. Press W to open the pie menu and choose Square or Circle brush shape.
-  7. Press V to switch to Line mode. Click to set start point, drag to preview
-     the line (the outline updates live), release to commit.
-  8. Adjust brush size with the Size slider in the header or press F and drag.
-  9. Press Q or ESC to exit.
+    7. Hold Alt to draw a line. Click to set start point, drag to preview the
+      line (the outline updates live), release to commit.
+    8. Hold Ctrl and click to pick a color from the image.
+    9. Adjust brush size with the Size slider in the header or press F and drag.
+   10. Press Q or ESC to exit.
 
 
 --------------------------------------------------------------------------------
