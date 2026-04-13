@@ -1202,9 +1202,18 @@ class PixelPainterOperator(Operator):
             if (self.button_down or self.button_right_down) and v2d:
                 self.draw_pixels(context)
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Left mouse press: primary color stroke
         elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            active_mode = mode
+            if event.shift and not event.ctrl and not event.alt:
+                if not _state['temp_shift_mode_active']:
+                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                    _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_mode = 'SMOOTH'
+                active_mode = 'SMOOTH'
+
             if event.ctrl or _state['ctrl_pick_active']:
                 if _state['ctrl_hovered_color'] is None:
                     result = self.get_hovered_pixel(context, event)
@@ -1234,12 +1243,13 @@ class PixelPainterOperator(Operator):
             if result:
                 _state['current_cx'], _state['current_cy'] = result[0], result[1]
                 context.area.tag_redraw()
-            if mode == 'LINE':
+            if active_mode == 'LINE':
                 if space and space.image and _state['current_cx'] is not None:
                     _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)
                     _state['start_position'] = (_state['current_cx'], _state['current_cy'])
             elif v2d:
                 self.draw_pixels(context)
+            return {'RUNNING_MODAL'}
 
         # Left mouse release
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
@@ -1256,9 +1266,19 @@ class PixelPainterOperator(Operator):
             _state['use_secondary'] = False
             self.button_down = False
             _state['outline_immediate'] = False
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Right mouse press: secondary color stroke
         elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
+            active_mode = mode
+            if event.shift and not event.ctrl and not event.alt:
+                if not _state['temp_shift_mode_active']:
+                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                    _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_mode = 'SMOOTH'
+                active_mode = 'SMOOTH'
+
             if event.ctrl or _state['ctrl_pick_active']:
                 if _state['ctrl_hovered_color'] is None:
                     result = self.get_hovered_pixel(context, event)
@@ -1284,12 +1304,13 @@ class PixelPainterOperator(Operator):
             if result:
                 _state['current_cx'], _state['current_cy'] = result[0], result[1]
                 context.area.tag_redraw()
-            if mode == 'LINE':
+            if active_mode == 'LINE':
                 if space and space.image and _state['current_cx'] is not None:
                     _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)
                     _state['start_position'] = (_state['current_cx'], _state['current_cy'])
             elif v2d:
                 self.draw_pixels(context)
+            return {'RUNNING_MODAL'}
 
         # Right mouse release
         elif event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
@@ -1306,6 +1327,8 @@ class PixelPainterOperator(Operator):
             _state['use_secondary'] = False
             self.button_right_down = False
             _state['outline_immediate'] = False
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Ctrl PRESS: activate the eyedropper while held.
         elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'PRESS':
@@ -1330,6 +1353,7 @@ class PixelPainterOperator(Operator):
             _state['ctrl_hovered_color'] = (
                 _get_image_pixel_color(context, cx, cy) if cx is not None else None)
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Ctrl RELEASE: clear the eyedropper overlay.
         elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'RELEASE':
@@ -1339,6 +1363,7 @@ class PixelPainterOperator(Operator):
             _state['ctrl_pick_active']   = False
             _state['ctrl_hovered_color'] = None
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Alt PRESS: temporarily switch to Line while held.
         elif event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'PRESS':
@@ -1360,7 +1385,8 @@ class PixelPainterOperator(Operator):
                 _state['use_secondary'] = False
                 self.button_down       = False
                 self.button_right_down = False
-                context.area.tag_redraw()
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Shift PRESS: temporarily switch to Smooth while held.
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'PRESS':
@@ -1383,6 +1409,7 @@ class PixelPainterOperator(Operator):
                 self.button_down       = False
                 self.button_right_down = False
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Shift RELEASE: restore the mode that was active before the override.
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'RELEASE':
@@ -1409,6 +1436,7 @@ class PixelPainterOperator(Operator):
                 _state['temp_shift_mode_active'] = False
                 _state['temp_shift_prev_mode'] = None
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # Alt RELEASE: restore the mode that was active before the override.
         elif event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'RELEASE':
@@ -1435,6 +1463,7 @@ class PixelPainterOperator(Operator):
                 _state['temp_alt_mode_active'] = False
                 _state['temp_alt_prev_mode'] = None
             context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         # R key: enter opacity picker sub-mode
         elif event.type == 'R' and event.value == 'PRESS':
@@ -1493,18 +1522,23 @@ class PixelPainterOperator(Operator):
 
         is_rmb = (event.type == 'RIGHTMOUSE')
         start_with_picker = event.ctrl
+        start_with_shift_override = event.shift and not start_with_picker and not event.alt
         if event.alt and not start_with_picker and not _state['temp_alt_mode_active']:
             _state['temp_alt_prev_mode'] = context.window_manager.pixel_painter_mode
             _state['temp_alt_mode_active'] = True
             context.window_manager.pixel_painter_mode = 'LINE'
+        if start_with_shift_override and not _state['temp_shift_mode_active']:
+            _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+            _state['temp_shift_mode_active'] = True
+            context.window_manager.pixel_painter_mode = 'SMOOTH'
 
-        self.button_down       = (not is_rmb) and not start_with_picker
-        self.button_right_down = is_rmb and not start_with_picker
+        self.button_down       = (not is_rmb) and not start_with_picker and not start_with_shift_override
+        self.button_right_down = is_rmb and not start_with_picker and not start_with_shift_override
         _state['outline_immediate'] = self.button_down or self.button_right_down
         self._set_modal_cursor(context)
         self._disable_builtin_brush_overlay(context)
         _state['running']        = True
-        _state['use_secondary']  = is_rmb
+        _state['use_secondary']  = self.button_right_down
         _state['current_cx']     = None
         _state['current_cy']     = None
         _state['start_position'] = None
@@ -1527,7 +1561,7 @@ class PixelPainterOperator(Operator):
         # Push undo for the FIRST stroke — the press that triggered invoke is
         # not re-delivered to the modal, so the modal PRESS handler won't fire.
         space = context.space_data
-        if space and space.image and not start_with_picker:
+        if space and space.image and (self.button_down or self.button_right_down):
             _undo_push(space.image)
 
         # Paint the initial pixel under the cursor on press.
@@ -1548,7 +1582,7 @@ class PixelPainterOperator(Operator):
                 if space and space.image:
                     _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)
                     _state['start_position'] = (_state['current_cx'], _state['current_cy'])
-            else:
+            elif self.button_down or self.button_right_down:
                 self.draw_pixels(context)
 
         _register_draw_handler(context.space_data, context)

@@ -1135,7 +1135,13 @@ def smooth_pixels_in_image(img, pixels, smooth_radius, opacity):
         x1 = min(w - 1, px + smooth_radius)
         y0 = max(0, py - smooth_radius)
         y1 = min(h - 1, py + smooth_radius)
-        avg  = arr_4ch[y0:y1 + 1, x0:x1 + 1, :3].mean(axis=(0, 1))
+        kernel = arr_4ch[y0:y1 + 1, x0:x1 + 1, :]
+        alpha = kernel[:, :, 3:4]
+        alpha_sum = float(alpha.sum())
+        if alpha_sum > 1e-6:
+            avg = (kernel[:, :, :3] * alpha).sum(axis=(0, 1)) / alpha_sum
+        else:
+            avg = kernel[:, :, :3].mean(axis=(0, 1))
         orig = arr_4ch[py, px, :3]
         result[py, px, :3] = orig + (avg - orig) * opacity
 
