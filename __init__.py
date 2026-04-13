@@ -26,6 +26,7 @@ from . import blender_utils
 from . import draw_functions
 from . import core
 from . import user_interface
+from . import pie_menu
 from . import tool_settings_ui
 
 
@@ -47,8 +48,9 @@ def register():
     importlib.reload(draw_functions)
     importlib.reload(core)
     importlib.reload(user_interface)
+    importlib.reload(pie_menu)
     importlib.reload(tool_settings_ui)
-    user_interface.register_icons()
+    pie_menu.register_icons()
 
     # Clear any stale state from a previous addon reload
     draw_functions.remove_draw_handler(core._state)
@@ -147,11 +149,11 @@ def register():
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
-    bpy.utils.register_class(user_interface.PixelPainterCustomPieOperator)
+    bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
-    bpy.utils.register_class(user_interface.PixelPainterModePie)
-    bpy.utils.register_class(user_interface.PixelPainterBlendPie)
+    bpy.utils.register_class(pie_menu.PixelPainterModePie)
+    bpy.utils.register_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.register_class(core.PixelPainterOperator)
     bpy.utils.register_tool(user_interface.PixelPainterTool)
 
@@ -160,7 +162,7 @@ def unregister():
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)
     core._undo_clear()
-    user_interface.unregister_icons()
+    pie_menu.unregister_icons()
 
     del bpy.types.WindowManager.pixel_painter_radius
     del bpy.types.WindowManager.pixel_painter_mode
@@ -176,11 +178,11 @@ def unregister():
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)
-    bpy.utils.unregister_class(user_interface.PixelPainterBlendPie)
-    bpy.utils.unregister_class(user_interface.PixelPainterModePie)
+    bpy.utils.unregister_class(pie_menu.PixelPainterBlendPie)
+    bpy.utils.unregister_class(pie_menu.PixelPainterModePie)
     bpy.utils.unregister_class(core.PixelPainterRedoOperator)
     bpy.utils.unregister_class(core.PixelPainterUndoOperator)
-    bpy.utils.unregister_class(user_interface.PixelPainterCustomPieOperator)
+    bpy.utils.unregister_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.unregister_class(core.PixelPainterSetBlendOperator)
     bpy.utils.unregister_class(core.PixelPainterSetModeOperator)
 
