@@ -72,6 +72,26 @@ def _draw_favorites_selector(layout, wm):
         right.prop_enum(wm, "pixel_painter_blend_favorites", blend)
 
 
+def _draw_shortcuts(layout):
+    shortcuts = (
+        ("LMB", "Paint with primary color"),
+        ("RMB", "Paint with secondary color"),
+        ("Hold Shift", "Smooth while held"),
+        ("Hold Alt", "Line draw while held"),
+        ("Hold Ctrl", "Pick image color"),
+        ("W", "Open mode pie menu"),
+        ("D", "Open falloff pie menu"),
+        ("Ctrl+Z", "Undo"),
+        ("Ctrl+Shift+Z", "Redo"),
+        ("Q / Esc", "Exit tool"),
+    )
+
+    for key_text, action_text in shortcuts:
+        row = layout.split(factor=0.36, align=True)
+        row.label(text=key_text)
+        row.label(text=action_text)
+
+
 def draw_tool_settings(context, layout):
     wm = context.window_manager
     ups = context.tool_settings.unified_paint_settings
@@ -147,3 +167,7 @@ def draw_tool_settings(context, layout):
         if brush:
             blend_col.prop(brush, "blend", text="")
         _draw_favorites_selector(blend_col, wm)
+
+    if _draw_foldout(col, wm, "pixel_painter_ui_show_shortcuts", "Shortcuts"):
+        shortcuts_col = col.box().column(align=True)
+        _draw_shortcuts(shortcuts_col)

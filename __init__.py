@@ -180,6 +180,9 @@ def register():
     bpy.types.WindowManager.pixel_painter_ui_show_blend_mode = bpy.props.BoolProperty(
         name="Show Blend Mode", default=False,
     )
+    bpy.types.WindowManager.pixel_painter_ui_show_shortcuts = bpy.props.BoolProperty(
+        name="Show Shortcuts", default=True,
+    )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
@@ -212,6 +215,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
+    del bpy.types.WindowManager.pixel_painter_ui_show_shortcuts
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)
