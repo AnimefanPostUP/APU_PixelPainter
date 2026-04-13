@@ -1,14 +1,20 @@
 """WorkspaceTool definitions and pie menus."""
+import math
 import os
 
+import blf
 import bpy
 import bpy.utils.previews
-from bpy.types import WorkSpaceTool, Menu
+import gpu
+from bpy.types import WorkSpaceTool, Menu, Operator
+from gpu_extras.batch import batch_for_shader
+from gpu_extras.presets import draw_texture_2d
 
 from . import tool_settings_ui
 
 
 _preview_collection = None
+_mode_icon_scale = 2.7
 _default_favorites = ('MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR')
 _blend_order = (
     'MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR',
@@ -37,6 +43,233 @@ _blend_labels = {
     'VALUE': "Value",
     'LUMINOSITY': "Luminosity",
 }
+
+_custom_pie_state = {
+    'running': False,
+    'draw_handler': None,
+    'center_x': 0,
+    'center_y': 0,
+    'hover_index': None,
+}
+
+_custom_pie_items = [
+    ('CIRCLE', 'Circle'),
+    ('SMOOTH', 'Smooth'),
+    ('BLEND', 'Blend'),
+    ('SPRAY', 'Spray'),
+    ('SQUARE', 'Square'),
+    ('SMEAR', 'Smear'),
+]
+
+_mode_icon_files = {
+    'SQUARE': "Tool_Square.png",
+    'CIRCLE': "Tool_Circle.png",
+    'SPRAY': "Tool_Spray.png",
+    'SMOOTH': "Tool_Smooth.png",
+    'SMEAR': "Tool_Smear.png",
+}
+
+# left, right, bottom, top, top-left, top-right
+_custom_pie_dirs = [
+    (-1.0, 0.0),
+    (1.0, 0.0),
+    (0.0, -1.0),
+    (0.0, 1.0),
+    (-0.7, 0.7),
+    (0.7, 0.7),
+]
+
+
+def _draw_circle(cx, cy, radius, color, segments=36):
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    verts = []
+    for i in range(segments):
+        a = (i / segments) * math.tau
+        verts.append((cx + math.cos(a) * radius, cy + math.sin(a) * radius))
+    batch = batch_for_shader(shader, 'TRI_FAN', {'pos': verts})
+    shader.bind()
+    shader.uniform_float('color', color)
+    batch.draw(shader)
+
+
+def _draw_text_centered(text, x, y, size=14):
+    font_id = 0
+    blf.size(font_id, size)
+    w, h = blf.dimensions(font_id, text)
+    blf.position(font_id, x - w * 0.5, y - h * 0.5, 0)
+    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
+    blf.draw(font_id, text)
+
+
+def _get_mode_gpu_texture(mode):
+    path = None
+    filename = _mode_icon_files.get(mode)
+    if filename:
+        path = os.path.join(os.path.dirname(__file__), "textures", filename)
+    if not path or not os.path.exists(path):
+        return None
+
+    cache = _custom_pie_state.setdefault('gpu_textures', {})
+    if mode in cache:
+        return cache[mode]
+
+    try:
+        img = bpy.data.images.load(path, check_existing=True)
+        tex = gpu.texture.from_image(img)
+        cache[mode] = tex
+        return tex
+    except Exception:
+        return None
+
+
+def _draw_mode_icon(mode, cx, cy, size):
+    tex = _get_mode_gpu_texture(mode)
+    if tex is None:
+        return False
+    x = cx - size * 0.5
+    y = cy - size * 0.5
+    try:
+        draw_texture_2d(tex, (x, y), size, size)
+        return True
+    except Exception:
+        return False
+
+
+def _pick_custom_pie_index(mx, my):
+    cx = _custom_pie_state['center_x']
+    cy = _custom_pie_state['center_y']
+    dx = mx - cx
+    dy = my - cy
+    dist2 = dx * dx + dy * dy
+    if dist2 < 16 * 16:
+        return None
+
+    dlen = math.sqrt(dist2)
+    ux, uy = dx / dlen, dy / dlen
+    best_i = None
+    best_dot = -2.0
+    for i, (vx, vy) in enumerate(_custom_pie_dirs):
+        dot = ux * vx + uy * vy
+        if dot > best_dot:
+            best_dot = dot
+            best_i = i
+    return best_i
+
+
+def _draw_custom_pie_overlay():
+    if not _custom_pie_state['running']:
+        return
+
+    cx = _custom_pie_state['center_x']
+    cy = _custom_pie_state['center_y']
+    hover = _custom_pie_state['hover_index']
+    try:
+        current_mode = bpy.context.window_manager.pixel_painter_mode
+    except Exception:
+        current_mode = None
+    ring_r = 95
+    item_r = 28
+
+    _draw_circle(cx, cy, 22, (0.12, 0.12, 0.12, 0.95))
+
+    for i, (mode, label) in enumerate(_custom_pie_items):
+        vx, vy = _custom_pie_dirs[i]
+        ix = cx + vx * ring_r
+        iy = cy + vy * ring_r
+        if i == hover:
+            col = (0.26, 0.52, 0.95, 0.95)
+        elif mode != 'BLEND' and mode == current_mode:
+            col = (0.16, 0.62, 0.32, 0.95)
+        else:
+            col = (0.18, 0.18, 0.18, 0.9)
+        _draw_circle(ix, iy, item_r, col)
+        if not _draw_mode_icon(mode, ix, iy, 32):
+            _draw_text_centered(label, ix, iy, 12)
+        else:
+            _draw_text_centered(label, ix, iy - 30, 10)
+
+
+def _remove_custom_pie_draw_handler():
+    handler = _custom_pie_state.get('draw_handler')
+    if handler is not None:
+        try:
+            bpy.types.SpaceImageEditor.draw_handler_remove(handler, 'WINDOW')
+        except Exception:
+            pass
+        _custom_pie_state['draw_handler'] = None
+    _custom_pie_state['gpu_textures'] = {}
+
+
+class PixelPainterCustomPieOperator(Operator):
+    bl_idname = "image.pixel_painter_custom_pie"
+    bl_label = "Pixel Painter Custom Pie"
+
+    def _apply_selection(self, context):
+        idx = _custom_pie_state.get('hover_index')
+        if idx is None:
+            return
+        mode = _custom_pie_items[idx][0]
+        if mode == 'BLEND':
+            bpy.ops.wm.call_menu_pie(name="PIXELPAINTER_MT_blend_pie")
+        else:
+            bpy.ops.image.pixel_painter_set_mode(mode=mode)
+
+    def _finish(self, context):
+        _custom_pie_state['running'] = False
+        _custom_pie_state['hover_index'] = None
+        _remove_custom_pie_draw_handler()
+        if context.area:
+            context.area.tag_redraw()
+
+    def invoke(self, context, event):
+        if not context.area or context.area.type != 'IMAGE_EDITOR':
+            return {'CANCELLED'}
+
+        _custom_pie_state['running'] = True
+        _custom_pie_state['center_x'] = event.mouse_region_x
+        _custom_pie_state['center_y'] = event.mouse_region_y
+        _custom_pie_state['hover_index'] = None
+
+        _remove_custom_pie_draw_handler()
+        _custom_pie_state['draw_handler'] = bpy.types.SpaceImageEditor.draw_handler_add(
+            _draw_custom_pie_overlay, (), 'WINDOW', 'POST_PIXEL')
+
+        context.window_manager.modal_handler_add(self)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if not context.area or context.area.type != 'IMAGE_EDITOR':
+            self._finish(context)
+            return {'CANCELLED'}
+
+        if event.type == 'MOUSEMOVE':
+            _custom_pie_state['hover_index'] = _pick_custom_pie_index(
+                event.mouse_region_x, event.mouse_region_y)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+            self._finish(context)
+            return {'CANCELLED'}
+
+        # Keep menu open until explicit left-click selection.
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            if _custom_pie_state.get('hover_index') is not None:
+                self._apply_selection(context)
+                self._finish(context)
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+
+        # Optional keyboard confirm
+        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            if _custom_pie_state.get('hover_index') is not None:
+                self._apply_selection(context)
+                self._finish(context)
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+
+        return {'RUNNING_MODAL'}
 
 
 def register_icons():
@@ -90,6 +323,14 @@ def _get_favorites(context):
     return selected
 
 
+def _draw_mode_operator_slot(pie, mode, label):
+    icon_value = _tool_icon_value(mode)
+    if icon_value:
+        pie.operator("image.pixel_painter_set_mode", text=label, icon_value=icon_value).mode = mode
+    else:
+        pie.operator("image.pixel_painter_set_mode", text=label).mode = mode
+
+
 class PixelPainterModePie(Menu):
     bl_idname = "PIXELPAINTER_MT_mode_pie"
     bl_label  = "Drawing Mode"
@@ -97,16 +338,16 @@ class PixelPainterModePie(Menu):
     def draw(self, context):
         layout = self.layout
         pie    = layout.menu_pie()
-        pie.scale_x = 1.4
-        pie.scale_y = 1.4
+        pie.scale_x = 1.0
+        pie.scale_y = 1.0
 
-        pie.operator("image.pixel_painter_set_mode", text="Circle", icon_value=_tool_icon_value('CIRCLE')).mode  = 'CIRCLE'
-        pie.operator("image.pixel_painter_set_mode", text="Smooth", icon_value=_tool_icon_value('SMOOTH')).mode  = 'SMOOTH'
+        _draw_mode_operator_slot(pie, 'CIRCLE', "Circle")
+        _draw_mode_operator_slot(pie, 'SMOOTH', "Smooth")
         op = pie.operator("wm.call_menu_pie", text="Blend")
         op.name = "PIXELPAINTER_MT_blend_pie"
-        pie.operator("image.pixel_painter_set_mode", text="Spray", icon_value=_tool_icon_value('SPRAY')).mode   = 'SPRAY'
-        pie.operator("image.pixel_painter_set_mode", text="Square", icon_value=_tool_icon_value('SQUARE')).mode  = 'SQUARE'
-        pie.operator("image.pixel_painter_set_mode", text="Smear", icon_value=_tool_icon_value('SMEAR')).mode   = 'SMEAR'
+        _draw_mode_operator_slot(pie, 'SPRAY', "Spray")
+        _draw_mode_operator_slot(pie, 'SQUARE', "Square")
+        _draw_mode_operator_slot(pie, 'SMEAR', "Smear")
 
 
 def _add_blend_item(layout, label, blend, favorites):
@@ -174,8 +415,7 @@ class PixelPainterTool(WorkSpaceTool):
         ("image.pixel_painter_operator", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
         ("image.pixel_painter_undo",     {"type": 'Z', "value": 'PRESS', "ctrl": True}, None),
         ("image.pixel_painter_redo",     {"type": 'Z', "value": 'PRESS', "ctrl": True, "shift": True}, None),
-        ("wm.call_menu_pie", {"type": 'W', "value": 'PRESS'},
-            {"properties": [("name", "PIXELPAINTER_MT_mode_pie")]}),
+        ("image.pixel_painter_custom_pie", {"type": 'W', "value": 'PRESS'}, None),
     )
 
     def draw_settings(context, layout, _tool):

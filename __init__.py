@@ -147,6 +147,7 @@ def register():
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
+    bpy.utils.register_class(user_interface.PixelPainterCustomPieOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
     bpy.utils.register_class(user_interface.PixelPainterModePie)
@@ -179,6 +180,7 @@ def unregister():
     bpy.utils.unregister_class(user_interface.PixelPainterModePie)
     bpy.utils.unregister_class(core.PixelPainterRedoOperator)
     bpy.utils.unregister_class(core.PixelPainterUndoOperator)
+    bpy.utils.unregister_class(user_interface.PixelPainterCustomPieOperator)
     bpy.utils.unregister_class(core.PixelPainterSetBlendOperator)
     bpy.utils.unregister_class(core.PixelPainterSetModeOperator)
 
