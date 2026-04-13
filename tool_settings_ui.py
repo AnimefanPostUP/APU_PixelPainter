@@ -33,6 +33,20 @@ def _draw_spacing_buttons(layout, wm):
     row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
 
 
+def _draw_falloff_preset_buttons(layout, wm, prop_name):
+    split = layout.split(factor=0.5, align=True)
+    left = split.column(align=True)
+    right = split.column(align=True)
+
+    left.prop_enum(wm, prop_name, 'CONSTANT', text="Constant")
+    left.prop_enum(wm, prop_name, 'SMOOTH', text="Smooth")
+    left.prop_enum(wm, prop_name, 'SHARPEN', text="Sharpen")
+
+    right.prop_enum(wm, prop_name, 'LINEAR', text="Linear")
+    right.prop_enum(wm, prop_name, 'SPHERE', text="Sphere")
+    right.prop_enum(wm, prop_name, 'CUSTOM', text="Custom")
+
+
 def _draw_favorites_selector(layout, wm):
     content = layout.column(align=True)
     content.use_property_split = False
@@ -89,18 +103,34 @@ def draw_tool_settings(context, layout):
         row.prop(brush, "secondary_color", text="")
 
     if mode == 'CIRCLE':
-        layout.prop(wm, "pixel_painter_use_curve_falloff", text="Curve Falloff")
-        if wm.pixel_painter_use_curve_falloff and brush and hasattr(brush, "curve"):
+        use_custom = (wm.pixel_painter_circle_falloff == 'CUSTOM')
+        if use_custom and brush and hasattr(brush, "curve"):
             layout.template_curve_mapping(brush, "curve", brush=True)
+            lock_presets = getattr(brush, "curve_preset", "") == 'CUSTOM'
+            col = layout.column(align=True)
+            col.label(text="Curve Preset")
+            col.enabled = not lock_presets
+            _draw_falloff_preset_buttons(col, wm, "pixel_painter_circle_falloff")
+            if lock_presets:
+                layout.label(text="Curve edited: presets locked", icon='LOCKED')
         else:
-            layout.prop(wm, "pixel_painter_circle_falloff", text="Falloff")
+            layout.label(text="Falloff")
+            _draw_falloff_preset_buttons(layout, wm, "pixel_painter_circle_falloff")
     elif mode == 'SPRAY':
         layout.prop(wm, "pixel_painter_spray_strength", text="Density", slider=True)
-        layout.prop(wm, "pixel_painter_use_curve_falloff", text="Curve Falloff")
-        if wm.pixel_painter_use_curve_falloff and brush and hasattr(brush, "curve"):
+        use_custom = (wm.pixel_painter_spray_falloff == 'CUSTOM')
+        if use_custom and brush and hasattr(brush, "curve"):
             layout.template_curve_mapping(brush, "curve", brush=True)
+            lock_presets = getattr(brush, "curve_preset", "") == 'CUSTOM'
+            col = layout.column(align=True)
+            col.label(text="Curve Preset")
+            col.enabled = not lock_presets
+            _draw_falloff_preset_buttons(col, wm, "pixel_painter_spray_falloff")
+            if lock_presets:
+                layout.label(text="Curve edited: presets locked", icon='LOCKED')
         else:
-            layout.prop(wm, "pixel_painter_spray_falloff", text="Falloff")
+            layout.label(text="Falloff")
+            _draw_falloff_preset_buttons(layout, wm, "pixel_painter_spray_falloff")
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):

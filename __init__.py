@@ -41,6 +41,36 @@ bl_info = {
 }
 
 
+_FALLOFF_TO_CURVE_PRESET = {
+    'CONSTANT': 'MAX',
+    'LINEAR': 'LINE',
+    'SMOOTH': 'SMOOTH',
+    'SPHERE': 'ROUND',
+    'SHARPEN': 'SHARP',
+}
+
+
+def _apply_curve_preset_from_falloff(context, falloff_value):
+    """Map Pixel Painter falloff enum to brush curve preset."""
+    try:
+        brush = context.tool_settings.image_paint.brush
+        if not brush or not hasattr(brush, 'curve_preset'):
+            return
+        preset = _FALLOFF_TO_CURVE_PRESET.get(falloff_value)
+        if preset:
+            brush.curve_preset = preset
+    except Exception:
+        pass
+
+
+def _update_circle_falloff(self, context):
+    _apply_curve_preset_from_falloff(context, self.pixel_painter_circle_falloff)
+
+
+def _update_spray_falloff(self, context):
+    _apply_curve_preset_from_falloff(context, self.pixel_painter_spray_falloff)
+
+
 def register():
     # Clean up old custom-pie handlers/timers before reloading module code.
     try:
@@ -87,12 +117,15 @@ def register():
         ('SMOOTH',   "Smooth",   "Smooth ease-in/out fade"),
         ('SPHERE',   "Sphere",   "Spherical dome-shaped falloff"),
         ('SHARPEN',  "Sharpen",  "Quadratic — drops off quickly toward the edge"),
+        ('CUSTOM',   "Custom",   "Use the custom brush curve from Tool Settings"),
     ]
     bpy.types.WindowManager.pixel_painter_circle_falloff = bpy.props.EnumProperty(
         name="Circle Falloff", items=_falloff_items, default='CONSTANT',
+        update=_update_circle_falloff,
     )
     bpy.types.WindowManager.pixel_painter_spray_falloff = bpy.props.EnumProperty(
         name="Spray Falloff", items=_falloff_items, default='LINEAR',
+        update=_update_spray_falloff,
     )
     bpy.types.WindowManager.pixel_painter_spray_strength = bpy.props.FloatProperty(
         name="Spray Density",
@@ -112,11 +145,6 @@ def register():
         name="Modifier",
         description="Generic modifier value (currently used as Spread)",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR',
-    )
-    bpy.types.WindowManager.pixel_painter_use_curve_falloff = bpy.props.BoolProperty(
-        name="Use Curve Falloff",
-        description="Use the brush curve to control circle/spray falloff",
-        default=False,
     )
     _blend_items = [
         ('MIX',        "Normal",      "Normal blend"),
@@ -181,7 +209,6 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_falloff
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
-    del bpy.types.WindowManager.pixel_painter_use_curve_falloff
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode

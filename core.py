@@ -224,9 +224,6 @@ def _set_brush_secondary_rgb(context, r, g, b):
 def _get_falloff_curve_sampler(context):
     """Return a callable t->[0,1] sampled from the active brush curve, or None."""
     try:
-        wm = context.window_manager
-        if not getattr(wm, 'pixel_painter_use_curve_falloff', False):
-            return None
         brush = context.tool_settings.image_paint.brush
         curve = getattr(brush, 'curve', None) if brush else None
         if curve is None:
@@ -239,10 +236,29 @@ def _get_falloff_curve_sampler(context):
 
         def _sample(t):
             t = max(0.0, min(1.0, float(t)))
+
+            # Blender exposes multiple evaluate signatures depending on version:
+            # - CurveMap.evaluate(t)
+            # - CurveMapping.evaluate(curve_map, t)
+            # - CurveMapping.evaluate(index, t)
+            # Keep trying until one succeeds, then clamp to [0,1].
             try:
-                return curve.evaluate(t)
+                curves = getattr(curve, 'curves', None)
+                if curves and len(curves) > 0:
+                    try:
+                        return max(0.0, min(1.0, float(curves[0].evaluate(t))))
+                    except Exception:
+                        pass
+                    try:
+                        return max(0.0, min(1.0, float(curve.evaluate(curves[0], t))))
+                    except Exception:
+                        pass
+                try:
+                    return max(0.0, min(1.0, float(curve.evaluate(0, t))))
+                except Exception:
+                    return max(0.0, min(1.0, float(curve.evaluate(t))))
             except Exception:
-                return curve.evaluate(0, t)
+                return 1.0
 
         return _sample
     except Exception:
@@ -643,7 +659,7 @@ class PixelPainterOperator(Operator):
         radius  = blender_utils.get_brush_image_radius(context)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
-        curve_sampler = _get_falloff_curve_sampler(context)
+        curve_sampler = None
 
         # Reset per-stroke tracking at the start of each new stroke
         if _state['last_paint_cx'] is None:
@@ -668,16 +684,36 @@ class PixelPainterOperator(Operator):
             shape     = _state['last_shape']
             tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
             x0, y0    = _state['start_position']
-            all_pixels = set()
-            for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
-                all_pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
-            draw_functions.write_pixels_to_image(img, all_pixels, color,
-                                                 base_buffer=_state['back_buffer'],
-                                                 blend=blend, opacity=opacity)
+            if tip_shape == 'CIRCLE':
+                circle_falloff = wm.pixel_painter_circle_falloff
+                if circle_falloff == 'CUSTOM':
+                    curve_sampler = _get_falloff_curve_sampler(context)
+                pixel_weight_map = {}
+                for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
+                    px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
+                        lx, ly, radius, circle_falloff, curve_sampler=curve_sampler)
+                    for px, w in zip(px_list, pw_list):
+                        if w > pixel_weight_map.get(px, 0.0):
+                            pixel_weight_map[px] = w
+                if pixel_weight_map:
+                    draw_functions.write_pixels_to_image(
+                        img, list(pixel_weight_map.keys()), color,
+                        base_buffer=_state['back_buffer'],
+                        blend=blend, opacity=opacity,
+                        pixel_weights=list(pixel_weight_map.values()))
+            else:
+                all_pixels = set()
+                for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
+                    all_pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
+                draw_functions.write_pixels_to_image(img, all_pixels, color,
+                                                     base_buffer=_state['back_buffer'],
+                                                     blend=blend, opacity=opacity)
 
         elif mode == 'SPRAY':
             spray_strength = wm.pixel_painter_spray_strength
             spray_falloff  = wm.pixel_painter_spray_falloff
+            if spray_falloff == 'CUSTOM':
+                curve_sampler = _get_falloff_curve_sampler(context)
             if spacing == 'PIXEL':
                 # Pixel: accumulate max weight, re-render from back-buffer each call
                 swm = _state['stroke_weight_map']
@@ -713,6 +749,8 @@ class PixelPainterOperator(Operator):
 
         elif mode == 'CIRCLE':
             circle_falloff = wm.pixel_painter_circle_falloff
+            if circle_falloff == 'CUSTOM':
+                curve_sampler = _get_falloff_curve_sampler(context)
             if spacing == 'PIXEL':
                 # Pixel: accumulate max weight, re-render from back-buffer each call
                 swm = _state['stroke_weight_map']

@@ -613,8 +613,8 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
     sheet_w = 500.0
     sheet_h = 300.0
     side_gap = 6.0
-    bar_w = 12.0
-    hue_h = 12.0
+    bar_w = 24.0
+    hue_h = 24.0
     font_id = 0
 
     sheet_x0 = rx - sheet_w * 0.5
@@ -641,16 +641,20 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
 
+    # Slight overlap so gradient bodies blend into rounded end-caps.
+    seam_overlap = 1.0
+
     # ---- Left VALUE bar: black -> hsv(h, s, 1) ----
+    val_r = bar_w * 0.5
     steps = 20
-    sh = val_h / steps
+    sh = (val_h - 2.0 * val_r + 2.0 * seam_overlap) / steps
     verts_v, colors_v = [], []
     for i in range(steps):
         v0 = i / steps
         v1 = (i + 1) / steps
         r0, g0, b0 = colorsys.hsv_to_rgb(h, s, v0)
         r1, g1, b1 = colorsys.hsv_to_rgb(h, s, v1)
-        y0_ = val_y0 + i * sh
+        y0_ = val_y0 + val_r - seam_overlap + i * sh
         y1_ = y0_ + sh
         verts_v += [
             (val_x0, y0_), (val_x0 + bar_w, y0_), (val_x0 + bar_w, y1_),
@@ -661,6 +665,8 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
         colors_v += [c0, c0, c1, c0, c1, c1]
 
     gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_v, "color": colors_v}).draw(sc)
+    _draw_filled_circle(val_x0 + val_r, val_y0 + val_r, val_r, (*colorsys.hsv_to_rgb(h, s, 0.0), 1.0))
+    _draw_filled_circle(val_x0 + val_r, val_y0 + val_h - val_r, val_r, (*colorsys.hsv_to_rgb(h, s, 1.0), 1.0))
 
     cur_vy = val_y0 + v * val_h
     for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
@@ -670,24 +676,15 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
             (val_x0 - 4, cur_vy), (val_x0 + bar_w + 4, cur_vy)
         ]}).draw(su)
 
-    # Border: value bar
-    gpu.state.line_width_set(1.0)
-    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (val_x0, val_y0), (val_x0 + bar_w, val_y0),
-        (val_x0 + bar_w, val_y0), (val_x0 + bar_w, val_y0 + val_h),
-        (val_x0 + bar_w, val_y0 + val_h), (val_x0, val_y0 + val_h),
-        (val_x0, val_y0 + val_h), (val_x0, val_y0),
-    ]}).draw(su)
-
     # ---- Right SATURATION bar: hsv(h,0,v) -> hsv(h,1,v) ----
+    sat_r = bar_w * 0.5
     verts_s, colors_s = [], []
     for i in range(steps):
         s0 = i / steps
         s1 = (i + 1) / steps
         r0, g0, b0 = colorsys.hsv_to_rgb(h, s0, v)
         r1, g1, b1 = colorsys.hsv_to_rgb(h, s1, v)
-        y0_ = sat_y0 + i * sh
+        y0_ = sat_y0 + sat_r - seam_overlap + i * sh
         y1_ = y0_ + sh
         verts_s += [
             (sat_x0, y0_), (sat_x0 + bar_w, y0_), (sat_x0 + bar_w, y1_),
@@ -698,6 +695,8 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
         colors_s += [c0, c0, c1, c0, c1, c1]
 
     gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_s, "color": colors_s}).draw(sc)
+    _draw_filled_circle(sat_x0 + sat_r, sat_y0 + sat_r, sat_r, (*colorsys.hsv_to_rgb(h, 0.0, v), 1.0))
+    _draw_filled_circle(sat_x0 + sat_r, sat_y0 + sat_h - sat_r, sat_r, (*colorsys.hsv_to_rgb(h, 1.0, v), 1.0))
 
     cur_sy = sat_y0 + s * sat_h
     for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
@@ -707,26 +706,17 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
             (sat_x0 - 4, cur_sy), (sat_x0 + bar_w + 4, cur_sy)
         ]}).draw(su)
 
-    # Border: saturation bar
-    gpu.state.line_width_set(1.0)
-    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (sat_x0, sat_y0), (sat_x0 + bar_w, sat_y0),
-        (sat_x0 + bar_w, sat_y0), (sat_x0 + bar_w, sat_y0 + sat_h),
-        (sat_x0 + bar_w, sat_y0 + sat_h), (sat_x0, sat_y0 + sat_h),
-        (sat_x0, sat_y0 + sat_h), (sat_x0, sat_y0),
-    ]}).draw(su)
-
     # ---- Bottom HUE bar: rainbow horizontal ----
+    hue_r = hue_h * 0.5
     hsteps = 36
-    sw = hue_w / hsteps
+    sw = (hue_w - 2.0 * hue_r + 2.0 * seam_overlap) / hsteps
     verts_h, colors_h = [], []
     for i in range(hsteps):
         h0 = i / hsteps
         h1 = (i + 1) / hsteps
         r0, g0, b0 = colorsys.hsv_to_rgb(h0, 1.0, 1.0)
         r1, g1, b1 = colorsys.hsv_to_rgb(h1, 1.0, 1.0)
-        x0_ = hue_x0 + i * sw
+        x0_ = hue_x0 + hue_r - seam_overlap + i * sw
         x1_ = x0_ + sw
         verts_h += [
             (x0_, hue_y0), (x1_, hue_y0), (x1_, hue_y0 + hue_h),
@@ -737,6 +727,8 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
         colors_h += [c0, c1, c1, c0, c1, c0]
 
     gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_h, "color": colors_h}).draw(sc)
+    _draw_filled_circle(hue_x0 + hue_r, hue_y0 + hue_r, hue_r, (*colorsys.hsv_to_rgb(0.0, 1.0, 1.0), 1.0))
+    _draw_filled_circle(hue_x0 + hue_w - hue_r, hue_y0 + hue_r, hue_r, (*colorsys.hsv_to_rgb(1.0, 1.0, 1.0), 1.0))
 
     cur_hx = hue_x0 + h * hue_w
     for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
@@ -745,16 +737,6 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
         gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
             (cur_hx, hue_y0 - 4), (cur_hx, hue_y0 + hue_h + 4)
         ]}).draw(su)
-
-    # Border: hue bar
-    gpu.state.line_width_set(1.0)
-    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (hue_x0, hue_y0), (hue_x0 + hue_w, hue_y0),
-        (hue_x0 + hue_w, hue_y0), (hue_x0 + hue_w, hue_y0 + hue_h),
-        (hue_x0 + hue_w, hue_y0 + hue_h), (hue_x0, hue_y0 + hue_h),
-        (hue_x0, hue_y0 + hue_h), (hue_x0, hue_y0),
-    ]}).draw(su)
 
     # Labels
     blf.size(font_id, 11)
