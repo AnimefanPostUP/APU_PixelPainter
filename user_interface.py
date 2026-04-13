@@ -5,6 +5,8 @@ import bpy
 import bpy.utils.previews
 from bpy.types import WorkSpaceTool, Menu
 
+from . import tool_settings_ui
+
 
 _preview_collection = None
 _default_favorites = ('MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR')
@@ -34,12 +36,6 @@ _blend_labels = {
     'SATURATION': "Saturation",
     'VALUE': "Value",
     'LUMINOSITY': "Luminosity",
-}
-_blend_categories = {
-    "Common": ('MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'),
-    "Contrast": ('SCREEN', 'OVERLAY', 'SOFTLIGHT', 'HARDLIGHT'),
-    "Math": ('SUB', 'DIFFERENCE', 'EXCLUSION', 'COLORDODGE', 'COLORBURN'),
-    "HSL/HSV": ('HUE', 'SATURATION', 'VALUE', 'LUMINOSITY'),
 }
 
 
@@ -92,31 +88,6 @@ def _get_favorites(context):
     if not selected:
         selected = set(_default_favorites)
     return selected
-
-
-def _draw_favorites_selector(layout, wm):
-    content = layout.column(align=True)
-    content.use_property_split = False
-    content.use_property_decorate = False
-    split = content.split(factor=0.5, align=True)
-    left = split.column(align=True)
-    right = split.column(align=True)
-
-    left.label(text="Common")
-    for blend in _blend_categories["Common"]:
-        left.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-    left.separator()
-    left.label(text="Contrast")
-    for blend in _blend_categories["Contrast"]:
-        left.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-
-    right.label(text="Math")
-    for blend in _blend_categories["Math"]:
-        right.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-    right.separator()
-    right.label(text="HSL/HSV")
-    for blend in _blend_categories["HSL/HSV"]:
-        right.prop_enum(wm, "pixel_painter_blend_favorites", blend)
 
 
 class PixelPainterModePie(Menu):
@@ -208,45 +179,4 @@ class PixelPainterTool(WorkSpaceTool):
     )
 
     def draw_settings(context, layout, _tool):
-        wm    = context.window_manager
-        ups   = context.tool_settings.unified_paint_settings
-        brush = context.tool_settings.image_paint.brush
-        mode  = wm.pixel_painter_mode
-
-        layout.prop(wm, "pixel_painter_mode",   text="")
-        layout.prop(wm, "pixel_painter_spacing", text="")
-
-        # Blend mode
-        if brush:
-            layout.prop(brush, "blend", text="")
-        _draw_favorites_selector(layout, wm)
-
-        # Size
-        if ups.use_unified_size:
-            layout.prop(ups, "size", text="Size (1-512→0-64px)")
-        elif brush:
-            layout.prop(brush, "size", text="Size (1-512→0-64px)")
-
-        # Opacity + Modifier side by side
-        row = layout.row(align=True)
-        if ups.use_unified_strength:
-            row.prop(ups, "strength", text="Opacity", slider=True)
-        elif brush:
-            row.prop(brush, "strength", text="Opacity", slider=True)
-        row.prop(wm, "pixel_painter_modifier", text="Modifier", slider=True)
-
-        # Primary + secondary color swatches side by side
-        row = layout.row(align=True)
-        if ups.use_unified_color:
-            row.prop(ups, "color",           text="")
-            row.prop(ups, "secondary_color", text="")
-        elif brush:
-            row.prop(brush, "color",           text="")
-            row.prop(brush, "secondary_color", text="")
-
-        # Mode-specific controls
-        if mode == 'CIRCLE':
-            layout.prop(wm, "pixel_painter_circle_falloff", text="Falloff")
-        elif mode == 'SPRAY':
-            layout.prop(wm, "pixel_painter_spray_strength", text="Density", slider=True)
-            layout.prop(wm, "pixel_painter_spray_falloff",  text="Falloff")
+        tool_settings_ui.draw_tool_settings(context, layout)

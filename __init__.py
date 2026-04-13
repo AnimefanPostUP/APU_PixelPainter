@@ -26,6 +26,7 @@ from . import blender_utils
 from . import draw_functions
 from . import core
 from . import user_interface
+from . import tool_settings_ui
 
 
 bl_info = {
@@ -46,6 +47,7 @@ def register():
     importlib.reload(draw_functions)
     importlib.reload(core)
     importlib.reload(user_interface)
+    importlib.reload(tool_settings_ui)
     user_interface.register_icons()
 
     # Clear any stale state from a previous addon reload
@@ -131,6 +133,12 @@ def register():
         options={'ENUM_FLAG'},
         default={'MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'},
     )
+    bpy.types.WindowManager.pixel_painter_ui_show_settings = bpy.props.BoolProperty(
+        name="Show Settings", default=True,
+    )
+    bpy.types.WindowManager.pixel_painter_ui_show_blend_mode = bpy.props.BoolProperty(
+        name="Show Blend Mode", default=False,
+    )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
@@ -156,6 +164,8 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
     del bpy.types.WindowManager.pixel_painter_blend_favorites
+    del bpy.types.WindowManager.pixel_painter_ui_show_settings
+    del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)
