@@ -1,0 +1,208 @@
+================================================================================
+  PIXEL DOT DRAWER — Addon Documentation
+================================================================================
+
+--------------------------------------------------------------------------------
+  WHAT THE ADDON DOES
+--------------------------------------------------------------------------------
+
+Pixel Dot Drawer is a Blender 4.2 Image Editor addon for pixel-perfect painting.
+It adds two custom workspace tools to the Image Editor's Paint mode, each
+designed for precise, pixel-level editing of image textures.
+
+Unlike Blender's built-in paint brushes (which use anti-aliasing and pressure
+sensitivity), these tools write individual image pixels directly via numpy array
+manipulation, giving full control over every pixel placed.
+
+
+--------------------------------------------------------------------------------
+  TOOLS
+--------------------------------------------------------------------------------
+
+1. PIXEL DOT DRAWER (image.pixel_dot_drawer_tool)
+   ------------------------------------------------
+   A single-pixel drawing tool. Paints exactly one pixel per click or drag.
+   Supports three drawing sub-modes switched by keyboard keys:
+
+   - Brush mode (B): Paints individual pixels as you click or drag.
+   - Circle mode (C): Click and drag to draw a circular outline. The radius
+     is determined by the distance between the click position and the cursor.
+   - Line mode (V): Click to set a start point, drag to preview and commit a
+     straight Bresenham line from start to current position.
+
+   Left-click uses the primary brush color.
+   Right-click uses the secondary brush color.
+   Ctrl+Z undoes the last stroke (up to 100 steps, per-image).
+
+   A yellow square outline follows the cursor to indicate which exact pixel
+   would be painted.
+
+2. TEST TOOL (image.test_tool)
+   ----------------------------
+   A shape-brush drawing tool with configurable brush radius and shape.
+   Paints a filled square or circle of pixels, with an optional line mode.
+   The brush size is read from Blender's unified paint settings (the same
+   slider used by other paint tools), converted to an integer pixel radius.
+
+   - Square mode: Fills a square area of pixels centered on the cursor.
+   - Circle mode: Fills a circular area of pixels centered on the cursor.
+   - Line mode (V): Click and drag to draw a straight line. Each point along
+     the line is expanded with the selected brush shape (Square or Circle),
+     so the line has the same thickness and shape as the brush.
+
+   A yellow outline previews the exact pixels that will be painted, including
+   the full line shape during a line drag. The W key opens a pie menu to
+   switch between Square and Circle modes.
+
+
+--------------------------------------------------------------------------------
+  KEYBOARD KEYS
+--------------------------------------------------------------------------------
+
+  PIXEL DOT DRAWER tool active:
+  ┌──────────────┬────────────────────────────────────────────────────────────┐
+  │ Key          │ Action                                                     │
+  ├──────────────┼────────────────────────────────────────────────────────────┤
+  │ Left Mouse   │ Paint with primary color (hold and drag to paint)          │
+  │ Right Mouse  │ Paint with secondary color                                 │
+  │ B            │ Switch to Brush (dot) mode                                 │
+  │ C            │ Switch to Circle mode                                      │
+  │ V            │ Switch to Line mode                                        │
+  │ Ctrl+Z       │ Undo last stroke                                           │
+  │ Q / ESC      │ Stop the modal operator                                    │
+  └──────────────┴────────────────────────────────────────────────────────────┘
+
+  TEST TOOL active:
+  ┌──────────────┬────────────────────────────────────────────────────────────┐
+  │ Key          │ Action                                                     │
+  ├──────────────┼────────────────────────────────────────────────────────────┤
+  │ Left Mouse   │ Paint brush shape / start line                             │
+  │ W            │ Open pie menu to switch between Square and Circle modes    │
+  │ V            │ Switch to Line mode                                        │
+  │ F            │ Blender's native brush size adjust (scales radius)         │
+  │ Q / ESC      │ Stop the modal operator                                    │
+  └──────────────┴────────────────────────────────────────────────────────────┘
+
+
+--------------------------------------------------------------------------------
+  TOOL SETTINGS (header bar)
+--------------------------------------------------------------------------------
+
+  TEST TOOL shows two controls in the Image Editor header bar:
+  - Mode dropdown: Square / Circle / Line
+  - Size slider:   Reads from Blender's unified paint settings. The range
+                   1-512 screen pixels maps to 0-64 image pixel radius.
+                   Use the F key to resize interactively.
+
+
+--------------------------------------------------------------------------------
+  USER FLOW
+--------------------------------------------------------------------------------
+
+  PIXEL DOT DRAWER:
+  1. Open the Image Editor, switch to Paint mode, load an image.
+  2. Select "Pixel Dot Drawer" from the tool shelf (T panel).
+  3. The modal operator starts automatically on left or right click.
+  4. Move the cursor over the image — a yellow square shows the target pixel.
+  5. Left-click or drag to paint with the primary color.
+  6. Press V to switch to line mode, click to set start, drag to preview line,
+     release to commit.
+  7. Press C for circle mode: click sets center, drag sets radius, release draws.
+  8. Press Ctrl+Z to undo. Press Q or ESC to exit the tool.
+
+  TEST TOOL:
+  1. Open the Image Editor, switch to Paint mode, load an image.
+  2. Select "TestTool" from the tool shelf (T panel).
+  3. The modal operator starts automatically on left click.
+  4. Move the cursor — a yellow outline previews the brush shape at that position.
+  5. Left-click to stamp the shape. Hold and drag to paint continuously.
+  6. Press W to open the pie menu and choose Square or Circle brush shape.
+  7. Press V to switch to Line mode. Click to set start point, drag to preview
+     the line (the outline updates live), release to commit.
+  8. Adjust brush size with the Size slider in the header or press F and drag.
+  9. Press Q or ESC to exit.
+
+
+--------------------------------------------------------------------------------
+  CODE OVERVIEW
+--------------------------------------------------------------------------------
+
+  File structure:
+
+  __init__.py        — Addon entry point. Registers/unregisters all classes,
+                       WindowManager properties, and menu entries. Reloads
+                       all modules on each addon reload to pick up code changes.
+
+  core.py            — Operator logic.
+                         PixelDotDrawerOperator: modal operator handling mouse
+                           events, undo stack, and delegating to drawing helpers.
+                         TestToolOperator: modal operator for the shape brush,
+                           reads _state dict to avoid Blender freeing self.
+                         TestToolSetModeOperator: simple execute operator used
+                           by the pie menu to set test_tool_mode on WindowManager.
+                         _state: module-level dict holding TestTool runtime state
+                           (cursor position, draw handler ref, back buffer, etc.)
+                           so the GPU draw callback is never tied to operator self.
+
+  user_interface.py  — WorkspaceTool subclasses and pie menus.
+                         PixelDotDrawerTool: defines icon, keymap, operator link.
+                         TestTool: defines icon, keymap, draw_settings callback
+                           (header bar controls).
+                         TestToolModePie: pie menu with Square / Circle entries.
+
+  draw_functions.py  — All GPU rendering and pixel-write routines.
+                         write_pixels_to_image(): writes a set of (px,py) coords
+                           into an image's pixel array via numpy.
+                         draw_pixel_cursor_outline(): single-pixel yellow square
+                           outline drawn in POST_PIXEL space for PixelDotDrawer.
+                         draw_test_tool_shape_outline(): shaped outline for the
+                           TestTool, including line preview during drag.
+                         register_draw_handler() / remove_draw_handler(): manage
+                           Blender SpaceImageEditor draw callbacks.
+
+  math_utils.py      — Pure geometry, no Blender dependency.
+                         convert_uv_coord(): UV float → integer pixel coords.
+                         get_pixels_in_shape(): square or circle pixel set.
+                         get_line_pixels(): Bresenham integer line algorithm.
+                         get_outline_edges(): computes outer contour edges of
+                           a pixel set for GPU outline rendering.
+
+  blender_utils.py   — Blender context helpers.
+                         get_space_img(): returns (space, image) for Image Editor.
+                         get_window_region_and_v2d(): returns the WINDOW region
+                           and its View2D from an area.
+                         mouse_to_view_uv_or_px(): converts mouse event coords
+                           to UV space using View2D.region_to_view.
+                         get_brush_image_radius(): reads unified paint settings
+                           brush size and maps it to an integer pixel radius.
+
+  generic_utils.py   — Reserved for future generic utility functions.
+
+  pixel_dot_drawer.py — Legacy stub (content moved to new modules).
+  test_tool.py        — Legacy stub (content moved to new modules).
+
+
+--------------------------------------------------------------------------------
+  TECHNICAL NOTES
+--------------------------------------------------------------------------------
+
+  - Pixel writing uses numpy for fast array manipulation. img.pixels is read
+    into a float32 array, modified, then written back in one assignment.
+
+  - The TestTool draw handler is registered at module level (_state dict) rather
+    than on the operator instance. This prevents a Blender ReferenceError that
+    occurs when Blender frees the operator instance while the callback is still
+    active (common during tool switches or undo).
+
+  - Line drawing uses a back_buffer (snapshot of the image taken on mouse-press).
+    On each MOUSEMOVE, the line is re-drawn from scratch onto a copy of the
+    snapshot. This prevents pixel accumulation from repeated intermediate frames.
+
+  - view_to_region() is called with the default clip=True. Outline coordinates
+    are converted using View2D.view_to_region(u, v) where u, v are pixel corner
+    positions normalized to [0, 1] UV space. The result is region-local screen
+    coordinates (no region.x/y offset needed).
+
+  - Addon reload safety: __init__.py calls remove_draw_handler() and resets
+    _state on every register() call, preventing double-registered handlers
+    after a Script > Reload.
