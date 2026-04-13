@@ -256,6 +256,73 @@ def draw_pixel_cursor_outline(context, current_x, current_y):
     _gpu_draw_lines(vertices, (1.0, 1.0, 0.0, 1.0))
 
 
+def _draw_precision_pixel_guide(context, px, py, color=(1.0, 1.0, 1.0, 0.85)):
+    """Draw thin corner brackets for one image pixel.
+
+    The middle 60% of each edge is intentionally omitted so only corner hints
+    remain, making the exact pixel bounds easier to read without visual clutter.
+    """
+    space, img = blender_utils.get_space_img(context)
+    if not space or not img:
+        return
+
+    w, h = img.size
+    if w == 0 or h == 0:
+        return
+
+    _, v2d = blender_utils.get_window_region_and_v2d(context.area)
+    if not v2d:
+        return
+
+    x0 = px / w
+    y0 = py / h
+    x1 = (px + 1) / w
+    y1 = (py + 1) / h
+
+    # Draw only 20% at each side of an edge: 40% visible, 60% omitted.
+    t = 0.2
+    sx0, sy0 = v2d.view_to_region(x0, y0)
+    sx1, sy1 = v2d.view_to_region(x1, y1)
+    if sx0 is None or sy0 is None or sx1 is None or sy1 is None:
+        return
+
+    # Screen-space rectangle corners (not rounded to keep sub-pixel smoothness).
+    left = min(sx0, sx1)
+    right = max(sx0, sx1)
+    bot = min(sy0, sy1)
+    top = max(sy0, sy1)
+
+    dx = right - left
+    dy = top - bot
+    hx = dx * t
+    hy = dy * t
+
+    verts = [
+        # Bottom edge corners
+        (left, bot), (left + hx, bot),
+        (right - hx, bot), (right, bot),
+        # Top edge corners
+        (left, top), (left + hx, top),
+        (right - hx, top), (right, top),
+        # Left edge corners
+        (left, bot), (left, bot + hy),
+        (left, top - hy), (left, top),
+        # Right edge corners
+        (right, bot), (right, bot + hy),
+        (right, top - hy), (right, top),
+    ]
+
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+    gpu.state.line_width_set(1.0)
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch = gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": verts})
+    shader.uniform_float("color", color)
+    batch.draw(shader)
+    gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('LESS_EQUAL')
+
+
 # ---------------------------------------------------------------------------
 # TestTool — shaped brush outline
 # ---------------------------------------------------------------------------
@@ -393,6 +460,10 @@ def draw_test_tool_shape_outline(context, state):
         return
     vertices = _edges_to_screen_verts(edges, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
     _gpu_draw_lines(vertices, outline_color)
+
+    # Precision guide is anchored to the true edited pixel, not the smoothed
+    # display position, so users can always see exact pixel start/end bounds.
+    _draw_precision_pixel_guide(context, state['current_cx'], state['current_cy'])
 
 
 # ---------------------------------------------------------------------------

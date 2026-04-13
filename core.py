@@ -515,6 +515,23 @@ class PixelPainterOperator(Operator):
                 pass
         self._brush_overlay_restore = []
 
+    def _set_modal_cursor(self, context):
+        self._cursor_is_custom = False
+        try:
+            context.window.cursor_modal_set('CROSSHAIR')
+            self._cursor_is_custom = True
+        except Exception:
+            pass
+
+    def _restore_modal_cursor(self, context):
+        if not getattr(self, '_cursor_is_custom', False):
+            return
+        try:
+            context.window.cursor_modal_restore()
+        except Exception:
+            pass
+        self._cursor_is_custom = False
+
     # ---- drawing -------------------------------------------------------------
 
     def draw_pixels(self, context):
@@ -692,6 +709,10 @@ class PixelPainterOperator(Operator):
     # ---- lifecycle -----------------------------------------------------------
 
     def _cleanup(self):
+        try:
+            self._restore_modal_cursor(bpy.context)
+        except Exception:
+            pass
         self._restore_builtin_brush_overlay()
         timer = _state.get('outline_timer')
         if timer is not None:
@@ -745,6 +766,10 @@ class PixelPainterOperator(Operator):
         if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
             self._cleanup()
             return {'CANCELLED'}
+
+        # Blender may reset modal cursor after certain transient tools
+        # (e.g. brush size with F). Re-apply ours while this operator runs.
+        self._set_modal_cursor(context)
 
         # Guard: stop if the user switched to a different tool
         from bl_ui.space_toolsystem_common import ToolSelectPanelHelper
@@ -1188,6 +1213,7 @@ class PixelPainterOperator(Operator):
         self.button_down       = not is_rmb
         self.button_right_down = is_rmb
         _state['outline_immediate'] = self.button_down or self.button_right_down
+        self._set_modal_cursor(context)
         self._disable_builtin_brush_overlay(context)
         _state['running']        = True
         _state['use_secondary']  = is_rmb
