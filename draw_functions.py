@@ -1,6 +1,7 @@
 """GPU drawing callbacks and pixel-write helpers."""
 import colorsys
 import math
+import time
 
 import blf
 import gpu
@@ -214,12 +215,12 @@ def _gpu_draw_lines(vertices, color):
     gpu.state.depth_test_set('LESS_EQUAL')
 
 
-def _edges_to_screen_verts(edges, v2d, w, h):
-    """Convert image-space edge corner pairs to rounded screen coordinates."""
+def _edges_to_screen_verts(edges, v2d, w, h, offset_x=0.0, offset_y=0.0):
+    """Convert image-space edges to screen coordinates with optional sub-pixel offset."""
     vertices = []
     for (px0, py0), (px1, py1) in edges:
-        sx0, sy0 = v2d.view_to_region(px0 / w, py0 / h)
-        sx1, sy1 = v2d.view_to_region(px1 / w, py1 / h)
+        sx0, sy0 = v2d.view_to_region((px0 + offset_x) / w, (py0 + offset_y) / h)
+        sx1, sy1 = v2d.view_to_region((px1 + offset_x) / w, (py1 + offset_y) / h)
         vertices.append((round(sx0), round(sy0)))
         vertices.append((round(sx1), round(sy1)))
     return vertices
@@ -271,7 +272,71 @@ def draw_test_tool_shape_outline(context, state):
     cx = state['current_cx']
     cy = state['current_cy']
     if cx is None or cy is None:
+        state['outline_display_cx'] = None
+        state['outline_display_cy'] = None
+        state['outline_from_cx'] = None
+        state['outline_from_cy'] = None
+        state['outline_to_cx'] = None
+        state['outline_to_cy'] = None
         return
+
+    if state.get('outline_immediate'):
+        cx = float(cx)
+        cy = float(cy)
+        state['outline_display_cx'] = cx
+        state['outline_display_cy'] = cy
+        state['outline_from_cx'] = cx
+        state['outline_from_cy'] = cy
+        state['outline_to_cx'] = cx
+        state['outline_to_cy'] = cy
+        state['outline_anim_start'] = time.perf_counter()
+    else:
+        now = time.perf_counter()
+        display_cx = state.get('outline_display_cx')
+        display_cy = state.get('outline_display_cy')
+        target_cx = state.get('outline_to_cx')
+        target_cy = state.get('outline_to_cy')
+
+        if display_cx is None or display_cy is None:
+            display_cx = float(cx)
+            display_cy = float(cy)
+            state['outline_display_cx'] = display_cx
+            state['outline_display_cy'] = display_cy
+            state['outline_from_cx'] = display_cx
+            state['outline_from_cy'] = display_cy
+            state['outline_to_cx'] = float(cx)
+            state['outline_to_cy'] = float(cy)
+            state['outline_anim_start'] = now
+        elif target_cx != float(cx) or target_cy != float(cy):
+            nx = float(cx)
+            ny = float(cy)
+            dx = nx - display_cx
+            dy = ny - display_cy
+            if (dx * dx + dy * dy) < 4.0:
+                state['outline_from_cx'] = display_cx
+                state['outline_from_cy'] = display_cy
+                state['outline_to_cx'] = nx
+                state['outline_to_cy'] = ny
+                state['outline_anim_start'] = now
+            else:
+                state['outline_from_cx'] = nx
+                state['outline_from_cy'] = ny
+                state['outline_to_cx'] = nx
+                state['outline_to_cy'] = ny
+                state['outline_display_cx'] = nx
+                state['outline_display_cy'] = ny
+                state['outline_anim_start'] = now
+
+        from_cx = state.get('outline_from_cx', float(cx))
+        from_cy = state.get('outline_from_cy', float(cy))
+        to_cx = state.get('outline_to_cx', float(cx))
+        to_cy = state.get('outline_to_cy', float(cy))
+        t = min(1.0, max(0.0, (now - state.get('outline_anim_start', now)) / 0.018))
+        te = t * t * (3.0 - 2.0 * t)
+        cx = from_cx + (to_cx - from_cx) * te
+        cy = from_cy + (to_cy - from_cy) * te
+        state['outline_display_cx'] = cx
+        state['outline_display_cy'] = cy
 
     space = context.space_data
     if not space or not space.image:
@@ -292,30 +357,41 @@ def draw_test_tool_shape_outline(context, state):
         return
     v2d = region.view2d
 
-    if (mode == 'LINE' or state.get('ctrl_line_active')) and state['start_position'] is not None:
-        shape = state['last_shape']
-        # SPRAY uses a circle tip when drawing lines
-        tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
-        x0, y0 = state['start_position']
-        pixels = set()
-        for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
-            pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
-    else:
-        # SPRAY shows full circle boundary as the outline (represents the spray area)
-        outline_mode = 'CIRCLE' if mode == 'SPRAY' else mode
-        pixels = math_utils.get_pixels_in_shape(cx, cy, radius, outline_mode)
-
-    edges = math_utils.get_outline_edges(pixels)
-    if not edges:
-        return
-
     outline_color = {
         'SPRAY':  (1.0, 0.55, 0.0,  0.9),  # orange
         'SMEAR':  (1.0, 0.2,  0.2,  0.9),  # red
         'SMOOTH': (0.7, 0.3,  1.0,  0.9),  # purple
     }.get(mode, (1.0, 1.0, 0.0, 0.9))      # default yellow
 
-    vertices = _edges_to_screen_verts(edges, v2d, w, h)
+    def _outline_pixels_at(ix, iy):
+        if (mode == 'LINE' or state.get('ctrl_line_active')) and state['start_position'] is not None:
+            shape = state['last_shape']
+            tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
+            x0, y0 = state['start_position']
+            pixels = set()
+            for (lx, ly) in math_utils.get_line_pixels(x0, y0, ix, iy):
+                pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
+            return pixels
+
+        outline_mode = 'CIRCLE' if mode == 'SPRAY' else mode
+        return math_utils.get_pixels_in_shape(ix, iy, radius, outline_mode)
+
+    if state.get('outline_immediate'):
+        base_ix = round(cx)
+        base_iy = round(cy)
+        frac_x = 0.0
+        frac_y = 0.0
+    else:
+        base_ix = math.floor(cx)
+        base_iy = math.floor(cy)
+        frac_x = cx - base_ix
+        frac_y = cy - base_iy
+
+    pixels = _outline_pixels_at(base_ix, base_iy)
+    edges = math_utils.get_outline_edges(pixels)
+    if not edges:
+        return
+    vertices = _edges_to_screen_verts(edges, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
     _gpu_draw_lines(vertices, outline_color)
 
 

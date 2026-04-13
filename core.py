@@ -1,5 +1,6 @@
 """Operator classes and module-level tool state."""
 import colorsys
+import time
 
 import bpy
 import numpy as np
@@ -52,6 +53,16 @@ _state = {
     'shift_hovered_color': None,  # (r,g,b) of image pixel under cursor
     'shift_region_x':      None,  # region X for the circle overlay
     'shift_region_y':      None,  # region Y for the circle overlay
+    'outline_immediate':   False,
+    # ---- outline position tween --------------------------------------------
+    'outline_display_cx':  None,
+    'outline_display_cy':  None,
+    'outline_from_cx':     None,
+    'outline_from_cy':     None,
+    'outline_to_cx':       None,
+    'outline_to_cy':       None,
+    'outline_anim_start':  0.0,
+    'outline_timer':       None,
 }
 
 # ---------------------------------------------------------------------------
@@ -682,6 +693,13 @@ class PixelPainterOperator(Operator):
 
     def _cleanup(self):
         self._restore_builtin_brush_overlay()
+        timer = _state.get('outline_timer')
+        if timer is not None:
+            try:
+                bpy.context.window_manager.event_timer_remove(timer)
+            except Exception:
+                pass
+            _state['outline_timer'] = None
         draw_functions.remove_draw_handler(_state)
         _state['running']          = False
         _state['current_cx']       = None
@@ -711,6 +729,14 @@ class PixelPainterOperator(Operator):
         _state['shift_hovered_color'] = None
         _state['shift_region_x']      = None
         _state['shift_region_y']      = None
+        _state['outline_immediate']   = False
+        _state['outline_display_cx']  = None
+        _state['outline_display_cy']  = None
+        _state['outline_from_cx']     = None
+        _state['outline_from_cy']     = None
+        _state['outline_to_cx']       = None
+        _state['outline_to_cy']       = None
+        _state['outline_anim_start']  = 0.0
         self.button_down       = False
         self.button_right_down = False
 
@@ -726,6 +752,13 @@ class PixelPainterOperator(Operator):
         if not tool or tool.idname != "image.pixel_painter_tool":
             self._cleanup()
             return {'CANCELLED'}
+
+        _state['outline_immediate'] = self.button_down or self.button_right_down
+
+        if event.type == 'TIMER':
+            if context.area:
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
 
         area   = context.area
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
@@ -1004,6 +1037,7 @@ class PixelPainterOperator(Operator):
             _state['last_paint_cy'] = None
             _state['use_secondary'] = False
             self.button_down = False
+            _state['outline_immediate'] = False
 
         # Right mouse press: secondary color stroke
         elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
@@ -1041,6 +1075,7 @@ class PixelPainterOperator(Operator):
             _state['last_paint_cy'] = None
             _state['use_secondary'] = False
             self.button_right_down = False
+            _state['outline_immediate'] = False
 
         # Ctrl / Alt PRESS while painting: cancel the active stroke immediately
         # so that shortcuts like Ctrl+Z don't keep painting on the next move.
@@ -1152,6 +1187,7 @@ class PixelPainterOperator(Operator):
         is_rmb = (event.type == 'RIGHTMOUSE')
         self.button_down       = not is_rmb
         self.button_right_down = is_rmb
+        _state['outline_immediate'] = self.button_down or self.button_right_down
         self._disable_builtin_brush_overlay(context)
         _state['running']        = True
         _state['use_secondary']  = is_rmb
@@ -1161,6 +1197,13 @@ class PixelPainterOperator(Operator):
         _state['back_buffer']    = None
         _state['last_paint_cx']  = None
         _state['last_paint_cy']  = None
+        _state['outline_display_cx'] = None
+        _state['outline_display_cy'] = None
+        _state['outline_from_cx'] = None
+        _state['outline_from_cy'] = None
+        _state['outline_to_cx'] = None
+        _state['outline_to_cy'] = None
+        _state['outline_anim_start'] = time.perf_counter()
 
         # Push undo for the FIRST stroke — the press that triggered invoke is
         # not re-delivered to the modal, so the modal PRESS handler won't fire.
@@ -1181,5 +1224,6 @@ class PixelPainterOperator(Operator):
                 self.draw_pixels(context)
 
         _register_draw_handler(context.space_data, context)
+        _state['outline_timer'] = context.window_manager.event_timer_add(1.0 / 60.0, window=context.window)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
