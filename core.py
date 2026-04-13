@@ -970,8 +970,8 @@ class PixelPainterOperator(Operator):
             )
         )
 
-        # Q / ESC: stop the modal (or exit sub-mode first)
-        if event.type in {'Q', 'ESC'}:
+        # ESC: stop the modal (or exit sub-mode first)
+        if event.type == 'ESC':
             if _state['sub_mode'] is not None:
                 # restore original values and leave sub-mode
                 if _state['sub_mode'] == 'OPACITY' and _state['sub_orig_opacity'] is not None:
@@ -1107,6 +1107,44 @@ class PixelPainterOperator(Operator):
                 _state['sub_mode'] = None
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        # D key: open Falloff custom pie from modal flow.
+        elif event.type == 'D' and event.value == 'PRESS':
+            if self.button_down or self.button_right_down:
+                if mode == 'LINE':
+                    space = context.space_data
+                    if space and space.image and _state['back_buffer'] is not None:
+                        space.image.pixels.foreach_set(_state['back_buffer'])
+                        space.image.update()
+                    _state['start_position'] = None
+                    _state['back_buffer'] = None
+                _state['last_paint_cx'] = None
+                _state['last_paint_cy'] = None
+                _state['use_secondary'] = False
+                self.button_down = False
+                self.button_right_down = False
+
+            opened = False
+            try:
+                result = bpy.ops.image.pixel_painter_custom_pie('INVOKE_DEFAULT', pie_type='FALLOFF')
+                opened = ('RUNNING_MODAL' in result) or ('FINISHED' in result)
+            except Exception:
+                opened = False
+
+            if not opened:
+                try:
+                    override = {
+                        'window': context.window,
+                        'screen': context.screen,
+                        'area': area,
+                        'region': region,
+                    }
+                    bpy.ops.image.pixel_painter_custom_pie(override, 'INVOKE_DEFAULT', pie_type='FALLOFF')
+                except Exception:
+                    pass
+
+            context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
         # Block all non-movement commands when the cursor is outside the image.
