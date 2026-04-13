@@ -472,6 +472,38 @@ class PixelPainterOperator(Operator):
         ymax = min(max(ys), region.height)
         return xmin, ymin, xmax, ymax, region, vd
 
+    def _disable_builtin_brush_overlay(self, context):
+        self._brush_overlay_restore = []
+        try:
+            image_paint = context.tool_settings.image_paint
+        except Exception:
+            image_paint = None
+
+        brush = getattr(image_paint, 'brush', None) if image_paint else None
+        if brush is not None:
+            for attr in ('use_cursor_overlay', 'use_cursor_overlay_override'):
+                if hasattr(brush, attr):
+                    try:
+                        self._brush_overlay_restore.append((brush, attr, getattr(brush, attr)))
+                        setattr(brush, attr, False)
+                    except Exception:
+                        pass
+
+        if image_paint is not None and hasattr(image_paint, 'show_brush'):
+            try:
+                self._brush_overlay_restore.append((image_paint, 'show_brush', getattr(image_paint, 'show_brush')))
+                image_paint.show_brush = False
+            except Exception:
+                pass
+
+    def _restore_builtin_brush_overlay(self):
+        for owner, attr, value in getattr(self, '_brush_overlay_restore', []):
+            try:
+                setattr(owner, attr, value)
+            except Exception:
+                pass
+        self._brush_overlay_restore = []
+
     # ---- drawing -------------------------------------------------------------
 
     def draw_pixels(self, context):
@@ -649,6 +681,7 @@ class PixelPainterOperator(Operator):
     # ---- lifecycle -----------------------------------------------------------
 
     def _cleanup(self):
+        self._restore_builtin_brush_overlay()
         draw_functions.remove_draw_handler(_state)
         _state['running']          = False
         _state['current_cx']       = None
@@ -1119,6 +1152,7 @@ class PixelPainterOperator(Operator):
         is_rmb = (event.type == 'RIGHTMOUSE')
         self.button_down       = not is_rmb
         self.button_right_down = is_rmb
+        self._disable_builtin_brush_overlay(context)
         _state['running']        = True
         _state['use_secondary']  = is_rmb
         _state['current_cx']     = None
