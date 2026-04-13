@@ -105,6 +105,11 @@ def register():
         description="Generic modifier value (currently used as Spread)",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR',
     )
+    bpy.types.WindowManager.pixel_painter_use_curve_falloff = bpy.props.BoolProperty(
+        name="Use Curve Falloff",
+        description="Use the brush curve to control circle/spray falloff",
+        default=False,
+    )
     _blend_items = [
         ('MIX',        "Normal",      "Normal blend"),
         ('ADD',        "Add",         "Add blend"),
@@ -163,6 +168,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_falloff
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
+    del bpy.types.WindowManager.pixel_painter_use_curve_falloff
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode

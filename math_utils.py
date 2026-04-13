@@ -55,12 +55,17 @@ def get_line_pixels(x0, y0, x1, y1):
 # Falloff
 # ---------------------------------------------------------------------------
 
-def get_falloff(t, falloff_type):
+def get_falloff(t, falloff_type, curve_sampler=None):
     """Return a weight in [0, 1] for a normalised distance t in [0, 1].
 
     t = 0 is the brush centre (full strength), t = 1 is the edge (zero strength).
     """
     t = max(0.0, min(1.0, t))
+    if curve_sampler is not None:
+        try:
+            return max(0.0, min(1.0, float(curve_sampler(t))))
+        except Exception:
+            pass
     if falloff_type == 'CONSTANT':
         return 1.0
     elif falloff_type == 'LINEAR':
@@ -81,7 +86,7 @@ def get_falloff(t, falloff_type):
 # Weighted circle and spray pixel sets
 # ---------------------------------------------------------------------------
 
-def get_pixels_in_circle_weighted(cx, cy, radius, falloff_type='CONSTANT'):
+def get_pixels_in_circle_weighted(cx, cy, radius, falloff_type='CONSTANT', curve_sampler=None):
     """Return (pixels, weights) for a filled circle with distance falloff.
 
     pixels  — list of (px, py) integer image coordinates
@@ -97,11 +102,11 @@ def get_pixels_in_circle_weighted(cx, cy, radius, falloff_type='CONSTANT'):
             if dx * dx + dy * dy <= r2:
                 dist = math.sqrt(dx * dx + dy * dy)
                 pixels.append((cx + dx, cy + dy))
-                weights.append(get_falloff(dist / radius, falloff_type))
+                weights.append(get_falloff(dist / radius, falloff_type, curve_sampler=curve_sampler))
     return pixels, weights
 
 
-def get_spray_pixels(cx, cy, radius, spray_strength, falloff_type='CONSTANT'):
+def get_spray_pixels(cx, cy, radius, spray_strength, falloff_type='CONSTANT', curve_sampler=None):
     """Return (pixels, weights) for a randomised spray brush.
 
     spray_strength — float [0.01, 1.0]: fraction of the circle area to sample
@@ -134,7 +139,7 @@ def get_spray_pixels(cx, cy, radius, spray_strength, falloff_type='CONSTANT'):
         seen.add(pt)
         dist = math.sqrt(dx * dx + dy * dy)
         pixels.append(pt)
-        weights.append(get_falloff(dist / radius, falloff_type))
+        weights.append(get_falloff(dist / radius, falloff_type, curve_sampler=curve_sampler))
 
     return pixels, weights
 

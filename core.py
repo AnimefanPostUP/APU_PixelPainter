@@ -184,6 +184,34 @@ def _set_brush_rgb(context, r, g, b):
         pass
 
 
+def _get_falloff_curve_sampler(context):
+    """Return a callable t->[0,1] sampled from the active brush curve, or None."""
+    try:
+        wm = context.window_manager
+        if not getattr(wm, 'pixel_painter_use_curve_falloff', False):
+            return None
+        brush = context.tool_settings.image_paint.brush
+        curve = getattr(brush, 'curve', None) if brush else None
+        if curve is None:
+            return None
+
+        try:
+            curve.initialize()
+        except Exception:
+            pass
+
+        def _sample(t):
+            t = max(0.0, min(1.0, float(t)))
+            try:
+                return curve.evaluate(t)
+            except Exception:
+                return curve.evaluate(0, t)
+
+        return _sample
+    except Exception:
+        return None
+
+
 def _get_image_pixel_color(context, cx, cy):
     """Read the RGB color of image pixel (cx, cy). Returns (r,g,b) or None."""
     try:
@@ -466,6 +494,7 @@ class PixelPainterOperator(Operator):
         radius  = blender_utils.get_brush_image_radius(context)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
+        curve_sampler = _get_falloff_curve_sampler(context)
 
         # Reset per-stroke tracking at the start of each new stroke
         if _state['last_paint_cx'] is None:
@@ -505,7 +534,8 @@ class PixelPainterOperator(Operator):
                 swm = _state['stroke_weight_map']
                 for (sx, sy) in _steps():
                     px_list, pw_list = math_utils.get_spray_pixels(sx, sy, radius,
-                                                                    spray_strength, spray_falloff)
+                                                                    spray_strength, spray_falloff,
+                                                                    curve_sampler=curve_sampler)
                     for px, w in zip(px_list, pw_list):
                         if w > swm.get(px, 0.0):
                             swm[px] = w
@@ -520,7 +550,8 @@ class PixelPainterOperator(Operator):
                 pixel_weight_map = {}
                 for (sx, sy) in _steps():
                     px_list, pw_list = math_utils.get_spray_pixels(sx, sy, radius,
-                                                                    spray_strength, spray_falloff)
+                                                                    spray_strength, spray_falloff,
+                                                                    curve_sampler=curve_sampler)
                     for px, w in zip(px_list, pw_list):
                         if w > pixel_weight_map.get(px, 0.0):
                             pixel_weight_map[px] = w
@@ -538,7 +569,8 @@ class PixelPainterOperator(Operator):
                 swm = _state['stroke_weight_map']
                 for (sx, sy) in _steps():
                     px_list, pw_list = math_utils.get_pixels_in_circle_weighted(sx, sy, radius,
-                                                                                  circle_falloff)
+                                                                                  circle_falloff,
+                                                                                  curve_sampler=curve_sampler)
                     for px, w in zip(px_list, pw_list):
                         if w > swm.get(px, 0.0):
                             swm[px] = w
@@ -553,7 +585,8 @@ class PixelPainterOperator(Operator):
                 pixel_weight_map = {}
                 for (sx, sy) in _steps():
                     px_list, pw_list = math_utils.get_pixels_in_circle_weighted(sx, sy, radius,
-                                                                                  circle_falloff)
+                                                                                  circle_falloff,
+                                                                                  curve_sampler=curve_sampler)
                     for px, w in zip(px_list, pw_list):
                         if w > pixel_weight_map.get(px, 0.0):
                             pixel_weight_map[px] = w

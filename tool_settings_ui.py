@@ -89,10 +89,18 @@ def draw_tool_settings(context, layout):
         row.prop(brush, "secondary_color", text="")
 
     if mode == 'CIRCLE':
-        layout.prop(wm, "pixel_painter_circle_falloff", text="Falloff")
+        layout.prop(wm, "pixel_painter_use_curve_falloff", text="Curve Falloff")
+        if wm.pixel_painter_use_curve_falloff and brush and hasattr(brush, "curve"):
+            layout.template_curve_mapping(brush, "curve", brush=True)
+        else:
+            layout.prop(wm, "pixel_painter_circle_falloff", text="Falloff")
     elif mode == 'SPRAY':
         layout.prop(wm, "pixel_painter_spray_strength", text="Density", slider=True)
-        layout.prop(wm, "pixel_painter_spray_falloff", text="Falloff")
+        layout.prop(wm, "pixel_painter_use_curve_falloff", text="Curve Falloff")
+        if wm.pixel_painter_use_curve_falloff and brush and hasattr(brush, "curve"):
+            layout.template_curve_mapping(brush, "curve", brush=True)
+        else:
+            layout.prop(wm, "pixel_painter_spray_falloff", text="Falloff")
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):
