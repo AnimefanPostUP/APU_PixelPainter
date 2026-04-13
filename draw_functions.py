@@ -488,6 +488,19 @@ def _draw_filled_half_circle(cx, cy, radius, rgba, top):
     batch.draw(shader)
 
 
+def _draw_filled_arc(cx, cy, radius, rgba, a0, a1, steps=24):
+    """Draw a filled circular sector from angle a0 to a1 (radians)."""
+    verts = [(cx, cy)]
+    for i in range(steps + 1):
+        t = i / steps
+        a = a0 + (a1 - a0) * t
+        verts.append((cx + radius * math.cos(a), cy + radius * math.sin(a)))
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch = gpu_extras.batch.batch_for_shader(shader, 'TRI_FAN', {"pos": verts})
+    shader.uniform_float("color", rgba)
+    batch.draw(shader)
+
+
 def _draw_filled_circle(cx, cy, radius, rgba):
     """Draw a filled circle."""
     steps = 40
@@ -534,9 +547,9 @@ def _draw_modifier_arc_ring(cx, cy, inner_r, outer_r, modifier):
     gpu.state.depth_test_set('LESS_EQUAL')
 
 
-def _draw_circle_outline(cx, cy, radius, rgba, width=2.0):
+def _draw_circle_outline(cx, cy, radius, rgba, width=2.0, steps=60):
     """Draw a thin circle outline."""
-    steps = 60
+    steps = max(8, int(steps))
     verts = []
     for i in range(steps):
         a0 = 2 * math.pi * i / steps
@@ -593,22 +606,34 @@ def _draw_checker_circle(cx, cy, radius, cell=5):
 
 
 def _draw_color_pick_axes(rx, ry, h, s, v, radius):
-    """Draw hue (horizontal) and value (vertical) reference bars around the circle."""
-    gap     = 16        # gap between circle edge and bar
-    hue_w   = 200       # width of hue bar
-    hue_h   = 12        # height of hue bar
-    val_w   = 12        # width of value bar
-    val_h   = 150       # height of value bar
+    """Draw VALUE (left), SATURATION (right), and HUE (bottom) bars."""
+    del radius  # kept for call compatibility
+
+    # Must stay aligned with _draw_color_pick_sheet_overlay dimensions.
+    sheet_w = 500.0
+    sheet_h = 300.0
+    side_gap = 6.0
+    bar_w = 12.0
+    hue_h = 12.0
     font_id = 0
 
-    hue_x0    = rx - hue_w // 2
-    hue_y_top = ry - radius - gap          # top edge of hue bar
-    hue_y0    = hue_y_top - hue_h          # bottom edge
+    sheet_x0 = rx - sheet_w * 0.5
+    sheet_y0 = ry - sheet_h * 0.5
 
-    val_x0   = rx + radius + gap + 20
-    val_trim = int(val_h * 0.25)   # trim 25% from the bottom
-    val_y0   = ry - val_h // 2 + val_trim
-    val_h   -= val_trim
+    # Left: Value (brightness)
+    val_x0 = sheet_x0 - side_gap - bar_w
+    val_y0 = sheet_y0
+    val_h = sheet_h
+
+    # Right: Saturation
+    sat_x0 = sheet_x0 + sheet_w + side_gap
+    sat_y0 = sheet_y0
+    sat_h = sheet_h
+
+    # Bottom: Hue
+    hue_x0 = sheet_x0
+    hue_y0 = sheet_y0 - side_gap - hue_h
+    hue_w = sheet_w
 
     su = gpu.shader.from_builtin('UNIFORM_COLOR')
     sc = gpu.shader.from_builtin('SMOOTH_COLOR')
@@ -616,110 +641,237 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
 
-    # ---- Hue bar: rainbow gradient ----
-    steps  = 36
-    sw     = hue_w / steps
-    verts_h, colors_h = [], []
-    for i in range(steps):
-        h0 = i / steps
-        h1 = (i + 1) / steps
-        r0, g0, b0 = colorsys.hsv_to_rgb(h0, 1.0, 1.0)
-        r1, g1, b1 = colorsys.hsv_to_rgb(h1, 1.0, 1.0)
-        x0_ = hue_x0 + i * sw
-        x1_ = x0_ + sw
-        verts_h  += [(x0_, hue_y0), (x1_, hue_y0), (x1_, hue_y_top),
-                     (x0_, hue_y0), (x1_, hue_y_top), (x0_, hue_y_top)]
-        c0 = (r0, g0, b0, 1.0)
-        c1 = (r1, g1, b1, 1.0)
-        colors_h += [c0, c1, c1, c0, c1, c0]
-
-    gpu_extras.batch.batch_for_shader(sc, 'TRIS',
-        {"pos": verts_h, "color": colors_h}).draw(sc)
-
-    # Hue cursor (black outline then white)
-    cur_hx = hue_x0 + h * hue_w
-    for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
-        gpu.state.line_width_set(lw)
-        su.uniform_float("color", rgba)
-        gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-            (cur_hx, hue_y0 - 4), (cur_hx, hue_y_top + 4)
-        ]}).draw(su)
-
-    # Thin border around hue bar
-    gpu.state.line_width_set(1.0)
-    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (hue_x0, hue_y0), (hue_x0 + hue_w, hue_y0),
-        (hue_x0 + hue_w, hue_y0), (hue_x0 + hue_w, hue_y_top),
-        (hue_x0 + hue_w, hue_y_top), (hue_x0, hue_y_top),
-        (hue_x0, hue_y_top), (hue_x0, hue_y0),
-    ]}).draw(su)
-
-    # R / G / B labels below hue bar
-    blf.size(font_id, 11)
-    for label, frac in [("R", 0.0), ("G", 1 / 3), ("B", 2 / 3)]:
-        lw_, lh_ = blf.dimensions(font_id, label)
-        blf.color(font_id, 1.0, 1.0, 1.0, 0.9)
-        blf.position(font_id, hue_x0 + frac * hue_w - lw_ * 0.5, hue_y0 - lh_ - 3, 0)
-        blf.draw(font_id, label)
-
-    # Saturation text below labels
-    blf.size(font_id, 11)
-    sat_str = f"Sat  {s * 100:.0f}%"
-    _, lh_s = blf.dimensions(font_id, sat_str)
-    _, lh_l = blf.dimensions(font_id, "R")
-    blf.color(font_id, 0.9, 0.9, 0.9, 0.85)
-    blf.position(font_id, hue_x0, hue_y0 - lh_l - 3 - lh_s - 4, 0)
-    blf.draw(font_id, sat_str)
-
-    # ---- Value bar: gradient from black → full-chroma color ----
-    vsteps = 20
-    sh_    = val_h / vsteps
+    # ---- Left VALUE bar: black -> hsv(h, s, 1) ----
+    steps = 20
+    sh = val_h / steps
     verts_v, colors_v = [], []
-    for i in range(vsteps):
-        v0_ = i / vsteps
-        v1_ = (i + 1) / vsteps
-        r0, g0, b0 = colorsys.hsv_to_rgb(h, s, v0_)
-        r1, g1, b1 = colorsys.hsv_to_rgb(h, s, v1_)
-        y0_ = val_y0 + i * sh_
-        y1_ = y0_ + sh_
-        verts_v  += [(val_x0, y0_), (val_x0 + val_w, y0_), (val_x0 + val_w, y1_),
-                     (val_x0, y0_), (val_x0 + val_w, y1_), (val_x0, y1_)]
+    for i in range(steps):
+        v0 = i / steps
+        v1 = (i + 1) / steps
+        r0, g0, b0 = colorsys.hsv_to_rgb(h, s, v0)
+        r1, g1, b1 = colorsys.hsv_to_rgb(h, s, v1)
+        y0_ = val_y0 + i * sh
+        y1_ = y0_ + sh
+        verts_v += [
+            (val_x0, y0_), (val_x0 + bar_w, y0_), (val_x0 + bar_w, y1_),
+            (val_x0, y0_), (val_x0 + bar_w, y1_), (val_x0, y1_),
+        ]
         c0 = (r0, g0, b0, 1.0)
         c1 = (r1, g1, b1, 1.0)
         colors_v += [c0, c0, c1, c0, c1, c1]
 
-    gpu.state.blend_set('ALPHA')
-    gpu_extras.batch.batch_for_shader(sc, 'TRIS',
-        {"pos": verts_v, "color": colors_v}).draw(sc)
+    gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_v, "color": colors_v}).draw(sc)
 
-    # Value cursor
     cur_vy = val_y0 + v * val_h
     for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
         gpu.state.line_width_set(lw)
         su.uniform_float("color", rgba)
         gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-            (val_x0 - 4, cur_vy), (val_x0 + val_w + 4, cur_vy)
+            (val_x0 - 4, cur_vy), (val_x0 + bar_w + 4, cur_vy)
         ]}).draw(su)
 
-    # Thin border around value bar
+    # Border: value bar
     gpu.state.line_width_set(1.0)
     su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
     gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (val_x0, val_y0), (val_x0 + val_w, val_y0),
-        (val_x0 + val_w, val_y0), (val_x0 + val_w, val_y0 + val_h),
-        (val_x0 + val_w, val_y0 + val_h), (val_x0, val_y0 + val_h),
+        (val_x0, val_y0), (val_x0 + bar_w, val_y0),
+        (val_x0 + bar_w, val_y0), (val_x0 + bar_w, val_y0 + val_h),
+        (val_x0 + bar_w, val_y0 + val_h), (val_x0, val_y0 + val_h),
         (val_x0, val_y0 + val_h), (val_x0, val_y0),
     ]}).draw(su)
 
-    # Brightness % labels to the right of value bar
+    # ---- Right SATURATION bar: hsv(h,0,v) -> hsv(h,1,v) ----
+    verts_s, colors_s = [], []
+    for i in range(steps):
+        s0 = i / steps
+        s1 = (i + 1) / steps
+        r0, g0, b0 = colorsys.hsv_to_rgb(h, s0, v)
+        r1, g1, b1 = colorsys.hsv_to_rgb(h, s1, v)
+        y0_ = sat_y0 + i * sh
+        y1_ = y0_ + sh
+        verts_s += [
+            (sat_x0, y0_), (sat_x0 + bar_w, y0_), (sat_x0 + bar_w, y1_),
+            (sat_x0, y0_), (sat_x0 + bar_w, y1_), (sat_x0, y1_),
+        ]
+        c0 = (r0, g0, b0, 1.0)
+        c1 = (r1, g1, b1, 1.0)
+        colors_s += [c0, c0, c1, c0, c1, c1]
+
+    gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_s, "color": colors_s}).draw(sc)
+
+    cur_sy = sat_y0 + s * sat_h
+    for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
+        gpu.state.line_width_set(lw)
+        su.uniform_float("color", rgba)
+        gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+            (sat_x0 - 4, cur_sy), (sat_x0 + bar_w + 4, cur_sy)
+        ]}).draw(su)
+
+    # Border: saturation bar
+    gpu.state.line_width_set(1.0)
+    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
+    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+        (sat_x0, sat_y0), (sat_x0 + bar_w, sat_y0),
+        (sat_x0 + bar_w, sat_y0), (sat_x0 + bar_w, sat_y0 + sat_h),
+        (sat_x0 + bar_w, sat_y0 + sat_h), (sat_x0, sat_y0 + sat_h),
+        (sat_x0, sat_y0 + sat_h), (sat_x0, sat_y0),
+    ]}).draw(su)
+
+    # ---- Bottom HUE bar: rainbow horizontal ----
+    hsteps = 36
+    sw = hue_w / hsteps
+    verts_h, colors_h = [], []
+    for i in range(hsteps):
+        h0 = i / hsteps
+        h1 = (i + 1) / hsteps
+        r0, g0, b0 = colorsys.hsv_to_rgb(h0, 1.0, 1.0)
+        r1, g1, b1 = colorsys.hsv_to_rgb(h1, 1.0, 1.0)
+        x0_ = hue_x0 + i * sw
+        x1_ = x0_ + sw
+        verts_h += [
+            (x0_, hue_y0), (x1_, hue_y0), (x1_, hue_y0 + hue_h),
+            (x0_, hue_y0), (x1_, hue_y0 + hue_h), (x0_, hue_y0 + hue_h),
+        ]
+        c0 = (r0, g0, b0, 1.0)
+        c1 = (r1, g1, b1, 1.0)
+        colors_h += [c0, c1, c1, c0, c1, c0]
+
+    gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts_h, "color": colors_h}).draw(sc)
+
+    cur_hx = hue_x0 + h * hue_w
+    for lw, rgba in [(3.0, (0, 0, 0, 1)), (1.5, (1, 1, 1, 1))]:
+        gpu.state.line_width_set(lw)
+        su.uniform_float("color", rgba)
+        gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+            (cur_hx, hue_y0 - 4), (cur_hx, hue_y0 + hue_h + 4)
+        ]}).draw(su)
+
+    # Border: hue bar
+    gpu.state.line_width_set(1.0)
+    su.uniform_float("color", (0.0, 0.0, 0.0, 0.6))
+    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+        (hue_x0, hue_y0), (hue_x0 + hue_w, hue_y0),
+        (hue_x0 + hue_w, hue_y0), (hue_x0 + hue_w, hue_y0 + hue_h),
+        (hue_x0 + hue_w, hue_y0 + hue_h), (hue_x0, hue_y0 + hue_h),
+        (hue_x0, hue_y0 + hue_h), (hue_x0, hue_y0),
+    ]}).draw(su)
+
+    # Labels
+    blf.size(font_id, 11)
+    val_str = f"Val  {v * 100:.0f}%"
+    sat_str = f"Sat  {s * 100:.0f}%"
+    hue_str = "Hue"
+    _, lh = blf.dimensions(font_id, val_str)
+    blf.color(font_id, 0.9, 0.9, 0.9, 0.85)
+    blf.position(font_id, val_x0 - 8, val_y0 + val_h + lh + 4, 0)
+    blf.draw(font_id, val_str)
+    blf.position(font_id, sat_x0 - 8, sat_y0 + sat_h + lh + 4, 0)
+    blf.draw(font_id, sat_str)
+    blf.position(font_id, hue_x0, hue_y0 - lh - 4, 0)
+    blf.draw(font_id, hue_str)
+
+    # Value % ticks near left and saturation % ticks near right
     blf.size(font_id, 10)
     for pct in range(0, 101, 20):
         y_pos = val_y0 + (pct / 100) * val_h
         _, lh_ = blf.dimensions(font_id, "0%")
         blf.color(font_id, 1.0, 1.0, 1.0, 0.9)
-        blf.position(font_id, val_x0 + val_w + 4, y_pos - lh_ * 0.5, 0)
+        blf.position(font_id, val_x0 - 28, y_pos - lh_ * 0.5, 0)
         blf.draw(font_id, f"{pct}%")
+
+        y_pos_s = sat_y0 + (pct / 100) * sat_h
+        blf.position(font_id, sat_x0 + bar_w + 4, y_pos_s - lh_ * 0.5, 0)
+        blf.draw(font_id, f"{pct}%")
+
+    gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.line_width_set(1.0)
+
+
+def _draw_color_pick_sheet_overlay(state):
+    """Draw a generated HSV sheet overlay centered at color-pick origin.
+
+    The center position is treated as (H,V)=(0.5, 0.5), matching the modal
+    mapping in core.py, so color under each position corresponds to that
+    position's effective picked color.
+    """
+    rx = state.get('sub_start_region_x')
+    ry = state.get('sub_start_region_y')
+    if rx is None or ry is None:
+        return
+
+    s = state.get('sub_color_s')
+    if s is None:
+        s = 1.0
+
+    # Must match COLOR_PICK mapping constants used in core.py.
+    w = 500.0
+    h = 300.0
+    x0 = rx - w * 0.5
+    y0 = ry - h * 0.5
+
+    # Coarse grid for performance while keeping smooth-enough transitions.
+    cols = 56
+    rows = 34
+    dx = w / cols
+    dy = h / rows
+
+    sc = gpu.shader.from_builtin('SMOOTH_COLOR')
+    su = gpu.shader.from_builtin('UNIFORM_COLOR')
+
+    verts = []
+    cols_rgba = []
+
+    def hv_at(px, py):
+        h_val = (0.5 + (px - rx) / w) % 1.0
+        v_val = max(0.0, min(1.0, 0.5 + (py - ry) / h))
+        r, g, b = colorsys.hsv_to_rgb(h_val, s, v_val)
+        return (r, g, b, 1.0)
+
+    for yi in range(rows):
+        y_a = y0 + yi * dy
+        y_b = y_a + dy
+        for xi in range(cols):
+            x_a = x0 + xi * dx
+            x_b = x_a + dx
+            c00 = hv_at(x_a, y_a)
+            c10 = hv_at(x_b, y_a)
+            c11 = hv_at(x_b, y_b)
+            c01 = hv_at(x_a, y_b)
+
+            verts += [
+                (x_a, y_a), (x_b, y_a), (x_b, y_b),
+                (x_a, y_a), (x_b, y_b), (x_a, y_b),
+            ]
+            cols_rgba += [c00, c10, c11, c00, c11, c01]
+
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+    gpu_extras.batch.batch_for_shader(sc, 'TRIS', {"pos": verts, "color": cols_rgba}).draw(sc)
+
+    # Border
+    gpu.state.line_width_set(1.0)
+    su.uniform_float("color", (0.0, 0.0, 0.0, 0.75))
+    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+        (x0, y0), (x0 + w, y0),
+        (x0 + w, y0), (x0 + w, y0 + h),
+        (x0 + w, y0 + h), (x0, y0 + h),
+        (x0, y0 + h), (x0, y0),
+    ]}).draw(su)
+
+    # Current color position marker
+    h_cur = state.get('sub_color_h')
+    v_cur = state.get('sub_color_v')
+    if h_cur is not None and v_cur is not None:
+        dh = h_cur - 0.5
+        if dh < -0.5:
+            dh += 1.0
+        elif dh >= 0.5:
+            dh -= 1.0
+        mx = rx + dh * w
+        my = ry + (v_cur - 0.5) * h
+        _draw_circle_outline(mx, my, 6.0, (0.0, 0.0, 0.0, 0.95), steps=24)
+        _draw_circle_outline(mx, my, 4.0, (1.0, 1.0, 1.0, 0.95), steps=24)
 
     gpu.state.blend_set('NONE')
     gpu.state.depth_test_set('LESS_EQUAL')
@@ -729,7 +881,8 @@ def _draw_color_pick_axes(rx, ry, h, s, v, radius):
 def _draw_sub_mode_cursor_dot(context, state):
     """Draw a 50px circle at the sub-mode start position.
 
-    COLOR_PICK: bottom half = original color, top half = current color.
+    COLOR_PICK: top half = current target color; bottom half = original
+                color of the active target (primary or secondary).
     OPACITY:    checker background circle showing brush color at current opacity,
                 with percentage label to the right.
     """
@@ -740,6 +893,8 @@ def _draw_sub_mode_cursor_dot(context, state):
     ry = state.get('sub_start_region_y')
     if rx is None or ry is None:
         return
+    origin_rx = rx
+    origin_ry = ry
 
     radius = 38  # ~75 px diameter (1.5×)
 
@@ -753,27 +908,46 @@ def _draw_sub_mode_cursor_dot(context, state):
     gpu.state.depth_test_set('NONE')
 
     if sub == 'COLOR_PICK':
-        orig = state.get('sub_orig_color') or (1.0, 1.0, 1.0)
+        # Attach bubble to fake cursor with a slight upward offset.
+        cx = state.get('sub_last_x')
+        cy = state.get('sub_last_y')
+        if cx is None or cy is None:
+            cx, cy = origin_rx, origin_ry
+        rx = cx
+        ry = cy + 50
+
         try:
-            curr = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
+            target = state.get('sub_color_target') or 'PRIMARY'
+            curr = (
+                tuple(brush.secondary_color[:3]) if (brush and target == 'SECONDARY')
+                else (tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0))
+            )
+            orig_target = (
+                tuple(state.get('sub_orig_color_secondary') or curr)
+                if target == 'SECONDARY'
+                else tuple(state.get('sub_orig_color') or curr)
+            )
         except Exception:
             curr = (1.0, 1.0, 1.0)
+            orig_target = (1.0, 1.0, 1.0)
 
-        _draw_filled_half_circle(rx, ry, radius, (*orig, 1.0), top=False)
+        _draw_filled_half_circle(rx, ry, radius, (*orig_target, 1.0), top=False)
         _draw_filled_half_circle(rx, ry, radius, (*curr, 1.0), top=True)
 
-        # Dividing line
-        gpu.state.line_width_set(1.5)
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        batch  = gpu_extras.batch.batch_for_shader(
-            shader, 'LINES', {"pos": [(rx - radius, ry), (rx + radius, ry)]})
-        shader.uniform_float("color", (0.0, 0.0, 0.0, 0.7))
-        batch.draw(shader)
-
-        h = state.get('sub_color_h') or 0.0
-        s = state.get('sub_color_s') or 0.0
-        v = state.get('sub_color_v') or 0.0
-        _draw_color_pick_axes(rx, ry, h, s, v, radius)
+        # Label above bubble: which target is being edited.
+        gpu.state.blend_set('NONE')
+        font_id = 0
+        label = "Secondary Color" if target == 'SECONDARY' else "Primary Color"
+        blf.size(font_id, 12)
+        tw, th = blf.dimensions(font_id, label)
+        sheet_w = 500.0
+        sheet_h = 300.0
+        sheet_x0 = origin_rx - sheet_w * 0.5
+        sheet_y0 = origin_ry - sheet_h * 0.5
+        blf.color(font_id, 1.0, 1.0, 1.0, 0.95)
+        blf.position(font_id, sheet_x0 + (sheet_w - tw) * 0.5, sheet_y0 + sheet_h + th + 6, 0)
+        blf.draw(font_id, label)
+        gpu.state.blend_set('ALPHA')
 
     elif sub == 'OPACITY':
         try:
@@ -812,6 +986,40 @@ def _draw_sub_mode_cursor_dot(context, state):
     gpu.state.line_width_set(1.0)
 
 
+def _draw_fake_color_pick_cursor(state):
+    """Draw a simple fake cursor at the tracked COLOR_PICK position."""
+    x = state.get('sub_last_x')
+    y = state.get('sub_last_y')
+    if x is None or y is None:
+        return
+
+    su = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+
+    # Outer dark cross for contrast.
+    gpu.state.line_width_set(3.0)
+    su.uniform_float("color", (0.0, 0.0, 0.0, 0.9))
+    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+        (x - 9, y), (x + 9, y),
+        (x, y - 9), (x, y + 9),
+    ]}).draw(su)
+
+    # Inner bright cross.
+    gpu.state.line_width_set(1.5)
+    su.uniform_float("color", (1.0, 1.0, 1.0, 0.95))
+    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
+        (x - 8, y), (x + 8, y),
+        (x, y - 8), (x, y + 8),
+    ]}).draw(su)
+
+    _draw_circle_outline(x, y, 4.0, (1.0, 1.0, 1.0, 0.9), steps=18)
+
+    gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.line_width_set(1.0)
+
+
 # ---------------------------------------------------------------------------
 # Sub-mode HUD overlay
 # ---------------------------------------------------------------------------
@@ -823,7 +1031,19 @@ def draw_sub_mode_overlay(context, state):
     if not sub:
         return
 
+    if sub == 'COLOR_PICK':
+        _draw_color_pick_sheet_overlay(state)
+        rx = state.get('sub_start_region_x')
+        ry = state.get('sub_start_region_y')
+        if rx is not None and ry is not None:
+            h = state.get('sub_color_h') or 0.0
+            s = state.get('sub_color_s') or 0.0
+            v = state.get('sub_color_v') or 0.0
+            _draw_color_pick_axes(rx, ry, h, s, v, 0.0)
+
     _draw_sub_mode_cursor_dot(context, state)
+    if sub == 'COLOR_PICK':
+        _draw_fake_color_pick_cursor(state)
 
     area = context.area
     if not area:
@@ -846,10 +1066,14 @@ def draw_sub_mode_overlay(context, state):
             line2 = "Mouse Opacity   Scroll Modifier   Shift slow   LMB apply   RMB cancel"
 
         elif sub == 'COLOR_PICK':
-            r, g, b = (brush.color if brush else (0, 0, 0))[:3]
+            target = state.get('sub_color_target') or 'PRIMARY'
+            if brush and target == 'SECONDARY':
+                r, g, b = brush.secondary_color[:3]
+            else:
+                r, g, b = (brush.color if brush else (0, 0, 0))[:3]
             h, s, v = colorsys.rgb_to_hsv(r, g, b)
-            line1 = f"H {h:.3f}   S {s:.3f}   V {v:.3f}"
-            line2 = "← → Hue   ↑ ↓ Value   Scroll Sat   LMB apply   RMB cancel"
+            line1 = f"Target {target}   H {h:.3f}   S {s:.3f}   V {v:.3f}"
+            line2 = "Mouse X Hue   Mouse Y Value   Scroll Sat   E toggle target   LMB apply   RMB cancel"
         else:
             return
     except Exception:

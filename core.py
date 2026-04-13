@@ -41,9 +41,15 @@ _state = {
     'sub_orig_modifier':  None,  # modifier value captured when entering OPACITY mode
     'sub_total_delta':    0.0,   # accumulated real mouse displacement for OPACITY mode
     'sub_orig_color':     None,  # brush RGB tuple captured when entering COLOR_PICK mode
+    'sub_orig_color_secondary': None,  # secondary RGB captured when entering COLOR_PICK mode
+    'sub_color_target':   'PRIMARY',  # active COLOR_PICK target: PRIMARY | SECONDARY
     'sub_color_h':        None,  # H component kept across mousemoves to avoid re-deriving from RGB
     'sub_color_s':        None,  # S component kept to prevent saturation loss when V clamps
     'sub_color_v':        None,  # V component
+    'sub_color_start_h':  None,  # COLOR_PICK H captured at target entry/toggle
+    'sub_color_start_v':  None,  # COLOR_PICK V captured at target entry/toggle
+    'sub_color_total_dx': 0.0,   # accumulated X displacement for absolute COLOR_PICK mapping
+    'sub_color_total_dy': 0.0,   # accumulated Y displacement for absolute COLOR_PICK mapping
     'sub_start_screen_x': None,  # absolute screen X when entering sub-mode (for cursor warp)
     'sub_start_screen_y': None,  # absolute screen Y when entering sub-mode (for cursor warp)
     'sub_start_region_x': None,  # region X when entering sub-mode (for overlay drawing)
@@ -77,6 +83,9 @@ _state = {
 _undo_stack = []
 _redo_stack = []
 _MAX_UNDO   = 100
+_COLOR_PICK_H_DIV = 500.0
+_COLOR_PICK_V_DIV = 300.0
+_COLOR_PICK_SHIFT_FACTOR = 10.0
 
 
 def _undo_push(img):
@@ -172,6 +181,14 @@ def _get_brush_rgb(context):
         return (1.0, 1.0, 1.0)
 
 
+def _get_brush_secondary_rgb(context):
+    try:
+        brush = context.tool_settings.image_paint.brush
+        return tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
+    except Exception:
+        return (0.0, 0.0, 0.0)
+
+
 def _get_modifier(context):
     try:
         return context.window_manager.pixel_painter_modifier
@@ -191,6 +208,15 @@ def _set_brush_rgb(context, r, g, b):
         brush = context.tool_settings.image_paint.brush
         if brush:
             brush.color = (r, g, b)
+    except Exception:
+        pass
+
+
+def _set_brush_secondary_rgb(context, r, g, b):
+    try:
+        brush = context.tool_settings.image_paint.brush
+        if brush:
+            brush.secondary_color = (r, g, b)
     except Exception:
         pass
 
@@ -248,6 +274,64 @@ def _warp_cursor_to_sub_start(context):
             context.window.cursor_warp(sx, sy)
         except Exception:
             pass
+
+
+def _set_sub_start_to_event(event):
+    """Store sub-mode start at the cursor position when sub-mode was opened."""
+    _state['sub_start_screen_x'] = event.mouse_x
+    _state['sub_start_screen_y'] = event.mouse_y
+    _state['sub_start_region_x'] = event.mouse_region_x
+    _state['sub_start_region_y'] = event.mouse_region_y
+
+
+def _warp_cursor_to_color_pick_hv(context, h, v):
+    """Warp cursor to nearest position that represents HSV relative to center.
+    The sub-mode start position is treated as (H,V)=(0.5,0.5)."""
+    h = float(h) % 1.0
+    v = max(0.0, min(1.0, float(v)))
+    delta_h = h - 0.5
+    if delta_h < -0.5:
+        delta_h += 1.0
+    elif delta_h >= 0.5:
+        delta_h -= 1.0
+    dx = delta_h * _COLOR_PICK_H_DIV
+    dy = (v - 0.5) * _COLOR_PICK_V_DIV
+
+    sx = _state.get('sub_start_screen_x')
+    sy = _state.get('sub_start_screen_y')
+    rx = _state.get('sub_start_region_x')
+    ry = _state.get('sub_start_region_y')
+    if sx is None or sy is None or rx is None or ry is None:
+        return
+
+    target_sx = int(round(sx + dx))
+    target_sy = int(round(sy + dy))
+    target_rx = int(round(rx + dx))
+    target_ry = int(round(ry + dy))
+
+    # Keep warps inside window bounds.
+    try:
+        max_x = max(0, int(context.window.width) - 1)
+        max_y = max(0, int(context.window.height) - 1)
+        clamped_sx = max(0, min(max_x, target_sx))
+        clamped_sy = max(0, min(max_y, target_sy))
+        # Apply the same clamp delta to region-space tracking.
+        target_rx += (clamped_sx - target_sx)
+        target_ry += (clamped_sy - target_sy)
+        target_sx = clamped_sx
+        target_sy = clamped_sy
+    except Exception:
+        pass
+
+    try:
+        context.window.cursor_warp(target_sx, target_sy)
+    except Exception:
+        pass
+
+    _state['sub_last_x'] = target_rx
+    _state['sub_last_y'] = target_ry
+    _state['sub_color_total_dx'] = dx
+    _state['sub_color_total_dy'] = dy
 
 
 def _wrap_cursor_at_window_edge(context, event):
@@ -516,10 +600,14 @@ class PixelPainterOperator(Operator):
         self._brush_overlay_restore = []
 
     def _set_modal_cursor(self, context):
+        desired = 'NONE' if _state.get('sub_mode') == 'COLOR_PICK' else 'CROSSHAIR'
+        if getattr(self, '_cursor_mode', None) == desired and getattr(self, '_cursor_is_custom', False):
+            return
         self._cursor_is_custom = False
         try:
-            context.window.cursor_modal_set('CROSSHAIR')
+            context.window.cursor_modal_set(desired)
             self._cursor_is_custom = True
+            self._cursor_mode = desired
         except Exception:
             pass
 
@@ -531,6 +619,7 @@ class PixelPainterOperator(Operator):
         except Exception:
             pass
         self._cursor_is_custom = False
+        self._cursor_mode = None
 
     # ---- drawing -------------------------------------------------------------
 
@@ -739,9 +828,15 @@ class PixelPainterOperator(Operator):
         _state['sub_orig_modifier']  = None
         _state['sub_total_delta']    = 0.0
         _state['sub_orig_color']     = None
+        _state['sub_orig_color_secondary'] = None
+        _state['sub_color_target']   = 'PRIMARY'
         _state['sub_color_h']        = None
         _state['sub_color_s']        = None
         _state['sub_color_v']        = None
+        _state['sub_color_start_h']  = None
+        _state['sub_color_start_v']  = None
+        _state['sub_color_total_dx'] = 0.0
+        _state['sub_color_total_dy'] = 0.0
         _state['sub_start_screen_x'] = None
         _state['sub_start_screen_y'] = None
         _state['sub_start_region_x'] = None
@@ -845,6 +940,8 @@ class PixelPainterOperator(Operator):
                     _set_brush_opacity(context, _state['sub_orig_opacity'])
                 elif _state['sub_mode'] == 'COLOR_PICK' and _state['sub_orig_color'] is not None:
                     _set_brush_rgb(context, *_state['sub_orig_color'])
+                    if _state['sub_orig_color_secondary'] is not None:
+                        _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
                 _state['sub_mode'] = None
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
@@ -899,25 +996,67 @@ class PixelPainterOperator(Operator):
                 dy = event.mouse_region_y - _state['sub_last_y']
                 _state['sub_last_x'] = event.mouse_region_x
                 _state['sub_last_y'] = event.mouse_region_y
-                div_h = 5000.0 if event.shift else 500.0
-                div_v = 3000.0 if event.shift else 300.0
-                _state['sub_color_h'] = (_state['sub_color_h'] + dx / div_h) % 1.0
-                _state['sub_color_v'] = max(0.0, min(1.0, _state['sub_color_v'] + dy / div_v))
-                _set_brush_rgb(context, *colorsys.hsv_to_rgb(
-                    _state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v']))
+                sensitivity = _COLOR_PICK_SHIFT_FACTOR if event.shift else 1.0
+                _state['sub_color_total_dx'] += dx / sensitivity
+                _state['sub_color_total_dy'] += dy / sensitivity
+                _state['sub_color_h'] = (0.5 + _state['sub_color_total_dx'] / _COLOR_PICK_H_DIV) % 1.0
+                _state['sub_color_v'] = max(0.0, min(1.0, 0.5 + _state['sub_color_total_dy'] / _COLOR_PICK_V_DIV))
+                rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
+                if _state.get('sub_color_target') == 'SECONDARY':
+                    _set_brush_secondary_rgb(context, *rgb)
+                else:
+                    _set_brush_rgb(context, *rgb)
+                if event.shift:
+                    _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 _wrap_cursor_at_window_edge(context, event)
+                context.area.tag_redraw()
+            elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value in {'PRESS', 'RELEASE'}:
+                # Keep color stable when switching precision mode by remapping
+                # cursor position to the current HSV under the new sensitivity.
+                _warp_cursor_to_color_pick_hv(context, _state.get('sub_color_h') or 0.5,
+                                              _state.get('sub_color_v') or 0.5)
                 context.area.tag_redraw()
             elif event.type == 'WHEELUPMOUSE':
                 step = 0.01 if event.shift else 0.05
                 _state['sub_color_s'] = min(1.0, _state['sub_color_s'] + step)
-                _set_brush_rgb(context, *colorsys.hsv_to_rgb(
-                    _state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v']))
+                rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
+                if _state.get('sub_color_target') == 'SECONDARY':
+                    _set_brush_secondary_rgb(context, *rgb)
+                else:
+                    _set_brush_rgb(context, *rgb)
+                if event.shift:
+                    _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 context.area.tag_redraw()
             elif event.type == 'WHEELDOWNMOUSE':
                 step = 0.01 if event.shift else 0.05
                 _state['sub_color_s'] = max(0.0, _state['sub_color_s'] - step)
-                _set_brush_rgb(context, *colorsys.hsv_to_rgb(
-                    _state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v']))
+                rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
+                if _state.get('sub_color_target') == 'SECONDARY':
+                    _set_brush_secondary_rgb(context, *rgb)
+                else:
+                    _set_brush_rgb(context, *rgb)
+                if event.shift:
+                    _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
+                context.area.tag_redraw()
+            elif event.type == 'E' and event.value == 'PRESS':
+                if _state.get('sub_color_target') == 'SECONDARY':
+                    if _state.get('sub_orig_color_secondary') is not None:
+                        _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
+                    _state['sub_color_target'] = 'PRIMARY'
+                    rgb = _get_brush_rgb(context)
+                else:
+                    if _state.get('sub_orig_color') is not None:
+                        _set_brush_rgb(context, *_state['sub_orig_color'])
+                    _state['sub_color_target'] = 'SECONDARY'
+                    rgb = _get_brush_secondary_rgb(context)
+                h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
+                if s_new > 0.01:
+                    _state['sub_color_h'] = h_new
+                _state['sub_color_s'] = s_new
+                _state['sub_color_v'] = v_new
+                _state['sub_color_start_h'] = _state['sub_color_h']
+                _state['sub_color_start_v'] = _state['sub_color_v']
+                _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 context.area.tag_redraw()
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 _state['sub_mode'] = None          # keep new color
@@ -925,6 +1064,8 @@ class PixelPainterOperator(Operator):
                 context.area.tag_redraw()
             elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
                 _set_brush_rgb(context, *_state['sub_orig_color'])
+                if _state['sub_orig_color_secondary'] is not None:
+                    _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
                 _state['sub_mode'] = None
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
@@ -1174,7 +1315,11 @@ class PixelPainterOperator(Operator):
 
         # E key: enter color picker sub-mode
         elif event.type == 'E' and event.value == 'PRESS':
+            if _state['sub_mode'] == 'COLOR_PICK':
+                return {'PASS_THROUGH'}
+
             rgb = _get_brush_rgb(context)
+            sec_rgb = _get_brush_secondary_rgb(context)
             h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
             if _state['sub_color_s'] is None:
                 # First entry: derive all three from brush
@@ -1188,13 +1333,13 @@ class PixelPainterOperator(Operator):
                 _state['sub_color_v'] = v_new
                 # sub_color_s is intentionally left unchanged
             _state['sub_mode']           = 'COLOR_PICK'
-            _state['sub_last_x']         = event.mouse_region_x
-            _state['sub_last_y']         = event.mouse_region_y
+            _state['sub_color_target']   = 'PRIMARY'
             _state['sub_orig_color']     = rgb
-            _state['sub_start_screen_x'] = event.mouse_x
-            _state['sub_start_screen_y'] = event.mouse_y
-            _state['sub_start_region_x'] = event.mouse_region_x
-            _state['sub_start_region_y'] = event.mouse_region_y
+            _state['sub_orig_color_secondary'] = sec_rgb
+            _state['sub_color_start_h']  = _state['sub_color_h']
+            _state['sub_color_start_v']  = _state['sub_color_v']
+            _set_sub_start_to_event(event)
+            _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
             context.area.tag_redraw()
 
         return {'PASS_THROUGH'}
