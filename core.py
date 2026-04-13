@@ -312,6 +312,34 @@ class PixelPainterSetModeOperator(Operator):
         return {'FINISHED'}
 
 
+class PixelPainterSetBlendOperator(Operator):
+    bl_idname = "image.pixel_painter_set_blend"
+    bl_label  = "Set Pixel Painter Blend Mode"
+
+    blend: bpy.props.EnumProperty(
+        items=[
+            ('MIX',     "Normal",   "Normal blend"),
+            ('ADD',     "Add",      "Add blend"),
+            ('MUL',     "Multiply", "Multiply blend"),
+            ('DARKEN',  "Darken",   "Darken blend"),
+            ('LIGHTEN', "Lighten",  "Lighten blend"),
+            ('COLOR',   "Color",    "Color blend"),
+        ]
+    )
+
+    def execute(self, context):
+        try:
+            brush = context.tool_settings.image_paint.brush
+            if not brush:
+                self.report({'WARNING'}, "No active image paint brush")
+                return {'CANCELLED'}
+            brush.blend = self.blend
+            return {'FINISHED'}
+        except Exception:
+            self.report({'WARNING'}, "Could not set blend mode")
+            return {'CANCELLED'}
+
+
 class PixelPainterUndoOperator(Operator):
     """Undo the last Pixel Painter stroke."""
     bl_idname = "image.pixel_painter_undo"

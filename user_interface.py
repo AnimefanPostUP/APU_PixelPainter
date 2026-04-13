@@ -13,9 +13,28 @@ class PixelPainterModePie(Menu):
 
         pie.operator("image.pixel_painter_set_mode", text="Square", icon='MESH_PLANE').mode   = 'SQUARE'
         pie.operator("image.pixel_painter_set_mode", text="Circle", icon='MESH_CIRCLE').mode  = 'CIRCLE'
+        op = pie.operator("wm.call_menu_pie", text="Blend", icon='COLOR')
+        op.name = "PIXELPAINTER_MT_blend_pie"
         pie.operator("image.pixel_painter_set_mode", text="Spray",  icon='PARTICLES').mode    = 'SPRAY'
         pie.operator("image.pixel_painter_set_mode", text="Smooth", icon='SMOOTHCURVE').mode  = 'SMOOTH'
         pie.operator("image.pixel_painter_set_mode", text="Smear",  icon='FORCE_WIND').mode   = 'SMEAR'
+
+
+class PixelPainterBlendPie(Menu):
+    bl_idname = "PIXELPAINTER_MT_blend_pie"
+    bl_label  = "Blend Mode"
+
+    def draw(self, context):
+        layout = self.layout
+        pie    = layout.menu_pie()
+
+        # Pie slot order is fixed by Blender: left, right, bottom, top, top-left, top-right.
+        pie.operator("image.pixel_painter_set_blend", text="Lighten", icon='MIX').blend  = 'LIGHTEN'
+        pie.operator("image.pixel_painter_set_blend", text="Darken", icon='MIX').blend   = 'DARKEN'
+        pie.operator("image.pixel_painter_set_blend", text="Normal", icon='MIX').blend   = 'MIX'
+        pie.operator("image.pixel_painter_set_blend", text="Multiply", icon='MIX').blend = 'MUL'
+        pie.operator("image.pixel_painter_set_blend", text="Add", icon='MIX').blend      = 'ADD'
+        pie.operator("image.pixel_painter_set_blend", text="Color", icon='MIX').blend    = 'COLOR'
 
 
 class PixelPainterTool(WorkSpaceTool):

@@ -85,6 +85,15 @@ def _apply_blend(dst, src, blend, opacity):
         burn = np.where(src <= 0.0, 0.0, 1.0 - (1.0 - dst) / (src + 1e-6))
         out = dst + (burn - dst) * opacity
 
+    elif blend == 'COLOR':
+        # Approximate "Color" by taking source hue/saturation and destination value.
+        sh, ss, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
+        color_rgb = np.empty_like(dst)
+        for i in range(dst.shape[0]):
+            _, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
+            color_rgb[i] = colorsys.hsv_to_rgb(sh, ss, dv)
+        out = dst + (color_rgb - dst) * opacity
+
     else:
         # Unknown mode — fall back to plain mix
         out = dst + (src - dst) * opacity
