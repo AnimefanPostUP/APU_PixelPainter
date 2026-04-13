@@ -1210,6 +1210,13 @@ class PixelPainterOperator(Operator):
             if event.ctrl or event.alt:
                 return {'PASS_THROUGH'}
 
+            # Shift eyedropper RMB: pick into secondary color.
+            if _state['shift_pick_active'] and _state['shift_hovered_color'] is not None:
+                picked = _state['shift_hovered_color']
+                _set_brush_secondary_rgb(context, *picked)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+
             self.button_right_down   = True
             _state['use_secondary']  = True
             _state['last_paint_cx']  = None

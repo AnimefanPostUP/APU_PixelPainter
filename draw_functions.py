@@ -859,20 +859,6 @@ def _draw_color_pick_sheet_overlay(state):
         (x0, y0 + h), (x0, y0),
     ]}).draw(su)
 
-    # Current color position marker
-    h_cur = state.get('sub_color_h')
-    v_cur = state.get('sub_color_v')
-    if h_cur is not None and v_cur is not None:
-        dh = h_cur - 0.5
-        if dh < -0.5:
-            dh += 1.0
-        elif dh >= 0.5:
-            dh -= 1.0
-        mx = rx + dh * w
-        my = ry + (v_cur - 0.5) * h
-        _draw_circle_outline(mx, my, 6.0, (0.0, 0.0, 0.0, 0.95), steps=24)
-        _draw_circle_outline(mx, my, 4.0, (1.0, 1.0, 1.0, 0.95), steps=24)
-
     gpu.state.blend_set('NONE')
     gpu.state.depth_test_set('LESS_EQUAL')
     gpu.state.line_width_set(1.0)
@@ -987,7 +973,7 @@ def _draw_sub_mode_cursor_dot(context, state):
 
 
 def _draw_fake_color_pick_cursor(state):
-    """Draw a simple fake cursor at the tracked COLOR_PICK position."""
+    """Draw a circle-only fake cursor at the tracked COLOR_PICK position."""
     x = state.get('sub_last_x')
     y = state.get('sub_last_y')
     if x is None or y is None:
@@ -997,23 +983,8 @@ def _draw_fake_color_pick_cursor(state):
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
 
-    # Outer dark cross for contrast.
-    gpu.state.line_width_set(3.0)
-    su.uniform_float("color", (0.0, 0.0, 0.0, 0.9))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (x - 9, y), (x + 9, y),
-        (x, y - 9), (x, y + 9),
-    ]}).draw(su)
-
-    # Inner bright cross.
-    gpu.state.line_width_set(1.5)
-    su.uniform_float("color", (1.0, 1.0, 1.0, 0.95))
-    gpu_extras.batch.batch_for_shader(su, 'LINES', {"pos": [
-        (x - 8, y), (x + 8, y),
-        (x, y - 8), (x, y + 8),
-    ]}).draw(su)
-
-    _draw_circle_outline(x, y, 4.0, (1.0, 1.0, 1.0, 0.9), steps=18)
+    _draw_circle_outline(x, y, 6.0, (0.0, 0.0, 0.0, 0.92), width=2.5, steps=24)
+    _draw_circle_outline(x, y, 4.5, (1.0, 1.0, 1.0, 0.95), width=1.4, steps=24)
 
     gpu.state.blend_set('NONE')
     gpu.state.depth_test_set('LESS_EQUAL')
@@ -1114,7 +1085,8 @@ def draw_sub_mode_overlay(context, state):
 def draw_shift_pick_overlay(context, state):
     """Draw the split circle near the cursor while the shift eyedropper is active.
 
-    Bottom half = current brush color, top half = image color under cursor.
+    Bottom half = primary (left) + secondary (right), top half = image color
+    under cursor.
     Positioned 40 px above the cursor so it doesn't obscure the sampled pixel.
     """
     if not state.get('shift_pick_active'):
@@ -1129,26 +1101,28 @@ def draw_shift_pick_overlay(context, state):
 
     try:
         brush = context.tool_settings.image_paint.brush
-        curr  = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
+        prim  = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
+        sec   = tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
     except Exception:
-        curr = (1.0, 1.0, 1.0)
+        prim = (1.0, 1.0, 1.0)
+        sec = (0.0, 0.0, 0.0)
 
     cx     = rx
-    cy     = ry + 40   # offset above cursor
+    cy     = ry + 50   # offset above cursor
     radius = 38  # ~75 px diameter (1.5×)
 
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
 
-    _draw_filled_half_circle(cx, cy, radius, (*curr,    1.0), top=False)
+    _draw_filled_arc(cx, cy, radius, (*prim, 1.0), math.pi, math.pi * 1.5)
+    _draw_filled_arc(cx, cy, radius, (*sec, 1.0), math.pi * 1.5, math.tau)
     _draw_filled_half_circle(cx, cy, radius, (*hovered, 1.0), top=True)
 
-    gpu.state.line_width_set(1.5)
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch  = gpu_extras.batch.batch_for_shader(
-        shader, 'LINES', {"pos": [(cx - radius, cy), (cx + radius, cy)]})
-    shader.uniform_float("color", (0.0, 0.0, 0.0, 0.7))
-    batch.draw(shader)
+    # Grid-snapped corner highlighter at the sampled image pixel.
+    px = state.get('current_cx')
+    py = state.get('current_cy')
+    if px is not None and py is not None:
+        _draw_precision_pixel_guide(context, px, py, color=(1.0, 1.0, 1.0, 0.95))
 
     _draw_circle_outline(cx, cy, radius, (0.0, 0.0, 0.0, 0.85))
 
