@@ -42,6 +42,12 @@ bl_info = {
 
 
 def register():
+    # Clean up old custom-pie handlers/timers before reloading module code.
+    try:
+        pie_menu.force_cleanup()
+    except Exception:
+        pass
+
     importlib.reload(generic_utils)
     importlib.reload(math_utils)
     importlib.reload(blender_utils)
@@ -162,6 +168,10 @@ def unregister():
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)
     core._undo_clear()
+    try:
+        pie_menu.force_cleanup()
+    except Exception:
+        pass
     pie_menu.unregister_icons()
 
     del bpy.types.WindowManager.pixel_painter_radius
