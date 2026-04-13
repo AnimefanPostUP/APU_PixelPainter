@@ -94,6 +94,39 @@ def _apply_blend(dst, src, blend, opacity):
             color_rgb[i] = colorsys.hsv_to_rgb(sh, ss, dv)
         out = dst + (color_rgb - dst) * opacity
 
+    elif blend == 'HUE':
+        sh, _, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
+        hue_rgb = np.empty_like(dst)
+        for i in range(dst.shape[0]):
+            _, ds, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
+            hue_rgb[i] = colorsys.hsv_to_rgb(sh, ds, dv)
+        out = dst + (hue_rgb - dst) * opacity
+
+    elif blend == 'SATURATION':
+        _, ss, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
+        sat_rgb = np.empty_like(dst)
+        for i in range(dst.shape[0]):
+            dh, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
+            sat_rgb[i] = colorsys.hsv_to_rgb(dh, ss, dv)
+        out = dst + (sat_rgb - dst) * opacity
+
+    elif blend == 'VALUE':
+        _, _, sv = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
+        val_rgb = np.empty_like(dst)
+        for i in range(dst.shape[0]):
+            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
+            val_rgb[i] = colorsys.hsv_to_rgb(dh, ds, sv)
+        out = dst + (val_rgb - dst) * opacity
+
+    elif blend == 'LUMINOSITY':
+        # HSV approximation: use source value (brightness) while preserving destination hue/saturation.
+        _, _, sv = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
+        lum_rgb = np.empty_like(dst)
+        for i in range(dst.shape[0]):
+            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
+            lum_rgb[i] = colorsys.hsv_to_rgb(dh, ds, sv)
+        out = dst + (lum_rgb - dst) * opacity
+
     else:
         # Unknown mode — fall back to plain mix
         out = dst + (src - dst) * opacity

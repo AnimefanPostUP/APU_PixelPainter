@@ -46,6 +46,7 @@ def register():
     importlib.reload(draw_functions)
     importlib.reload(core)
     importlib.reload(user_interface)
+    user_interface.register_icons()
 
     # Clear any stale state from a previous addon reload
     draw_functions.remove_draw_handler(core._state)
@@ -102,6 +103,34 @@ def register():
         description="Generic modifier value (currently used as Spread)",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR',
     )
+    _blend_items = [
+        ('MIX',        "Normal",      "Normal blend"),
+        ('ADD',        "Add",         "Add blend"),
+        ('MUL',        "Multiply",    "Multiply blend"),
+        ('DARKEN',     "Darken",      "Darken blend"),
+        ('LIGHTEN',    "Lighten",     "Lighten blend"),
+        ('COLOR',      "Color",       "Color blend"),
+        ('SCREEN',     "Screen",      "Screen blend"),
+        ('OVERLAY',    "Overlay",     "Overlay blend"),
+        ('SOFTLIGHT',  "Soft Light",  "Soft Light blend"),
+        ('HARDLIGHT',  "Hard Light",  "Hard Light blend"),
+        ('SUB',        "Subtract",    "Subtract blend"),
+        ('DIFFERENCE', "Difference",  "Difference blend"),
+        ('EXCLUSION',  "Exclusion",   "Exclusion blend"),
+        ('COLORDODGE', "Color Dodge", "Color Dodge blend"),
+        ('COLORBURN',  "Color Burn",  "Color Burn blend"),
+        ('HUE',        "Hue",         "Hue blend"),
+        ('SATURATION', "Saturation",  "Saturation blend"),
+        ('VALUE',      "Value",       "Value blend"),
+        ('LUMINOSITY', "Luminosity",  "Luminosity blend"),
+    ]
+    bpy.types.WindowManager.pixel_painter_blend_favorites = bpy.props.EnumProperty(
+        name="Blend Favorites",
+        description="Select blend modes shown in the Favorites block",
+        items=_blend_items,
+        options={'ENUM_FLAG'},
+        default={'MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'},
+    )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
@@ -117,6 +146,7 @@ def unregister():
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)
     core._undo_clear()
+    user_interface.unregister_icons()
 
     del bpy.types.WindowManager.pixel_painter_radius
     del bpy.types.WindowManager.pixel_painter_mode
@@ -125,6 +155,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_falloff
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
+    del bpy.types.WindowManager.pixel_painter_blend_favorites
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)
