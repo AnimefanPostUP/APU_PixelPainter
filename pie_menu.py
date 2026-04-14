@@ -657,6 +657,8 @@ def _draw_custom_pie_overlay():
             _draw_bubble_icon_text(icon_key, label, ix, iy, item_r, scale=content_scale, alpha=content_alpha)
 
     gpu.state.blend_set('NONE')
+
+
 def _remove_custom_pie_draw_handler():
     handler = _custom_pie_state.get('draw_handler')
     if handler is not None:
@@ -771,6 +773,7 @@ class PixelPainterCustomPieOperator(Operator):
             pass
 
     def _finish(self, context, warp_to_start=False):
+        """Clean up pie menu state."""
         if warp_to_start:
             self._warp_cursor_to_start(context)
         _custom_pie_state['running'] = False

@@ -9,6 +9,11 @@ from bpy.types import Operator
 from . import math_utils
 from . import blender_utils
 from . import draw_functions
+from .core_runtime import PixelPainterCoreRuntime
+from .menu_controllers import MenuControllerRegistry
+from .settings_service import PixelPainterSettingsService
+from .tool_logic import DrawEnvironment, ToolRegistry
+from .variables import build_default_variable_store
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +79,8 @@ _state = {
     'outline_to_cy':       None,
     'outline_anim_start':  0.0,
     'outline_timer':       None,
+    'current_tool_id':     None,
+    'previous_tool_id':    None,
 }
 
 # ---------------------------------------------------------------------------
@@ -91,6 +98,50 @@ _MAX_UNDO   = 100
 _COLOR_PICK_H_DIV = 500.0
 _COLOR_PICK_V_DIV = 300.0
 _COLOR_PICK_SHIFT_FACTOR = 10.0
+
+_core_runtime = PixelPainterCoreRuntime()
+_tool_registry = ToolRegistry()
+_menu_registry = MenuControllerRegistry()
+_settings = PixelPainterSettingsService()
+_variable_store = build_default_variable_store()
+
+
+def _sync_runtime_tool_info(context):
+    """Keep core runtime, state, and variable-store tool info in sync."""
+    mode = context.window_manager.pixel_painter_mode
+    _core_runtime.set_current_tool(mode)
+    _state['current_tool_id'] = _core_runtime.current_tool_id
+    _state['previous_tool_id'] = _core_runtime.previous_tool_id
+
+    radius = blender_utils.get_brush_image_radius(context)
+    modifier = context.window_manager.pixel_painter_modifier
+    falloff = (
+        context.window_manager.pixel_painter_spray_falloff
+        if mode == 'SPRAY'
+        else context.window_manager.pixel_painter_circle_falloff
+    )
+
+    _variable_store.set_global('size', radius)
+    _variable_store.set_global('modifier', modifier)
+    _variable_store.set_global('falloff', falloff)
+    _variable_store.set_tool_value(mode, 'size', radius)
+    _variable_store.set_tool_value(mode, 'modifier', modifier)
+    _variable_store.set_tool_value(mode, 'falloff', falloff)
+
+
+def _register_sub_mode_process(mode_name):
+    """Register the active sub-mode process so ESC can interrupt it."""
+    owner = _state.get('current_tool_id') or 'UNKNOWN'
+    _core_runtime.register_process(f"SUB_MODE:{mode_name}", owner, {'ESC'})
+
+
+def _clear_sub_mode_process(mode_name=None):
+    """Clear one or all registered sub-mode processes."""
+    if mode_name is None:
+        _core_runtime.clear_process('SUB_MODE:OPACITY')
+        _core_runtime.clear_process('SUB_MODE:COLOR_PICK')
+        return
+    _core_runtime.clear_process(f"SUB_MODE:{mode_name}")
 
 
 def _undo_push(img):
@@ -155,135 +206,6 @@ def _undo_clear():
 # ---------------------------------------------------------------------------
 # Sub-mode helpers  (opacity / color-pick interactive modes)
 # ---------------------------------------------------------------------------
-
-def _get_brush_opacity(context):
-    try:
-        ups   = context.tool_settings.unified_paint_settings
-        brush = context.tool_settings.image_paint.brush
-        return ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0)
-    except Exception:
-        return 1.0
-
-
-def _set_brush_opacity(context, value):
-    value = max(0.0, min(1.0, value))
-    try:
-        ups   = context.tool_settings.unified_paint_settings
-        brush = context.tool_settings.image_paint.brush
-        if ups.use_unified_strength:
-            ups.strength = value
-        elif brush:
-            brush.strength = value
-    except Exception:
-        pass
-
-
-def _get_brush_rgb(context):
-    try:
-        brush = context.tool_settings.image_paint.brush
-        return tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
-    except Exception:
-        return (1.0, 1.0, 1.0)
-
-
-def _get_brush_secondary_rgb(context):
-    try:
-        brush = context.tool_settings.image_paint.brush
-        return tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
-    except Exception:
-        return (0.0, 0.0, 0.0)
-
-
-def _get_modifier(context):
-    try:
-        return context.window_manager.pixel_painter_modifier
-    except Exception:
-        return 0.5
-
-
-def _set_modifier(context, value):
-    try:
-        context.window_manager.pixel_painter_modifier = max(0.0, min(1.0, value))
-    except Exception:
-        pass
-
-
-def _set_brush_rgb(context, r, g, b):
-    try:
-        brush = context.tool_settings.image_paint.brush
-        if brush:
-            brush.color = (r, g, b)
-    except Exception:
-        pass
-
-
-def _set_brush_secondary_rgb(context, r, g, b):
-    try:
-        brush = context.tool_settings.image_paint.brush
-        if brush:
-            brush.secondary_color = (r, g, b)
-    except Exception:
-        pass
-
-
-def _get_falloff_curve_sampler(context):
-    """Return a callable t->[0,1] sampled from the active brush curve, or None."""
-    try:
-        brush = context.tool_settings.image_paint.brush
-        curve = getattr(brush, 'curve', None) if brush else None
-        if curve is None:
-            return None
-
-        try:
-            curve.initialize()
-        except Exception:
-            pass
-
-        def _sample(t):
-            t = max(0.0, min(1.0, float(t)))
-
-            # Blender exposes multiple evaluate signatures depending on version:
-            # - CurveMap.evaluate(t)
-            # - CurveMapping.evaluate(curve_map, t)
-            # - CurveMapping.evaluate(index, t)
-            # Keep trying until one succeeds, then clamp to [0,1].
-            try:
-                curves = getattr(curve, 'curves', None)
-                if curves and len(curves) > 0:
-                    try:
-                        return max(0.0, min(1.0, float(curves[0].evaluate(t))))
-                    except Exception:
-                        pass
-                    try:
-                        return max(0.0, min(1.0, float(curve.evaluate(curves[0], t))))
-                    except Exception:
-                        pass
-                try:
-                    return max(0.0, min(1.0, float(curve.evaluate(0, t))))
-                except Exception:
-                    return max(0.0, min(1.0, float(curve.evaluate(t))))
-            except Exception:
-                return 1.0
-
-        return _sample
-    except Exception:
-        return None
-
-
-def _get_image_pixel_color(context, cx, cy):
-    """Read the RGB color of image pixel (cx, cy). Returns (r,g,b) or None."""
-    try:
-        space = context.space_data
-        if not space or not space.image:
-            return None
-        img = space.image
-        w, h = img.size
-        if not (0 <= cx < w and 0 <= cy < h):
-            return None
-        idx = (cy * w + cx) * 4
-        return (img.pixels[idx], img.pixels[idx + 1], img.pixels[idx + 2])
-    except Exception:
-        return None
 
 def _warp_cursor_to_sub_start(context):
     """Warp the OS cursor back to where the sub-mode was entered."""
@@ -644,6 +566,7 @@ class PixelPainterOperator(Operator):
     # ---- drawing -------------------------------------------------------------
 
     def draw_pixels(self, context):
+        """Dispatch paint drawing to the active class-based tool implementation."""
         cx = _state['current_cx']
         cy = _state['current_cy']
         if cx is None:
@@ -663,13 +586,25 @@ class PixelPainterOperator(Operator):
         radius  = blender_utils.get_brush_image_radius(context)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
-        curve_sampler = None
+        env = DrawEnvironment(
+            context=context,
+            state=_state,
+            img=img,
+            mode=mode,
+            color=color,
+            blend=blend,
+            opacity=opacity,
+            radius=radius,
+            spacing=spacing,
+            wm=wm,
+            cursor_x=cx,
+            cursor_y=cy,
+            interpolation_steps=lambda: _interpolation_steps(cx, cy),
+            curve_sampler_factory=_settings.get_falloff_curve_sampler,
+        )
 
-        # Reset per-stroke tracking at the start of each new stroke
-        if _state['last_paint_cx'] is None:
-            _state['stroke_painted']     = set()
-            _state['stroke_weight_map']  = {}
-            _state['stroke_back_buffer'] = np.array(img.pixels, dtype=np.float32)
+        # Prepare stroke caches on the first draw call of a stroke.
+        _tool_registry.ensure_stroke_state(env)
 
         # Pixel spacing: skip if the cursor hasn't moved to a new pixel
         if (spacing == 'PIXEL'
@@ -678,163 +613,7 @@ class PixelPainterOperator(Operator):
             and cy == _state['last_paint_cy']):
             return
 
-        def _steps():
-            return _interpolation_steps(cx, cy)
-
-        if mode == 'LINE':
-            if _state['start_position'] is None or _state['back_buffer'] is None:
-                return
-            shape     = _state['last_shape']
-            tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
-            x0, y0    = _state['start_position']
-            if tip_shape == 'CIRCLE':
-                circle_falloff = wm.pixel_painter_circle_falloff
-                if circle_falloff == 'CUSTOM':
-                    curve_sampler = _get_falloff_curve_sampler(context)
-                pixel_weight_map = {}
-                for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
-                    px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
-                        lx, ly, radius, circle_falloff, curve_sampler=curve_sampler)
-                    for px, w in zip(px_list, pw_list):
-                        if w > pixel_weight_map.get(px, 0.0):
-                            pixel_weight_map[px] = w
-                if pixel_weight_map:
-                    draw_functions.write_pixels_to_image(
-                        img, list(pixel_weight_map.keys()), color,
-                        base_buffer=_state['back_buffer'],
-                        blend=blend, opacity=opacity,
-                        pixel_weights=list(pixel_weight_map.values()))
-            else:
-                all_pixels = set()
-                for (lx, ly) in math_utils.get_line_pixels(x0, y0, cx, cy):
-                    all_pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
-                draw_functions.write_pixels_to_image(img, all_pixels, color,
-                                                     base_buffer=_state['back_buffer'],
-                                                     blend=blend, opacity=opacity)
-
-        elif mode == 'SPRAY':
-            spray_strength = wm.pixel_painter_spray_strength
-            spray_falloff  = wm.pixel_painter_spray_falloff
-            if spray_falloff == 'CUSTOM':
-                curve_sampler = _get_falloff_curve_sampler(context)
-            if spacing == 'PIXEL':
-                # Pixel: accumulate max weight, re-render from back-buffer each call
-                swm = _state['stroke_weight_map']
-                for (sx, sy) in _steps():
-                    px_list, pw_list = math_utils.get_spray_pixels(sx, sy, radius,
-                                                                    spray_strength, spray_falloff,
-                                                                    curve_sampler=curve_sampler)
-                    for px, w in zip(px_list, pw_list):
-                        if w > swm.get(px, 0.0):
-                            swm[px] = w
-                if swm:
-                    draw_functions.write_pixels_to_image(
-                        img, list(swm.keys()), color,
-                        base_buffer=_state['stroke_back_buffer'],
-                        blend=blend, opacity=opacity,
-                        pixel_weights=list(swm.values()))
-            else:
-                # Free: local dedup per call only, paint directly
-                pixel_weight_map = {}
-                for (sx, sy) in _steps():
-                    px_list, pw_list = math_utils.get_spray_pixels(sx, sy, radius,
-                                                                    spray_strength, spray_falloff,
-                                                                    curve_sampler=curve_sampler)
-                    for px, w in zip(px_list, pw_list):
-                        if w > pixel_weight_map.get(px, 0.0):
-                            pixel_weight_map[px] = w
-                if pixel_weight_map:
-                    draw_functions.write_pixels_to_image(img, list(pixel_weight_map.keys()), color,
-                                                         blend=blend, opacity=opacity,
-                                                         pixel_weights=list(pixel_weight_map.values()))
-            _state['last_paint_cx'] = cx
-            _state['last_paint_cy'] = cy
-
-        elif mode == 'CIRCLE':
-            circle_falloff = wm.pixel_painter_circle_falloff
-            if circle_falloff == 'CUSTOM':
-                curve_sampler = _get_falloff_curve_sampler(context)
-            if spacing == 'PIXEL':
-                # Pixel: accumulate max weight, re-render from back-buffer each call
-                swm = _state['stroke_weight_map']
-                for (sx, sy) in _steps():
-                    px_list, pw_list = math_utils.get_pixels_in_circle_weighted(sx, sy, radius,
-                                                                                  circle_falloff,
-                                                                                  curve_sampler=curve_sampler)
-                    for px, w in zip(px_list, pw_list):
-                        if w > swm.get(px, 0.0):
-                            swm[px] = w
-                if swm:
-                    draw_functions.write_pixels_to_image(
-                        img, list(swm.keys()), color,
-                        base_buffer=_state['stroke_back_buffer'],
-                        blend=blend, opacity=opacity,
-                        pixel_weights=list(swm.values()))
-            else:
-                # Free: local dedup per call only, paint directly
-                pixel_weight_map = {}
-                for (sx, sy) in _steps():
-                    px_list, pw_list = math_utils.get_pixels_in_circle_weighted(sx, sy, radius,
-                                                                                  circle_falloff,
-                                                                                  curve_sampler=curve_sampler)
-                    for px, w in zip(px_list, pw_list):
-                        if w > pixel_weight_map.get(px, 0.0):
-                            pixel_weight_map[px] = w
-                if pixel_weight_map:
-                    draw_functions.write_pixels_to_image(img, list(pixel_weight_map.keys()), color,
-                                                         blend=blend, opacity=opacity,
-                                                         pixel_weights=list(pixel_weight_map.values()))
-            _state['last_paint_cx'] = cx
-            _state['last_paint_cy'] = cy
-
-        elif mode == 'SMOOTH':
-            modifier      = wm.pixel_painter_modifier
-            smooth_radius = max(1, int(modifier * max(1, radius)))
-            all_pixels = set()
-            for (sx, sy) in _steps():
-                all_pixels |= math_utils.get_pixels_in_shape(sx, sy, radius, 'CIRCLE')
-            draw_functions.smooth_pixels_in_image(img, list(all_pixels),
-                                                  smooth_radius, opacity)
-            _state['last_paint_cx'] = cx
-            _state['last_paint_cy'] = cy
-
-        elif mode == 'SMEAR':
-            modifier = wm.pixel_painter_modifier
-            steps    = _steps()
-            prev_x   = _state['last_paint_cx']
-            prev_y   = _state['last_paint_cy']
-            for i, (sx, sy) in enumerate(steps):
-                ox = (prev_x if prev_x is not None else sx) if i == 0 else steps[i - 1][0]
-                oy = (prev_y if prev_y is not None else sy) if i == 0 else steps[i - 1][1]
-                ddx = sx - ox
-                ddy = sy - oy
-                smear_reach = modifier * max(1, radius)
-                draw_functions.smear_pixels_in_image(
-                    img, list(math_utils.get_pixels_in_shape(sx, sy, radius, 'CIRCLE')),
-                    ddx, ddy, smear_reach, opacity)
-            _state['last_paint_cx'] = cx
-            _state['last_paint_cy'] = cy
-
-        else:  # SQUARE
-            if spacing == 'PIXEL':
-                # Pixel: guard against re-painting across calls using stroke_painted
-                painted = _state['stroke_painted']
-                for (sx, sy) in _steps():
-                    step_pixels = math_utils.get_pixels_in_shape(sx, sy, radius, mode) - painted
-                    if step_pixels:
-                        draw_functions.write_pixels_to_image(img, step_pixels, color,
-                                                             blend=blend, opacity=opacity)
-                        painted |= step_pixels
-            else:
-                # Free: local dedup within this call only, paint directly
-                all_pixels = set()
-                for (sx, sy) in _steps():
-                    all_pixels |= math_utils.get_pixels_in_shape(sx, sy, radius, mode)
-                if all_pixels:
-                    draw_functions.write_pixels_to_image(img, all_pixels, color,
-                                                         blend=blend, opacity=opacity)
-            _state['last_paint_cx'] = cx
-            _state['last_paint_cy'] = cy
+        _tool_registry.draw_active_tool(env)
 
     # ---- lifecycle -----------------------------------------------------------
 
@@ -907,6 +686,10 @@ class PixelPainterOperator(Operator):
         _state['outline_to_cx']       = None
         _state['outline_to_cy']       = None
         _state['outline_anim_start']  = 0.0
+        _state['current_tool_id']     = None
+        _state['previous_tool_id']    = None
+        _clear_sub_mode_process()
+        _core_runtime.clear_all_processes()
         self.button_down       = False
         self.button_right_down = False
 
@@ -938,6 +721,7 @@ class PixelPainterOperator(Operator):
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         v2d    = region.view2d if region else None
         mode   = context.window_manager.pixel_painter_mode
+        _sync_runtime_tool_info(context)
 
         # If the cursor has left the OS window, cancel any active stroke and
         # ignore all input until it returns.
@@ -983,12 +767,13 @@ class PixelPainterOperator(Operator):
             if _state['sub_mode'] is not None:
                 # restore original values and leave sub-mode
                 if _state['sub_mode'] == 'OPACITY' and _state['sub_orig_opacity'] is not None:
-                    _set_brush_opacity(context, _state['sub_orig_opacity'])
+                    _settings.set_brush_opacity(context, _state['sub_orig_opacity'])
                 elif _state['sub_mode'] == 'COLOR_PICK' and _state['sub_orig_color'] is not None:
-                    _set_brush_rgb(context, *_state['sub_orig_color'])
+                    _settings.set_brush_rgb(context, *_state['sub_orig_color'])
                     if _state['sub_orig_color_secondary'] is not None:
-                        _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
+                        _settings.set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
                 _state['sub_mode'] = None
+                _clear_sub_mode_process()
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
@@ -1013,25 +798,27 @@ class PixelPainterOperator(Operator):
                 _state['sub_total_delta'] += dx + dy
                 divisor  = 3000.0 if event.shift else 300.0
                 orig_op  = _state['sub_orig_opacity'] or 0.0
-                _set_brush_opacity(context, orig_op + _state['sub_total_delta'] / divisor)
+                _settings.set_brush_opacity(context, orig_op + _state['sub_total_delta'] / divisor)
                 _wrap_cursor_at_window_edge(context, event)
                 context.area.tag_redraw()
             elif event.type == 'WHEELUPMOUSE':
                 step = 0.01 if event.shift else 0.05
-                _set_modifier(context, _get_modifier(context) + step)
+                _settings.set_modifier(context, _settings.get_modifier(context) + step)
                 context.area.tag_redraw()
             elif event.type == 'WHEELDOWNMOUSE':
                 step = 0.01 if event.shift else 0.05
-                _set_modifier(context, _get_modifier(context) - step)
+                _settings.set_modifier(context, _settings.get_modifier(context) - step)
                 context.area.tag_redraw()
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 _state['sub_mode'] = None          # keep new values
+                _clear_sub_mode_process('OPACITY')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-                _set_brush_opacity(context, _state['sub_orig_opacity'])
-                _set_modifier(context, _state['sub_orig_modifier'])
+                _settings.set_brush_opacity(context, _state['sub_orig_opacity'])
+                _settings.set_modifier(context, _state['sub_orig_modifier'])
                 _state['sub_mode'] = None
+                _clear_sub_mode_process('OPACITY')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -1049,9 +836,9 @@ class PixelPainterOperator(Operator):
                 _state['sub_color_v'] = max(0.0, min(1.0, 0.5 + _state['sub_color_total_dy'] / _COLOR_PICK_V_DIV))
                 rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
                 if _state.get('sub_color_target') == 'SECONDARY':
-                    _set_brush_secondary_rgb(context, *rgb)
+                    _settings.set_brush_secondary_rgb(context, *rgb)
                 else:
-                    _set_brush_rgb(context, *rgb)
+                    _settings.set_brush_rgb(context, *rgb)
                 if event.shift:
                     _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 _wrap_cursor_at_window_edge(context, event)
@@ -1067,9 +854,9 @@ class PixelPainterOperator(Operator):
                 _state['sub_color_s'] = min(1.0, _state['sub_color_s'] + step)
                 rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
                 if _state.get('sub_color_target') == 'SECONDARY':
-                    _set_brush_secondary_rgb(context, *rgb)
+                    _settings.set_brush_secondary_rgb(context, *rgb)
                 else:
-                    _set_brush_rgb(context, *rgb)
+                    _settings.set_brush_rgb(context, *rgb)
                 if event.shift:
                     _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 context.area.tag_redraw()
@@ -1078,23 +865,23 @@ class PixelPainterOperator(Operator):
                 _state['sub_color_s'] = max(0.0, _state['sub_color_s'] - step)
                 rgb = colorsys.hsv_to_rgb(_state['sub_color_h'], _state['sub_color_s'], _state['sub_color_v'])
                 if _state.get('sub_color_target') == 'SECONDARY':
-                    _set_brush_secondary_rgb(context, *rgb)
+                    _settings.set_brush_secondary_rgb(context, *rgb)
                 else:
-                    _set_brush_rgb(context, *rgb)
+                    _settings.set_brush_rgb(context, *rgb)
                 if event.shift:
                     _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 context.area.tag_redraw()
             elif event.type == 'E' and event.value == 'PRESS':
                 if _state.get('sub_color_target') == 'SECONDARY':
                     if _state.get('sub_orig_color_secondary') is not None:
-                        _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
+                        _settings.set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
                     _state['sub_color_target'] = 'PRIMARY'
-                    rgb = _get_brush_rgb(context)
+                    rgb = _settings.get_brush_rgb(context)
                 else:
                     if _state.get('sub_orig_color') is not None:
-                        _set_brush_rgb(context, *_state['sub_orig_color'])
+                        _settings.set_brush_rgb(context, *_state['sub_orig_color'])
                     _state['sub_color_target'] = 'SECONDARY'
-                    rgb = _get_brush_secondary_rgb(context)
+                    rgb = _settings.get_brush_secondary_rgb(context)
                 h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
                 if s_new > 0.01:
                     _state['sub_color_h'] = h_new
@@ -1106,13 +893,15 @@ class PixelPainterOperator(Operator):
                 context.area.tag_redraw()
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 _state['sub_mode'] = None          # keep new color
+                _clear_sub_mode_process('COLOR_PICK')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-                _set_brush_rgb(context, *_state['sub_orig_color'])
+                _settings.set_brush_rgb(context, *_state['sub_orig_color'])
                 if _state['sub_orig_color_secondary'] is not None:
-                    _set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
+                    _settings.set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
                 _state['sub_mode'] = None
+                _clear_sub_mode_process('COLOR_PICK')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -1133,24 +922,7 @@ class PixelPainterOperator(Operator):
                 self.button_down = False
                 self.button_right_down = False
 
-            opened = False
-            try:
-                result = bpy.ops.image.pixel_painter_custom_pie('INVOKE_DEFAULT', pie_type='FALLOFF')
-                opened = ('RUNNING_MODAL' in result) or ('FINISHED' in result)
-            except Exception:
-                opened = False
-
-            if not opened:
-                try:
-                    override = {
-                        'window': context.window,
-                        'screen': context.screen,
-                        'area': area,
-                        'region': region,
-                    }
-                    bpy.ops.image.pixel_painter_custom_pie(override, 'INVOKE_DEFAULT', pie_type='FALLOFF')
-                except Exception:
-                    pass
+            _menu_registry.open_menu('PIE_MENU', context, pie_type='FALLOFF')
 
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -1197,7 +969,7 @@ class PixelPainterOperator(Operator):
                 _state['ctrl_region_y'] = event.mouse_region_y
                 cx, cy = _state['current_cx'], _state['current_cy']
                 _state['ctrl_hovered_color'] = (
-                    _get_image_pixel_color(context, cx, cy) if cx is not None else None)
+                    _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
 
             if (self.button_down or self.button_right_down) and v2d:
                 self.draw_pixels(context)
@@ -1219,12 +991,12 @@ class PixelPainterOperator(Operator):
                     result = self.get_hovered_pixel(context, event)
                     if result:
                         _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                        _state['ctrl_hovered_color'] = _get_image_pixel_color(
+                        _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
                             context, _state['current_cx'], _state['current_cy'])
                 picked = _state['ctrl_hovered_color']
                 if picked is None:
                     return {'RUNNING_MODAL'}
-                _set_brush_rgb(context, *picked)
+                _settings.set_brush_rgb(context, *picked)
                 h, s, v = colorsys.rgb_to_hsv(*picked)
                 _state['sub_color_h'] = h
                 _state['sub_color_s'] = s
@@ -1284,12 +1056,12 @@ class PixelPainterOperator(Operator):
                     result = self.get_hovered_pixel(context, event)
                     if result:
                         _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                        _state['ctrl_hovered_color'] = _get_image_pixel_color(
+                        _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
                             context, _state['current_cx'], _state['current_cy'])
                 picked = _state['ctrl_hovered_color']
                 if picked is None:
                     return {'RUNNING_MODAL'}
-                _set_brush_secondary_rgb(context, *picked)
+                _settings.set_brush_secondary_rgb(context, *picked)
                 context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
 
@@ -1351,7 +1123,7 @@ class PixelPainterOperator(Operator):
             _state['ctrl_region_x']      = event.mouse_region_x
             _state['ctrl_region_y']      = event.mouse_region_y
             _state['ctrl_hovered_color'] = (
-                _get_image_pixel_color(context, cx, cy) if cx is not None else None)
+                _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
@@ -1470,13 +1242,14 @@ class PixelPainterOperator(Operator):
             _state['sub_mode']           = 'OPACITY'
             _state['sub_last_x']         = event.mouse_region_x
             _state['sub_last_y']         = event.mouse_region_y
-            _state['sub_orig_opacity']   = _get_brush_opacity(context)
-            _state['sub_orig_modifier']  = _get_modifier(context)
+            _state['sub_orig_opacity']   = _settings.get_brush_opacity(context)
+            _state['sub_orig_modifier']  = _settings.get_modifier(context)
             _state['sub_total_delta']    = 0.0
             _state['sub_start_screen_x'] = event.mouse_x
             _state['sub_start_screen_y'] = event.mouse_y
             _state['sub_start_region_x'] = event.mouse_region_x
             _state['sub_start_region_y'] = event.mouse_region_y
+            _register_sub_mode_process('OPACITY')
             context.area.tag_redraw()
 
         # E key: enter color picker sub-mode
@@ -1484,8 +1257,8 @@ class PixelPainterOperator(Operator):
             if _state['sub_mode'] == 'COLOR_PICK':
                 return {'PASS_THROUGH'}
 
-            rgb = _get_brush_rgb(context)
-            sec_rgb = _get_brush_secondary_rgb(context)
+            rgb = _settings.get_brush_rgb(context)
+            sec_rgb = _settings.get_brush_secondary_rgb(context)
             h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
             if _state['sub_color_s'] is None:
                 # First entry: derive all three from brush
@@ -1506,6 +1279,7 @@ class PixelPainterOperator(Operator):
             _state['sub_color_start_v']  = _state['sub_color_v']
             _set_sub_start_to_event(event)
             _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
+            _register_sub_mode_process('COLOR_PICK')
             context.area.tag_redraw()
 
         return {'PASS_THROUGH'}
@@ -1531,6 +1305,8 @@ class PixelPainterOperator(Operator):
             _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
             _state['temp_shift_mode_active'] = True
             context.window_manager.pixel_painter_mode = 'SMOOTH'
+
+        _sync_runtime_tool_info(context)
 
         self.button_down       = (not is_rmb) and not start_with_picker and not start_with_shift_override
         self.button_right_down = is_rmb and not start_with_picker and not start_with_shift_override
@@ -1570,14 +1346,14 @@ class PixelPainterOperator(Operator):
         if result:
             _state['current_cx'], _state['current_cy'] = result[0], result[1]
             if start_with_picker:
-                _state['ctrl_hovered_color'] = _get_image_pixel_color(
+                _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
                     context, _state['current_cx'], _state['current_cy'])
                 picked = _state['ctrl_hovered_color']
                 if picked is not None:
                     if is_rmb:
-                        _set_brush_secondary_rgb(context, *picked)
+                        _settings.set_brush_secondary_rgb(context, *picked)
                     else:
-                        _set_brush_rgb(context, *picked)
+                        _settings.set_brush_rgb(context, *picked)
             elif mode == 'LINE':
                 if space and space.image:
                     _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)

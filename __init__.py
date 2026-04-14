@@ -24,6 +24,12 @@ from . import generic_utils
 from . import math_utils
 from . import blender_utils
 from . import draw_functions
+from . import overlays
+from . import variables
+from . import settings_service
+from . import core_runtime
+from . import tool_logic
+from . import menu_controllers
 from . import core
 from . import user_interface
 from . import pie_menu
@@ -82,6 +88,12 @@ def register():
     importlib.reload(math_utils)
     importlib.reload(blender_utils)
     importlib.reload(draw_functions)
+    importlib.reload(overlays)
+    importlib.reload(variables)
+    importlib.reload(settings_service)
+    importlib.reload(core_runtime)
+    importlib.reload(tool_logic)
+    importlib.reload(menu_controllers)
     importlib.reload(core)
     importlib.reload(user_interface)
     importlib.reload(pie_menu)
