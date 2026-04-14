@@ -625,6 +625,11 @@ class PixelPainterOperator(Operator):
 
         _state['outline_immediate'] = self.button_down or self.button_right_down
 
+        # Sync external brush size changes (e.g. F-key) and apply tool settings on EVERY event
+        # so the outline updates in real-time during F-key resizing.
+        _sync_external_brush_size_into_tool_setting(context)
+        apply_active_tool_settings(context)
+
         if event.type == 'TIMER':
             if context.area:
                 context.area.tag_redraw()
@@ -634,8 +639,6 @@ class PixelPainterOperator(Operator):
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         v2d    = region.view2d if region else None
         mode   = context.window_manager.pixel_painter_mode
-        _sync_external_brush_size_into_tool_setting(context)
-        apply_active_tool_settings(context)
 
         def _cancel_temp_shift_override_for_shortcut():
             """Exit temporary Shift->SMOOTH override before opening E/W shortcuts."""
