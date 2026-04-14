@@ -205,6 +205,11 @@ def register():
     bpy.types.WindowManager.pixel_painter_ui_show_shortcuts = bpy.props.BoolProperty(
         name="Show Shortcuts", default=True,
     )
+    bpy.types.WindowManager.pixel_painter_grid_opacity = bpy.props.FloatProperty(
+        name="Grid Opacity",
+        description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
+        min=0.0, max=1.0, default=0.3, subtype='FACTOR',
+    )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
@@ -239,6 +244,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
     del bpy.types.WindowManager.pixel_painter_ui_show_shortcuts
+    del bpy.types.WindowManager.pixel_painter_grid_opacity
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)

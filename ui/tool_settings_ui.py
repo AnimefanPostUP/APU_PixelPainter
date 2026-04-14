@@ -163,6 +163,8 @@ def draw_tool_settings(context, layout):
     col.separator()
     _draw_spacing_buttons(col, wm)
     col.separator()
+    col.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
+    col.separator()
 
     if _draw_foldout(col, wm, "pixel_painter_ui_show_blend_mode", "Blend Mode"):
         blend_col = col.box().column(align=True)

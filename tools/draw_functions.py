@@ -1169,6 +1169,110 @@ def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity):
 
 
 # ---------------------------------------------------------------------------
+# Pixel grid overlay
+# ---------------------------------------------------------------------------
+
+def draw_pixel_grid_overlay(context, grid_opacity):
+    """Draw a pixel-aligned grid overlay when opacity > 0.
+    
+    Efficient grid rendering using 2x2 block visibility checks.
+    Only renders grid lines for sections visible on screen.
+    
+    Parameters
+    ----------
+    context       — bpy.context object
+    grid_opacity  — float [0, 1] controlling grid visibility
+    """
+    if grid_opacity <= 0.0:
+        return
+
+    space, img = blender_utils.get_space_img(context)
+    if not space or not img:
+        return
+
+    w, h = img.size
+    if w == 0 or h == 0:
+        return
+
+    region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
+    if not region:
+        return
+    
+    region_width = region.width
+    region_height = region.height
+
+    _, v2d = blender_utils.get_window_region_and_v2d(context.area)
+    if not v2d:
+        return
+
+    # Convert image corners to screen space
+    corner_00 = v2d.view_to_region(0.0, 0.0)
+    corner_11 = v2d.view_to_region(1.0, 1.0)
+    
+    if corner_00 is None or corner_11 is None:
+        return
+
+    sx_min, sy_min = corner_00
+    sx_max, sy_max = corner_11
+
+    # Ensure correct ordering
+    screen_left = min(sx_min, sx_max)
+    screen_right = max(sx_min, sx_max)
+    screen_bot = min(sy_min, sy_max)
+    screen_top = max(sy_min, sy_max)
+
+    # Clip to region bounds
+    screen_left = max(screen_left, 0.0)
+    screen_right = min(screen_right, float(region_width))
+    screen_bot = max(screen_bot, 0.0)
+    screen_top = min(screen_top, float(region_height))
+
+    if screen_left >= screen_right or screen_bot >= screen_top:
+        return
+
+    # Calculate pixel size in screen space
+    px_width = (sx_max - sx_min) / w if abs(sx_max - sx_min) > 1e-6 else 1.0
+    py_height = (sy_max - sy_min) / h if abs(sy_max - sy_min) > 1e-6 else 1.0
+
+    # Adaptive grid: skip lines if they're too close together (less than 2 pixels apart on screen)
+    min_spacing = 2.0
+    x_step = max(1, int(math.ceil(min_spacing / abs(px_width)))) if px_width != 0 else 1
+    y_step = max(1, int(math.ceil(min_spacing / abs(py_height)))) if py_height != 0 else 1
+
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+    gpu.state.line_width_set(1.0)
+
+    vertices = []
+
+    # Draw vertical grid lines (with adaptive stepping)
+    for x in range(0, w + 1, x_step):
+        sx = sx_min + x * px_width
+        # Only render if within visible region
+        if screen_left <= sx <= screen_right:
+            vertices.append((sx, screen_bot))
+            vertices.append((sx, screen_top))
+
+    # Draw horizontal grid lines (with adaptive stepping)
+    for y in range(0, h + 1, y_step):
+        sy = sy_min + y * py_height
+        # Only render if within visible region
+        if screen_bot <= sy <= screen_top:
+            vertices.append((screen_left, sy))
+            vertices.append((screen_right, sy))
+
+    if vertices:
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        batch = gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": vertices})
+        grid_color = (1.0, 1.0, 1.0, grid_opacity * 0.6)
+        shader.uniform_float("color", grid_color)
+        batch.draw(shader)
+
+    gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('LESS_EQUAL')
+
+
+# ---------------------------------------------------------------------------
 # Draw handler management
 # ---------------------------------------------------------------------------
 
