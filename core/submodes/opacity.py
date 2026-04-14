@@ -11,6 +11,7 @@ _ARC_SPAN_DEG = 50.0
 _SLIDER_HEIGHT = 150.0
 _RADIUS_TOLERANCE = 16.0
 _ANGLE_MARGIN_DEG = 12.0
+_SHIFT_SLOW_FACTOR = 10.0
 
 
 def _normalize_signed_angle(rad):
@@ -46,6 +47,12 @@ def _value_from_mouse_height(cy, my):
     return max(0.0, min(1.0, 0.5 + ((my - cy) / _SLIDER_HEIGHT)))
 
 
+def _opacity_value_from_mouse_height(cy, my):
+    # Expand low-end travel so small opacity values get more bar distance.
+    linear = _value_from_mouse_height(cy, my)
+    return linear * linear
+
+
 class OpacitySubMode(SubModeHandler):
     mode_name = 'OPACITY'
 
@@ -59,6 +66,10 @@ class OpacitySubMode(SubModeHandler):
         self.state['sub_mode'] = self.mode_name
         self.state['sub_last_x'] = event.mouse_region_x
         self.state['sub_last_y'] = event.mouse_region_y
+        self.state['sub_fake_cursor_x'] = event.mouse_region_x
+        self.state['sub_fake_cursor_y'] = event.mouse_region_y
+        self.state['sub_opacity_virtual_x'] = float(event.mouse_region_x)
+        self.state['sub_opacity_virtual_y'] = float(event.mouse_region_y)
         self.state['sub_orig_opacity'] = self.settings.get_brush_opacity(context)
         self.state['sub_orig_modifier'] = self.settings.get_modifier(context)
         self.state['sub_total_delta'] = 0.0
@@ -70,16 +81,32 @@ class OpacitySubMode(SubModeHandler):
         self.settings.set_modifier(context, self.state.get('sub_orig_modifier'))
 
     def on_mouse_move(self, context, event):
+        dx = event.mouse_region_x - self.state['sub_last_x']
+        dy = event.mouse_region_y - self.state['sub_last_y']
         self.state['sub_last_x'] = event.mouse_region_x
         self.state['sub_last_y'] = event.mouse_region_y
+
+        vx = self.state.get('sub_opacity_virtual_x')
+        vy = self.state.get('sub_opacity_virtual_y')
+        if vx is None or vy is None:
+            vx = float(event.mouse_region_x)
+            vy = float(event.mouse_region_y)
+
+        slow = _SHIFT_SLOW_FACTOR if event.shift else 1.0
+        vx += dx / slow
+        vy += dy / slow
+        self.state['sub_opacity_virtual_x'] = vx
+        self.state['sub_opacity_virtual_y'] = vy
+        self.state['sub_fake_cursor_x'] = vx
+        self.state['sub_fake_cursor_y'] = vy
 
         cx = self.state.get('sub_start_region_x')
         cy = self.state.get('sub_start_region_y')
         if cx is None or cy is None:
             return
 
-        mx = event.mouse_region_x
-        my = event.mouse_region_y
+        mx = vx
+        my = vy
         near_left = _is_near_arc_side(cx, cy, mx, my, 'OPACITY')
         near_right = _is_near_arc_side(cx, cy, mx, my, 'MODIFIER')
 
@@ -93,11 +120,10 @@ class OpacitySubMode(SubModeHandler):
 
         if target is not None:
             self.state['sub_opacity_hover_target'] = target
-            value = _value_from_mouse_height(cy, my)
             if target == 'OPACITY':
-                self.settings.set_brush_opacity(context, value)
+                self.settings.set_brush_opacity(context, _opacity_value_from_mouse_height(cy, my))
             else:
-                self.settings.set_modifier(context, value)
+                self.settings.set_modifier(context, _value_from_mouse_height(cy, my))
 
         self.helpers.wrap_cursor_at_window_edge(self.state, context, event)
         context.area.tag_redraw()

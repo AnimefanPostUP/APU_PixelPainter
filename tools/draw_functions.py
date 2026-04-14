@@ -925,9 +925,12 @@ def _draw_sub_mode_cursor_dot(context, state):
 
 
 def _draw_fake_color_pick_cursor(state):
-    """Draw a circle-only fake cursor at the tracked COLOR_PICK position."""
-    x = state.get('sub_last_x')
-    y = state.get('sub_last_y')
+    """Draw a circle-only fake cursor at the tracked sub-mode position."""
+    x = state.get('sub_fake_cursor_x')
+    y = state.get('sub_fake_cursor_y')
+    if x is None or y is None:
+        x = state.get('sub_last_x')
+        y = state.get('sub_last_y')
     if x is None or y is None:
         return
 
@@ -965,7 +968,7 @@ def draw_sub_mode_overlay(context, state):
             _draw_color_pick_axes(rx, ry, h, s, v, 0.0)
 
     _draw_sub_mode_cursor_dot(context, state)
-    if sub == 'COLOR_PICK':
+    if sub in {'COLOR_PICK', 'OPACITY'}:
         _draw_fake_color_pick_cursor(state)
 
     area = context.area
@@ -986,7 +989,7 @@ def draw_sub_mode_overlay(context, state):
             except Exception:
                 mod = 0.5
             line1 = f"Opacity  {val * 100:.1f}%    Modifier  {mod * 100:.1f}%"
-            line2 = "Move near left/right arc; mouse height sets value   Scroll fine-tunes Modifier   LMB apply   RMB cancel"
+            line2 = "Move near left/right arc; mouse height sets value   Shift slow precision   Scroll fine-tunes Modifier   LMB apply   RMB cancel"
 
         elif sub == 'COLOR_PICK':
             target = state.get('sub_color_target') or 'PRIMARY'

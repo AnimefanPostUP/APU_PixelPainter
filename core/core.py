@@ -42,6 +42,10 @@ _state = {
     'sub_mode':           None,  # 'OPACITY' | 'COLOR_PICK' | None
     'sub_last_x':         None,  # mouse region X on last MOUSEMOVE in sub-mode
     'sub_last_y':         None,  # mouse region Y on last MOUSEMOVE in sub-mode
+    'sub_fake_cursor_x':  None,  # fake cursor X for sub-mode precision display
+    'sub_fake_cursor_y':  None,  # fake cursor Y for sub-mode precision display
+    'sub_opacity_virtual_x': None,  # virtual opacity cursor X (shift-slow)
+    'sub_opacity_virtual_y': None,  # virtual opacity cursor Y (shift-slow)
     'sub_orig_opacity':   None,  # brush strength captured when entering OPACITY mode
     'sub_orig_modifier':  None,  # modifier value captured when entering OPACITY mode
     'sub_total_delta':    0.0,   # accumulated real mouse displacement for OPACITY mode
@@ -404,7 +408,7 @@ class PixelPainterOperator(Operator):
         self._brush_overlay_restore = []
 
     def _set_modal_cursor(self, context):
-        desired = 'NONE' if _state.get('sub_mode') == 'COLOR_PICK' else 'CROSSHAIR'
+        desired = 'NONE' if _state.get('sub_mode') in {'COLOR_PICK', 'OPACITY'} else 'CROSSHAIR'
         if getattr(self, '_cursor_mode', None) == desired and getattr(self, '_cursor_is_custom', False):
             return
         self._cursor_is_custom = False
@@ -515,6 +519,10 @@ class PixelPainterOperator(Operator):
         _state['stroke_back_buffer']  = None
         _state['use_secondary']       = False
         _state['sub_mode']           = None
+        _state['sub_fake_cursor_x']  = None
+        _state['sub_fake_cursor_y']  = None
+        _state['sub_opacity_virtual_x'] = None
+        _state['sub_opacity_virtual_y'] = None
         _state['sub_orig_opacity']   = None
         _state['sub_orig_modifier']  = None
         _state['sub_total_delta']    = 0.0
