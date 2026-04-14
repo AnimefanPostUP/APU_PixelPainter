@@ -274,6 +274,41 @@ def _pick_falloff_grid_index(mx, my, cx, cy):
     return None
 
 
+def _get_falloff_panel_layout(cx, cy):
+    panel_width = 220.0
+    panel_height = 132.0
+    panel_x0 = cx - panel_width * 0.5
+    panel_y0 = cy - 240.0
+    panel_x1 = panel_x0 + panel_width
+    panel_y1 = panel_y0 + panel_height
+    return {
+        'cx': (panel_x0 + panel_x1) * 0.5,
+        'cy': (panel_y0 + panel_y1) * 0.5,
+        'x0': panel_x0,
+        'y0': panel_y0,
+        'x1': panel_x1,
+        'y1': panel_y1,
+        'width': panel_width,
+        'height': panel_height,
+    }
+
+
+def _is_point_in_rect(px, py, rect):
+    return rect['x0'] <= px <= rect['x1'] and rect['y0'] <= py <= rect['y1']
+
+
+def _point_on_rect_toward(cx, cy, half_w, half_h, target_x, target_y):
+    dx = target_x - cx
+    dy = target_y - cy
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return cx, cy
+
+    scale = max(abs(dx) / max(half_w, 1e-6), abs(dy) / max(half_h, 1e-6))
+    if scale <= 1e-6:
+        return cx, cy
+    return cx + (dx / scale), cy + (dy / scale)
+
+
 def _draw_circle(cx, cy, radius, color, segments=36):
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     verts = []
@@ -501,7 +536,13 @@ def _draw_mode_icon(mode, cx, cy, size, alpha=1.0):
     y = cy - size * 0.5
     try:
         gpu.state.blend_set('ALPHA_PREMULT')
-        draw_texture_2d(tex, (x, y), size, size)
+        # Prefer a white tint so monochrome source icons stay visible on dark UI.
+        # Fallback keeps compatibility with draw_texture_2d versions without
+        # the color argument.
+        try:
+            draw_texture_2d(tex, (x, y), size, size, color=(1.0, 1.0, 1.0, alpha))
+        except TypeError:
+            draw_texture_2d(tex, (x, y), size, size)
         gpu.state.blend_set('ALPHA')
         return True
     except Exception:
@@ -557,6 +598,10 @@ def _draw_custom_pie_overlay():
     pie_type = _custom_pie_state.get('pie_type', 'MODE')
     pie_items = _custom_pie_items_for_type(pie_type)
     pie_dirs = _pie_dirs_for_type(pie_type)
+    falloff_layout = _get_falloff_grid_layout(cx, cy) if pie_type == 'MODE' else []
+    falloff_panel = _get_falloff_panel_layout(cx, cy) if pie_type == 'MODE' else None
+    falloff_panel_hover = _is_point_in_rect(mx, my, falloff_panel) if falloff_panel is not None else False
+    falloff_hover = _pick_falloff_grid_index(mx, my, cx, cy) if pie_type == 'MODE' else None
     try:
         current_mode = bpy.context.window_manager.pixel_painter_mode
         active_falloff = _active_falloff_value(bpy.context)
@@ -589,13 +634,27 @@ def _draw_custom_pie_overlay():
     _draw_circle(cx, cy, 7, (0.66, 0.44, 0.92, 0.95 * close_alpha))
     arrow_data = _draw_triangle_arrow(cx, cy, mx, my, color=(0.66, 0.44, 0.92, 0.92 * close_alpha))
 
-    if hover is not None and arrow_data is not None:
-        hvx, hvy = pie_dirs[hover]
-        hix = cx + hvx * ring_r
-        hiy = cy + hvy * ring_r
-        ht = anim[hover] if hover < len(anim) else 0.0
-        hte = _ease_in_out(ht)
-        hradius = item_r * (1.0 + 0.18 * hte)
+    if arrow_data is not None and (hover is not None or falloff_panel_hover):
+        if hover is not None:
+            hvx, hvy = pie_dirs[hover]
+            hix = cx + hvx * ring_r
+            hiy = cy + hvy * ring_r
+            ht = anim[hover] if hover < len(anim) else 0.0
+            hte = _ease_in_out(ht)
+            target_ex = None
+            target_ey = None
+            curve_target_key = ('PIE', hover)
+            target_radius = item_r * (1.0 + 0.18 * hte)
+        else:
+            hix = cx + (falloff_panel['cx'] - cx) * open_ease
+            hiy = cy + (falloff_panel['cy'] - cy) * open_ease
+            half_w = falloff_panel['width'] * 0.5 * open_ease
+            half_h = falloff_panel['height'] * 0.5 * open_ease
+            if is_closing:
+                half_w = half_w * (1.0 - close_ease)
+                half_h = half_h * (1.0 - close_ease)
+            curve_target_key = 'FALLOFF_PANEL'
+            target_radius = None
 
         tx, ty = arrow_data['tip']
         ux, uy = arrow_data['dir']
@@ -608,14 +667,18 @@ def _draw_custom_pie_overlay():
             nx = cdx / cdl
             ny = cdy / cdl
 
-            # End point is on hovered bubble rim, pointing toward the arrow.
-            target_ex = hix + nx * hradius
-            target_ey = hiy + ny * hradius
+            if target_radius is not None:
+                # End point is on hovered bubble rim, pointing toward the arrow.
+                target_ex = hix + nx * target_radius
+                target_ey = hiy + ny * target_radius
+            else:
+                target_ex, target_ey = _point_on_rect_toward(hix, hiy, half_w, half_h, tx, ty)
+
             prev_hover = _custom_pie_state.get('curve_hover_index')
-            hover_changed = (prev_hover != hover)
+            hover_changed = (prev_hover != curve_target_key)
             ex, ey, transition = _update_curve_endpoint(
                 now, target_ex, target_ey, restart_transition=hover_changed)
-            _custom_pie_state['curve_hover_index'] = hover
+            _custom_pie_state['curve_hover_index'] = curve_target_key
 
             # Pull back toward center only while fading to a new target.
             center_mix = 0.2 * transition
@@ -748,20 +811,11 @@ def _draw_custom_pie_overlay():
             _draw_bubble_icon_text(icon_key, label, ix, iy, item_r, scale=content_scale, alpha=content_alpha)
 
     if pie_type == 'MODE':
-        panel_alpha = 0.92 * close_alpha
-        panel_width = 220.0
-        panel_height = 132.0
-        panel_x0 = cx - panel_width * 0.5
-        panel_y0 = cy - 240.0
-        panel_x1 = panel_x0 + panel_width
-        panel_y1 = panel_y0 + panel_height
-        falloff_hover = _pick_falloff_grid_index(mx, my, cx, cy)
+        panel_y1 = falloff_panel['y1']
 
-        _draw_rect(panel_x0, panel_y0, panel_x1, panel_y1, (0.12, 0.12, 0.12, panel_alpha))
-        _draw_rect_outline(panel_x0, panel_y0, panel_x1, panel_y1, (0.30, 0.30, 0.30, 0.95 * close_alpha))
         _draw_text_centered("Brush Falloff", cx, panel_y1 + 30.0, size=12, alpha=0.95 * close_alpha)
 
-        for index, item in enumerate(_get_falloff_grid_layout(cx, cy)):
+        for index, item in enumerate(falloff_layout):
             ix = cx + (item['cx'] - cx) * open_ease
             iy = cy + (item['cy'] - cy) * open_ease
             is_selected = (item['mode'] == active_falloff)
@@ -782,16 +836,33 @@ def _draw_custom_pie_overlay():
             if is_selected:
                 fill = (0.66, 0.44, 0.92, 0.94 * close_alpha)
                 border = (0.90, 0.80, 1.00, 0.95 * close_alpha)
+                icon_alpha = 1.00 * close_alpha
             elif is_hovered:
                 fill = (0.24, 0.24, 0.24, 0.96 * close_alpha)
                 border = (0.66, 0.44, 0.92, 0.90 * close_alpha)
+                icon_alpha = 0.95 * close_alpha
             else:
                 fill = (0.18, 0.18, 0.18, 0.92 * close_alpha)
                 border = (0.30, 0.30, 0.30, 0.92 * close_alpha)
+                icon_alpha = 0.78 * close_alpha
 
             _draw_rect(x0, y0, x1, y1, fill)
             _draw_rect_outline(x0, y0, x1, y1, border)
-            _draw_mode_icon(_falloff_icon_key(item['mode']), ix, iy, max(1, int(button_size * 0.62)), alpha=close_alpha)
+            icon_size = max(1, int(button_size * 0.62))
+            icon_y = iy + (icon_size * 0.2)
+            icon_drawn = _draw_mode_icon(
+                _falloff_icon_key(item['mode']),
+                ix,
+                icon_y,
+                icon_size,
+                alpha=icon_alpha,
+            )
+            label_alpha = max(0.72 * close_alpha, icon_alpha)
+            if icon_drawn:
+                label_y = iy - (button_size * 0.22)
+            else:
+                label_y = iy
+            _draw_text_centered(item['label'], ix, label_y, size=10, alpha=label_alpha)
 
     gpu.state.blend_set('NONE')
 
@@ -959,6 +1030,12 @@ class PixelPainterCustomPieOperator(Operator):
             self._finish(context)
             return {'CANCELLED'}
 
+        # Let undo/redo shortcuts reach the paint operators instead of being
+        # swallowed by this custom falloff/modal pie.
+        if event.type == 'Z' and event.value == 'PRESS' and event.ctrl:
+            self._finish(context)
+            return {'PASS_THROUGH'}
+
         if _custom_pie_state.get('is_closing'):
             if event.type == 'TIMER':
                 close_t = min(1.0, max(0.0, (time.perf_counter() - _custom_pie_state.get('close_started_at', 0.0)) / 0.075))
@@ -974,11 +1051,19 @@ class PixelPainterCustomPieOperator(Operator):
             _custom_pie_state['mouse_x'] = event.mouse_region_x
             _custom_pie_state['mouse_y'] = event.mouse_region_y
             if _custom_pie_state.get('pie_type', 'MODE') == 'MODE':
+                center_x = _custom_pie_state.get('center_x', 0)
+                center_y = _custom_pie_state.get('center_y', 0)
+                falloff_panel = _get_falloff_panel_layout(center_x, center_y)
+                if _is_point_in_rect(event.mouse_region_x, event.mouse_region_y, falloff_panel):
+                    _custom_pie_state['hover_index'] = None
+                    context.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
+
                 falloff_idx = _pick_falloff_grid_index(
                     event.mouse_region_x,
                     event.mouse_region_y,
-                    _custom_pie_state.get('center_x', 0),
-                    _custom_pie_state.get('center_y', 0),
+                    center_x,
+                    center_y,
                 )
                 if falloff_idx is not None:
                     _custom_pie_state['hover_index'] = None

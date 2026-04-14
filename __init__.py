@@ -28,6 +28,11 @@ from .tools import overlays
 from .core import variables
 from .utils import settings_service
 from .core import core_runtime
+from .core.submodes import base as submode_base
+from .core.submodes import helpers as submode_helpers
+from .core.submodes import opacity as submode_opacity
+from .core.submodes import color_pick as submode_color_pick
+from .core.submodes import controller as submode_controller
 from .tools import tool_logic
 from .ui import menu_controllers
 from .core import core
@@ -92,6 +97,11 @@ def register():
     importlib.reload(variables)
     importlib.reload(settings_service)
     importlib.reload(core_runtime)
+    importlib.reload(submode_base)
+    importlib.reload(submode_helpers)
+    importlib.reload(submode_opacity)
+    importlib.reload(submode_color_pick)
+    importlib.reload(submode_controller)
     importlib.reload(tool_logic)
     importlib.reload(menu_controllers)
     importlib.reload(core)
