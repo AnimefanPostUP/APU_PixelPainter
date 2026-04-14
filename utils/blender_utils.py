@@ -31,9 +31,25 @@ def mouse_to_view_uv_or_px(context, event):
 def get_brush_image_radius(context):
     """Map brush screen-pixel size [1-512] linearly to image pixel radius [0-64]."""
     try:
+        wm = context.window_manager
+        if hasattr(wm, 'pixel_painter_active_size'):
+            return max(0, min(64, int(wm.pixel_painter_active_size)))
+
         ups   = context.tool_settings.unified_paint_settings
         brush = context.tool_settings.image_paint.brush
         size  = ups.size if ups.use_unified_size else (brush.size if brush else 1)
+    except Exception:
+        size = 1
+    size = max(1, min(512, size))
+    return round((size - 1) * 64 / 64)
+
+
+def get_raw_brush_image_radius(context):
+    """Map raw brush/unified size [1-512] to image radius [0-64], ignoring routed tool size."""
+    try:
+        ups = context.tool_settings.unified_paint_settings
+        brush = context.tool_settings.image_paint.brush
+        size = ups.size if ups.use_unified_size else (brush.size if brush else 1)
     except Exception:
         size = 1
     size = max(1, min(512, size))

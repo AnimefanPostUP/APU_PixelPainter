@@ -82,6 +82,83 @@ def _update_spray_falloff(self, context):
     _apply_curve_preset_from_falloff(context, self.pixel_painter_spray_falloff)
 
 
+def _update_mode(self, context):
+    """When the tool mode changes, load effective tool settings for that mode."""
+    try:
+        core.apply_active_tool_settings(context)
+    except Exception:
+        pass
+
+
+def _get_active_size(self):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        return int(svc.get_tool_size(ctx, mode, force_global=force_global))
+    except Exception:
+        return int(getattr(self, 'pixel_painter_radius', 1))
+
+
+def _set_active_size(self, value):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        svc.set_tool_size(ctx, mode, value, force_global=force_global)
+        core.apply_active_tool_settings(ctx)
+    except Exception:
+        pass
+
+
+def _get_active_opacity(self):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        return float(svc.get_tool_opacity(ctx, mode, force_global=force_global))
+    except Exception:
+        return 1.0
+
+
+def _set_active_opacity(self, value):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        svc.set_tool_opacity(ctx, mode, value, force_global=force_global)
+        core.apply_active_tool_settings(ctx)
+    except Exception:
+        pass
+
+
+def _get_active_modifier(self):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        return float(svc.get_tool_modifier(ctx, mode, force_global=force_global))
+    except Exception:
+        return 0.5
+
+
+def _set_active_modifier(self, value):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        svc.set_tool_modifier(ctx, mode, value, force_global=force_global)
+        core.apply_active_tool_settings(ctx)
+    except Exception:
+        pass
+
+
 def register():
     # Clean up old custom-pie handlers/timers before reloading module code.
     try:
@@ -131,6 +208,7 @@ def register():
             ('SMEAR',   "Smear",   "Drag pixels — Spread sets reach, Opacity sets blend strength"),
         ],
         default='SQUARE',
+        update=_update_mode,
     )
 
     _falloff_items = [
@@ -168,6 +246,75 @@ def register():
         description="Generic modifier value (currently used as Spread)",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR',
     )
+    bpy.types.WindowManager.pixel_painter_global_modifier = bpy.props.FloatProperty(
+        name="Global Modifier",
+        min=0.0, max=1.0, default=0.5, subtype='FACTOR', options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_global_opacity = bpy.props.FloatProperty(
+        name="Global Opacity",
+        min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_temp_smooth_force_global = bpy.props.BoolProperty(
+        name="Temp Smooth Force Global",
+        default=False,
+        options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_active_size = bpy.props.IntProperty(
+        name="Size",
+        description="Active size setter routing to global or local value for current tool",
+        min=0,
+        max=64,
+        get=_get_active_size,
+        set=_set_active_size,
+    )
+    bpy.types.WindowManager.pixel_painter_active_opacity = bpy.props.FloatProperty(
+        name="Opacity",
+        description="Active opacity setter routing to global or local value for current tool",
+        min=0.0,
+        max=1.0,
+        subtype='FACTOR',
+        get=_get_active_opacity,
+        set=_set_active_opacity,
+    )
+    bpy.types.WindowManager.pixel_painter_active_modifier = bpy.props.FloatProperty(
+        name="Modifier",
+        description="Active modifier setter routing to global or local value for current tool",
+        min=0.0,
+        max=1.0,
+        subtype='FACTOR',
+        get=_get_active_modifier,
+        set=_set_active_modifier,
+    )
+    
+    # Per-tool settings: Size, Modifier, Opacity with global/per-tool toggles
+    # Defaults:
+    # - Size: SQUARE, CIRCLE, SMOOTH, SMEAR use global; SPRAY, LINE use local
+    # - Opacity: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
+    # - Modifier: SMOOTH, SMEAR use global; SQUARE, CIRCLE, SPRAY, LINE use local
+    
+    _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
+    _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
+    _opacity_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
+    
+    for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR']:
+        # Size settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size',
+                bpy.props.IntProperty(name=f"{tool} Size", min=0, max=64, default=1))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Size", default=_size_use_global.get(tool, True)))
+        
+        # Modifier settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier',
+                bpy.props.FloatProperty(name=f"{tool} Modifier", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True)))
+        
+        # Opacity settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity',
+                bpy.props.FloatProperty(name=f"{tool} Opacity", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Opacity", default=_opacity_use_global.get(tool, True)))
+    
     _blend_items = [
         ('MIX',        "Normal",      "Normal blend"),
         ('ADD',        "Add",         "Add blend"),
@@ -205,6 +352,9 @@ def register():
     bpy.types.WindowManager.pixel_painter_ui_show_shortcuts = bpy.props.BoolProperty(
         name="Show Shortcuts", default=True,
     )
+    bpy.types.WindowManager.pixel_painter_ui_show_tool_settings = bpy.props.BoolProperty(
+        name="Show Tool Settings", default=False,
+    )
     bpy.types.WindowManager.pixel_painter_grid_opacity = bpy.props.FloatProperty(
         name="Grid Opacity",
         description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
@@ -221,6 +371,15 @@ def register():
     bpy.utils.register_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.register_class(core.PixelPainterOperator)
     bpy.utils.register_tool(user_interface.PixelPainterTool)
+    try:
+        svc = settings_service.PixelPainterSettingsService()
+        bpy.context.window_manager.pixel_painter_global_opacity = svc.get_brush_opacity(bpy.context)
+    except Exception:
+        pass
+    try:
+        core.apply_active_tool_settings(bpy.context)
+    except Exception:
+        pass
 
 
 def unregister():
@@ -240,11 +399,34 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_falloff
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
+    del bpy.types.WindowManager.pixel_painter_global_modifier
+    del bpy.types.WindowManager.pixel_painter_global_opacity
+    del bpy.types.WindowManager.pixel_painter_temp_smooth_force_global
+    del bpy.types.WindowManager.pixel_painter_active_size
+    del bpy.types.WindowManager.pixel_painter_active_opacity
+    del bpy.types.WindowManager.pixel_painter_active_modifier
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
     del bpy.types.WindowManager.pixel_painter_ui_show_shortcuts
+    del bpy.types.WindowManager.pixel_painter_ui_show_tool_settings
     del bpy.types.WindowManager.pixel_painter_grid_opacity
+    
+    # Delete per-tool settings
+    _tools = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR']
+    for tool in _tools:
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity')
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)

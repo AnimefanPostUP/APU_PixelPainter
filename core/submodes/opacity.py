@@ -62,6 +62,13 @@ class OpacitySubMode(SubModeHandler):
         self.helpers = helpers
         self.on_exit = on_exit
 
+    @staticmethod
+    def _tool_context(context):
+        wm = context.window_manager
+        mode = wm.pixel_painter_mode
+        force_global = bool(mode == 'SMOOTH' and getattr(wm, 'pixel_painter_temp_smooth_force_global', False))
+        return mode, force_global
+
     def on_enter(self, context, event):
         self.state['sub_mode'] = self.mode_name
         self.state['sub_last_x'] = event.mouse_region_x
@@ -70,15 +77,18 @@ class OpacitySubMode(SubModeHandler):
         self.state['sub_fake_cursor_y'] = event.mouse_region_y
         self.state['sub_opacity_virtual_x'] = float(event.mouse_region_x)
         self.state['sub_opacity_virtual_y'] = float(event.mouse_region_y)
-        self.state['sub_orig_opacity'] = self.settings.get_brush_opacity(context)
-        self.state['sub_orig_modifier'] = self.settings.get_modifier(context)
+        mode, force_global = self._tool_context(context)
+        self.state['sub_orig_opacity'] = self.settings.get_tool_opacity(context, mode, force_global=force_global)
+        self.state['sub_orig_modifier'] = self.settings.get_tool_modifier(context, mode, force_global=force_global)
         self.state['sub_total_delta'] = 0.0
         self.state['sub_opacity_hover_target'] = 'OPACITY'
         self.helpers.set_sub_start_to_event(self.state, event)
 
     def on_cancel(self, context):
-        self.settings.set_brush_opacity(context, self.state.get('sub_orig_opacity'))
-        self.settings.set_modifier(context, self.state.get('sub_orig_modifier'))
+        mode, force_global = self._tool_context(context)
+        self.settings.set_tool_opacity(context, mode, self.state.get('sub_orig_opacity'), force_global=force_global)
+        self.settings.set_tool_modifier(context, mode, self.state.get('sub_orig_modifier'), force_global=force_global)
+        self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
 
     def on_mouse_move(self, context, event):
         dx = event.mouse_region_x - self.state['sub_last_x']
@@ -119,23 +129,41 @@ class OpacitySubMode(SubModeHandler):
             target = 'OPACITY' if mx < cx else 'MODIFIER'
 
         if target is not None:
+            mode, force_global = self._tool_context(context)
             self.state['sub_opacity_hover_target'] = target
             if target == 'OPACITY':
-                self.settings.set_brush_opacity(context, _opacity_value_from_mouse_height(cy, my))
+                self.settings.set_tool_opacity(
+                    context,
+                    mode,
+                    _opacity_value_from_mouse_height(cy, my),
+                    force_global=force_global,
+                )
             else:
-                self.settings.set_modifier(context, _value_from_mouse_height(cy, my))
+                self.settings.set_tool_modifier(
+                    context,
+                    mode,
+                    _value_from_mouse_height(cy, my),
+                    force_global=force_global,
+                )
+            self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
 
         self.helpers.wrap_cursor_at_window_edge(self.state, context, event)
         context.area.tag_redraw()
 
     def on_wheel_up(self, context, event):
         step = 0.01 if event.shift else 0.05
-        self.settings.set_modifier(context, self.settings.get_modifier(context) + step)
+        mode, force_global = self._tool_context(context)
+        value = self.settings.get_tool_modifier(context, mode, force_global=force_global)
+        self.settings.set_tool_modifier(context, mode, value + step, force_global=force_global)
+        self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
         context.area.tag_redraw()
 
     def on_wheel_down(self, context, event):
         step = 0.01 if event.shift else 0.05
-        self.settings.set_modifier(context, self.settings.get_modifier(context) - step)
+        mode, force_global = self._tool_context(context)
+        value = self.settings.get_tool_modifier(context, mode, force_global=force_global)
+        self.settings.set_tool_modifier(context, mode, value - step, force_global=force_global)
+        self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
         context.area.tag_redraw()
 
     def on_mouse_left_press(self, context, event):

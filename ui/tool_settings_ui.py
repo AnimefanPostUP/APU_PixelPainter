@@ -103,18 +103,12 @@ def draw_tool_settings(context, layout):
     layout.use_property_split = False
     layout.use_property_decorate = False
 
-    # Always-visible quick controls at the top
-    if ups.use_unified_size:
-        layout.prop(ups, "size", text="Size (1-512→0-64px)")
-    elif brush:
-        layout.prop(brush, "size", text="Size (1-512→0-64px)")
+    # Always-visible quick controls at the top (routed to per-tool/global setting)
+    layout.prop(wm, "pixel_painter_active_size", text="Size")
 
     row = layout.row(align=True)
-    if ups.use_unified_strength:
-        row.prop(ups, "strength", text="Opacity", slider=True)
-    elif brush:
-        row.prop(brush, "strength", text="Opacity", slider=True)
-    row.prop(wm, "pixel_painter_modifier", text="Modifier", slider=True)
+    row.prop(wm, "pixel_painter_active_opacity", text="Opacity", slider=True)
+    row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
 
     row = layout.row(align=True)
     if ups.use_unified_color:
@@ -165,6 +159,29 @@ def draw_tool_settings(context, layout):
     col.separator()
     col.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
     col.separator()
+    
+    # Per-tool settings for current mode
+    if _draw_foldout(col, wm, "pixel_painter_ui_show_tool_settings", "Per-Tool Settings"):
+        tool_col = col.box().column(align=True)
+        tool_col.use_property_split = True
+        
+        # Size toggle and value
+        row = tool_col.row(align=True)
+        row.prop(wm, f'pixel_painter_{mode}_use_global_size', text="Use Global Size")
+        if not getattr(wm, f'pixel_painter_{mode}_use_global_size', True):
+            row.prop(wm, f'pixel_painter_{mode}_size', text="Size")
+        
+        # Modifier toggle and value
+        row = tool_col.row(align=True)
+        row.prop(wm, f'pixel_painter_{mode}_use_global_modifier', text="Use Global Modifier")
+        if not getattr(wm, f'pixel_painter_{mode}_use_global_modifier', True):
+            row.prop(wm, f'pixel_painter_{mode}_modifier', text="Modifier", slider=True)
+        
+        # Opacity toggle and value
+        row = tool_col.row(align=True)
+        row.prop(wm, f'pixel_painter_{mode}_use_global_opacity', text="Use Global Opacity")
+        if not getattr(wm, f'pixel_painter_{mode}_use_global_opacity', True):
+            row.prop(wm, f'pixel_painter_{mode}_opacity', text="Opacity", slider=True)
 
     if _draw_foldout(col, wm, "pixel_painter_ui_show_blend_mode", "Blend Mode"):
         blend_col = col.box().column(align=True)

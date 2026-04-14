@@ -86,6 +86,7 @@ _state = {
     'outline_timer':       None,
     'current_tool_id':     None,
     'previous_tool_id':    None,
+    'last_observed_raw_radius': None,
 }
 
 # ---------------------------------------------------------------------------
@@ -109,15 +110,48 @@ _sub_mode_controller = SubModeController(_state, _core_runtime, _settings)
 _variable_store = build_default_variable_store()
 
 
+def _is_shift_smooth_global(context):
+    try:
+        wm = context.window_manager
+        return bool(wm.pixel_painter_mode == 'SMOOTH' and getattr(wm, 'pixel_painter_temp_smooth_force_global', False))
+    except Exception:
+        return False
+
+
+def apply_active_tool_settings(context):
+    """Load active tool settings (global/local aware) into runtime values."""
+    mode = context.window_manager.pixel_painter_mode
+    force_global = _is_shift_smooth_global(context)
+    _settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
+    _sync_runtime_tool_info(context)
+
+
+def _sync_external_brush_size_into_tool_setting(context):
+    """Capture external brush-size edits (e.g. F key) into active tool/global-local setting."""
+    mode = context.window_manager.pixel_painter_mode
+    force_global = _is_shift_smooth_global(context)
+    raw_radius = blender_utils.get_raw_brush_image_radius(context)
+    prev = _state.get('last_observed_raw_radius')
+
+    if prev is None:
+        _state['last_observed_raw_radius'] = raw_radius
+        return
+
+    if raw_radius != prev:
+        _settings.set_tool_size(context, mode, raw_radius, force_global=force_global)
+        _state['last_observed_raw_radius'] = raw_radius
+
+
 def _sync_runtime_tool_info(context):
     """Keep core runtime, state, and variable-store tool info in sync."""
     mode = context.window_manager.pixel_painter_mode
+    force_global = _is_shift_smooth_global(context)
     _core_runtime.set_current_tool(mode)
     _state['current_tool_id'] = _core_runtime.current_tool_id
     _state['previous_tool_id'] = _core_runtime.previous_tool_id
 
-    radius = blender_utils.get_brush_image_radius(context)
-    modifier = context.window_manager.pixel_painter_modifier
+    radius = _settings.get_tool_size(context, mode, force_global=force_global)
+    modifier = _settings.get_tool_modifier(context, mode, force_global=force_global)
     falloff = (
         context.window_manager.pixel_painter_spray_falloff
         if mode == 'SPRAY'
@@ -242,6 +276,7 @@ class PixelPainterSetModeOperator(Operator):
         context.window_manager.pixel_painter_mode = self.mode
         if self.mode != 'LINE':
             _state['last_shape'] = self.mode
+        apply_active_tool_settings(context)
         return {'FINISHED'}
 
 
@@ -448,10 +483,11 @@ class PixelPainterOperator(Operator):
             return
 
         mode    = context.window_manager.pixel_painter_mode
+        force_global = _is_shift_smooth_global(context)
         color   = self._get_brush_color(context)
         blend   = blender_utils.get_brush_blend_mode(context)
-        opacity = blender_utils.get_brush_opacity(context)
-        radius  = blender_utils.get_brush_image_radius(context)
+        opacity = _settings.get_tool_opacity(context, mode, force_global=force_global)
+        radius  = _settings.get_tool_size(context, mode, force_global=force_global)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
         env = DrawEnvironment(
@@ -498,6 +534,10 @@ class PixelPainterOperator(Operator):
                 pass
         try:
             self._restore_modal_cursor(bpy.context)
+        except Exception:
+            pass
+        try:
+            bpy.context.window_manager.pixel_painter_temp_smooth_force_global = False
         except Exception:
             pass
         self._restore_builtin_brush_overlay()
@@ -560,6 +600,7 @@ class PixelPainterOperator(Operator):
         _state['outline_anim_start']  = 0.0
         _state['current_tool_id']     = None
         _state['previous_tool_id']    = None
+        _state['last_observed_raw_radius'] = None
         _sub_mode_controller.clear_processes()
         _core_runtime.clear_all_processes()
         self.button_down       = False
@@ -593,7 +634,8 @@ class PixelPainterOperator(Operator):
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         v2d    = region.view2d if region else None
         mode   = context.window_manager.pixel_painter_mode
-        _sync_runtime_tool_info(context)
+        _sync_external_brush_size_into_tool_setting(context)
+        apply_active_tool_settings(context)
 
         # If the cursor has left the OS window, cancel any active stroke and
         # ignore all input until it returns.
@@ -702,7 +744,9 @@ class PixelPainterOperator(Operator):
                 if not _state['temp_shift_mode_active']:
                     _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
                     _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_temp_smooth_force_global = True
                 context.window_manager.pixel_painter_mode = 'SMOOTH'
+                apply_active_tool_settings(context)
                 active_mode = 'SMOOTH'
 
             if event.ctrl or _state['ctrl_pick_active']:
@@ -767,7 +811,9 @@ class PixelPainterOperator(Operator):
                 if not _state['temp_shift_mode_active']:
                     _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
                     _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_temp_smooth_force_global = True
                 context.window_manager.pixel_painter_mode = 'SMOOTH'
+                apply_active_tool_settings(context)
                 active_mode = 'SMOOTH'
 
             if event.ctrl or _state['ctrl_pick_active']:
@@ -884,7 +930,9 @@ class PixelPainterOperator(Operator):
             if not _state['temp_shift_mode_active']:
                 _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
                 _state['temp_shift_mode_active'] = True
+            context.window_manager.pixel_painter_temp_smooth_force_global = True
             context.window_manager.pixel_painter_mode = 'SMOOTH'
+            apply_active_tool_settings(context)
 
             if self.button_down or self.button_right_down:
                 if mode == 'LINE':
@@ -926,6 +974,8 @@ class PixelPainterOperator(Operator):
                 context.window_manager.pixel_painter_mode = restore_mode
                 _state['temp_shift_mode_active'] = False
                 _state['temp_shift_prev_mode'] = None
+            context.window_manager.pixel_painter_temp_smooth_force_global = False
+            apply_active_tool_settings(context)
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
@@ -990,9 +1040,10 @@ class PixelPainterOperator(Operator):
         if start_with_shift_override and not _state['temp_shift_mode_active']:
             _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
             _state['temp_shift_mode_active'] = True
+            context.window_manager.pixel_painter_temp_smooth_force_global = True
             context.window_manager.pixel_painter_mode = 'SMOOTH'
 
-        _sync_runtime_tool_info(context)
+        apply_active_tool_settings(context)
 
         self.button_down       = (not is_rmb) and not start_with_picker
         self.button_right_down = is_rmb and not start_with_picker
@@ -1014,6 +1065,7 @@ class PixelPainterOperator(Operator):
         _state['outline_to_cx'] = None
         _state['outline_to_cy'] = None
         _state['outline_anim_start'] = time.perf_counter()
+        _state['last_observed_raw_radius'] = blender_utils.get_raw_brush_image_radius(context)
 
         _state['ctrl_pick_active']   = start_with_picker
         _state['ctrl_hovered_color'] = None
