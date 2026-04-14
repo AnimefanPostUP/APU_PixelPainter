@@ -420,6 +420,77 @@ def _draw_modifier_arc_ring(cx, cy, inner_r, outer_r, modifier):
     gpu.state.depth_test_set('LESS_EQUAL')
 
 
+def _draw_ring_sector(cx, cy, inner_r, outer_r, a0, a1, rgba, steps=28):
+    """Draw an annulus sector between angles a0..a1 (radians)."""
+    if a1 < a0:
+        a0, a1 = a1, a0
+    steps = max(2, int(steps))
+    tris = []
+    for i in range(steps):
+        t0 = i / steps
+        t1 = (i + 1) / steps
+        aa = a0 + (a1 - a0) * t0
+        ab = a0 + (a1 - a0) * t1
+
+        xi0 = cx + inner_r * math.cos(aa)
+        yi0 = cy + inner_r * math.sin(aa)
+        xo0 = cx + outer_r * math.cos(aa)
+        yo0 = cy + outer_r * math.sin(aa)
+        xi1 = cx + inner_r * math.cos(ab)
+        yi1 = cy + inner_r * math.sin(ab)
+        xo1 = cx + outer_r * math.cos(ab)
+        yo1 = cy + outer_r * math.sin(ab)
+
+        tris += [
+            (xi0, yi0), (xo0, yo0), (xo1, yo1),
+            (xi0, yi0), (xo1, yo1), (xi1, yi1),
+        ]
+
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch = gpu_extras.batch.batch_for_shader(shader, 'TRIS', {"pos": tris})
+    shader.uniform_float("color", rgba)
+    batch.draw(shader)
+
+
+def _draw_rounded_arc_bar(cx, cy, mid_r, thickness, center_a, span_a, value, bg_rgba, fill_rgba, invert_fill=False):
+    """Draw a rounded arc bar with a filled amount from bottom to top."""
+    half = span_a * 0.5
+    a0 = center_a - half
+    a1 = center_a + half
+    inner_r = max(1.0, mid_r - thickness * 0.5)
+    outer_r = inner_r + thickness
+
+    _draw_ring_sector(cx, cy, inner_r, outer_r, a0, a1, bg_rgba, steps=28)
+
+    t = max(0.0, min(1.0, value))
+    if t > 0.0:
+        if invert_fill:
+            fill_a0 = a1 - (a1 - a0) * t
+            _draw_ring_sector(cx, cy, inner_r, outer_r, fill_a0, a1, fill_rgba, steps=28)
+        else:
+            fill_a1 = a0 + (a1 - a0) * t
+            _draw_ring_sector(cx, cy, inner_r, outer_r, a0, fill_a1, fill_rgba, steps=28)
+
+    cap_r = thickness * 0.5
+    for aa in (a0, a1):
+        mx = cx + mid_r * math.cos(aa)
+        my = cy + mid_r * math.sin(aa)
+        _draw_filled_circle(mx, my, cap_r, bg_rgba)
+
+    if t > 0.0:
+        if invert_fill:
+            fill_cap = a1 - (a1 - a0) * t
+        else:
+            fill_cap = a0 + (a1 - a0) * t
+        fx = cx + mid_r * math.cos(fill_cap)
+        fy = cy + mid_r * math.sin(fill_cap)
+        _draw_filled_circle(fx, fy, cap_r, fill_rgba)
+        start_a = a1 if invert_fill else a0
+        sx = cx + mid_r * math.cos(start_a)
+        sy = cy + mid_r * math.sin(start_a)
+        _draw_filled_circle(sx, sy, cap_r, fill_rgba)
+
+
 def _draw_circle_outline(cx, cy, radius, rgba, width=2.0, steps=60):
     """Draw a thin circle outline."""
     steps = max(8, int(steps))
@@ -793,31 +864,57 @@ def _draw_sub_mode_cursor_dot(context, state):
     elif sub == 'OPACITY':
         try:
             curr_op = ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0)
-            color   = tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
-        except Exception:
-            curr_op, color = 1.0, (1.0, 1.0, 1.0)
-
-        _draw_checker_circle(rx, ry, radius)
-        _draw_filled_circle(rx, ry, radius, (*color, curr_op))
-
-        # Modifier arc ring around the opacity circle
-        try:
             mod = context.window_manager.pixel_painter_modifier
         except Exception:
-            mod = 0.5
-        _draw_modifier_arc_ring(rx, ry, radius + 5.0, radius + 10.0, mod)
+            curr_op, mod = 1.0, 0.5
 
-        # Percentage label to the right of the circle
+        arc_mid_r = 156.0
+        arc_thickness = 8.0
+        arc_span = math.radians(50.0)
+        hover_target = state.get('sub_opacity_hover_target')
+
+        left_bg = (0.26, 0.26, 0.26, 0.55)
+        right_bg = (0.26, 0.26, 0.26, 0.55)
+        if hover_target == 'OPACITY':
+            left_bg = (0.34, 0.34, 0.34, 0.70)
+        elif hover_target == 'MODIFIER':
+            right_bg = (0.34, 0.34, 0.34, 0.70)
+
+        left_fill = (0.95, 0.84, 0.22, 0.95)
+        right_fill = (0.66, 0.44, 0.92, 0.95)
+        _draw_rounded_arc_bar(
+            rx,
+            ry,
+            arc_mid_r,
+            arc_thickness,
+            math.pi,
+            arc_span,
+            curr_op,
+            left_bg,
+            left_fill,
+            invert_fill=True,
+        )
+        _draw_rounded_arc_bar(rx, ry, arc_mid_r, arc_thickness, 0.0, arc_span, mod, right_bg, right_fill)
+
+        _draw_circle_outline(rx, ry, arc_mid_r + arc_thickness * 0.9, (0.0, 0.0, 0.0, 0.35), width=1.2, steps=72)
+
+        # Labels next to each arc and current percentages.
         gpu.state.blend_set('NONE')
         font_id = 0
-        blf.size(font_id, 13)
-        lx = rx + radius + 14
-        for label, val in [("Opacity", curr_op), ("Modifier", mod)]:
-            text = f"{label}  {val * 100:.1f}%"
-            _, lh = blf.dimensions(font_id, text)
-            blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
-            blf.position(font_id, lx, ry + (lh + 3 if label == "Opacity" else -(lh + 3)), 0)
-            blf.draw(font_id, text)
+        blf.size(font_id, 12)
+        left_txt = f"Opacity  {curr_op * 100:.0f}%"
+        right_txt = f"Modifier  {mod * 100:.0f}%"
+
+        lw, lh = blf.dimensions(font_id, left_txt)
+        rw, rh = blf.dimensions(font_id, right_txt)
+
+        blf.color(font_id, 1.0, 0.95, 0.5, 1.0)
+        blf.position(font_id, rx - arc_mid_r - lw - 14, ry - lh * 0.5, 0)
+        blf.draw(font_id, left_txt)
+
+        blf.color(font_id, 0.86, 0.76, 0.98, 1.0)
+        blf.position(font_id, rx + arc_mid_r + 14, ry - rh * 0.5, 0)
+        blf.draw(font_id, right_txt)
         gpu.state.blend_set('ALPHA')
 
     _draw_circle_outline(rx, ry, radius, (0.0, 0.0, 0.0, 0.85))
@@ -889,7 +986,7 @@ def draw_sub_mode_overlay(context, state):
             except Exception:
                 mod = 0.5
             line1 = f"Opacity  {val * 100:.1f}%    Modifier  {mod * 100:.1f}%"
-            line2 = "Mouse Opacity   Scroll Modifier   Shift slow   LMB apply   RMB cancel"
+            line2 = "Move near left/right arc; mouse height sets value   Scroll fine-tunes Modifier   LMB apply   RMB cancel"
 
         elif sub == 'COLOR_PICK':
             target = state.get('sub_color_target') or 'PRIMARY'
