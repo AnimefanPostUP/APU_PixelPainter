@@ -703,7 +703,10 @@ def _draw_custom_pie_overlay():
         vx, vy = pie_dirs[i]
         ix = cx + vx * ring_r * open_ease
         iy = cy + vy * ring_r * open_ease
-        is_selected = (mode == active_falloff)
+        if pie_type == 'FALLOFF':
+            is_selected = (mode == active_falloff)
+        else:
+            is_selected = (mode == current_mode)
 
         t = anim[i] if i < len(anim) else 0.0
         te = _ease_in_out(t)
@@ -756,7 +759,7 @@ def _draw_custom_pie_overlay():
 
         _draw_rect(panel_x0, panel_y0, panel_x1, panel_y1, (0.12, 0.12, 0.12, panel_alpha))
         _draw_rect_outline(panel_x0, panel_y0, panel_x1, panel_y1, (0.30, 0.30, 0.30, 0.95 * close_alpha))
-        _draw_text_centered("Brush Falloff", cx, panel_y1 - 10.0, size=12, alpha=0.95 * close_alpha)
+        _draw_text_centered("Brush Falloff", cx, panel_y1 + 30.0, size=12, alpha=0.95 * close_alpha)
 
         for index, item in enumerate(_get_falloff_grid_layout(cx, cy)):
             ix = cx + (item['cx'] - cx) * open_ease
