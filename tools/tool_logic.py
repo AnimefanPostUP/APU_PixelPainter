@@ -6,7 +6,7 @@ from typing import Callable, Dict
 import numpy as np
 
 from . import draw_functions
-from . import math_utils
+from ..utils import math_utils
 
 
 @dataclass

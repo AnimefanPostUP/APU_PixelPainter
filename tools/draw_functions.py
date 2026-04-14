@@ -9,8 +9,8 @@ import gpu
 import gpu_extras.batch
 import numpy as np
 
-from . import math_utils
-from . import blender_utils
+from ..utils import math_utils
+from ..utils import blender_utils
 
 
 # ---------------------------------------------------------------------------

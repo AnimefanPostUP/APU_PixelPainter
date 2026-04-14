@@ -20,20 +20,20 @@
 import bpy
 import importlib
 
-from . import generic_utils
-from . import math_utils
-from . import blender_utils
-from . import draw_functions
-from . import overlays
-from . import variables
-from . import settings_service
-from . import core_runtime
-from . import tool_logic
-from . import menu_controllers
-from . import core
-from . import user_interface
-from . import pie_menu
-from . import tool_settings_ui
+from .utils import generic_utils
+from .utils import math_utils
+from .utils import blender_utils
+from .tools import draw_functions
+from .tools import overlays
+from .core import variables
+from .utils import settings_service
+from .core import core_runtime
+from .tools import tool_logic
+from .ui import menu_controllers
+from .core import core
+from .ui import user_interface
+from .ui import pie_menu
+from .ui import tool_settings_ui
 
 
 bl_info = {

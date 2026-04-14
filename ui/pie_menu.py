@@ -119,7 +119,7 @@ def register_icons():
     unregister_icons()
 
     pcoll = bpy.utils.previews.new()
-    textures_dir = os.path.join(os.path.dirname(__file__), "textures")
+    textures_dir = os.path.join(os.path.dirname(__file__), "..", "textures")
 
     for key, filename in _mode_icon_files.items():
         path = os.path.join(textures_dir, filename)
@@ -385,7 +385,7 @@ def _get_mode_gpu_texture(mode):
     filename = _mode_icon_files.get(mode)
     if not filename:
         return None
-    path = os.path.join(os.path.dirname(__file__), "textures", filename)
+    path = os.path.join(os.path.dirname(__file__), "..", "textures", filename)
     if not os.path.exists(path):
         return None
 

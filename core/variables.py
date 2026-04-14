@@ -101,15 +101,16 @@ class ToolVariableStore:
 
 
 def build_default_variable_store() -> ToolVariableStore:
-    """Build the default variable registry used by the core runtime."""
+    """Create the default global and per-tool variable registry."""
     store = ToolVariableStore()
-    store.register_global('size', int, 1, 'Brush radius in image pixels')
-    store.register_global('modifier', float, 0.5, 'Generic modifier value')
-    store.register_global('falloff', str, 'CONSTANT', 'Circle/Spray falloff profile')
 
-    for tool_id in ('SQUARE', 'LINE', 'CIRCLE', 'SPRAY', 'SMOOTH', 'SMEAR'):
-        store.register_tool_variable(tool_id, 'size', int, 1, 'Tool-local brush radius', sync_with_global=True)
-        store.register_tool_variable(tool_id, 'modifier', float, 0.5, 'Tool-local modifier', sync_with_global=True)
-        store.register_tool_variable(tool_id, 'falloff', str, 'CONSTANT', 'Tool-local falloff', sync_with_global=True)
+    store.register_global('size', int, 1, "Brush radius in image pixels")
+    store.register_global('modifier', float, 0.5, "Generic tool modifier")
+    store.register_global('falloff', str, 'CONSTANT', "Brush falloff preset")
+
+    for tool_id in ('SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR'):
+        store.register_tool_variable(tool_id, 'size', int, 1, "Brush radius in image pixels")
+        store.register_tool_variable(tool_id, 'modifier', float, 0.5, "Generic tool modifier")
+        store.register_tool_variable(tool_id, 'falloff', str, 'CONSTANT', "Brush falloff preset")
 
     return store

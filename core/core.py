@@ -6,13 +6,13 @@ import bpy
 import numpy as np
 from bpy.types import Operator
 
-from . import math_utils
-from . import blender_utils
-from . import draw_functions
+from ..utils import math_utils
+from ..utils import blender_utils
+from ..tools import draw_functions
 from .core_runtime import PixelPainterCoreRuntime
-from .menu_controllers import MenuControllerRegistry
-from .settings_service import PixelPainterSettingsService
-from .tool_logic import DrawEnvironment, ToolRegistry
+from ..ui.menu_controllers import MenuControllerRegistry
+from ..utils.settings_service import PixelPainterSettingsService
+from ..tools.tool_logic import DrawEnvironment, ToolRegistry
 from .variables import build_default_variable_store
 
 
@@ -1308,8 +1308,8 @@ class PixelPainterOperator(Operator):
 
         _sync_runtime_tool_info(context)
 
-        self.button_down       = (not is_rmb) and not start_with_picker and not start_with_shift_override
-        self.button_right_down = is_rmb and not start_with_picker and not start_with_shift_override
+        self.button_down       = (not is_rmb) and not start_with_picker
+        self.button_right_down = is_rmb and not start_with_picker
         _state['outline_immediate'] = self.button_down or self.button_right_down
         self._set_modal_cursor(context)
         self._disable_builtin_brush_overlay(context)

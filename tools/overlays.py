@@ -6,8 +6,8 @@ import time
 import gpu
 import gpu_extras.batch
 
-from . import blender_utils
-from . import math_utils
+from ..utils import blender_utils
+from ..utils import math_utils
 
 
 def _gpu_draw_lines(vertices, color):

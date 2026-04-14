@@ -29,7 +29,10 @@ class PixelPainterSettingsService:
     def get_brush_rgb(self, context):
         """Return brush primary RGB as a tuple."""
         try:
+            ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
+            if ups.use_unified_color:
+                return tuple(ups.color[:3])
             return tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0)
         except Exception:
             return (1.0, 1.0, 1.0)
@@ -37,7 +40,10 @@ class PixelPainterSettingsService:
     def get_brush_secondary_rgb(self, context):
         """Return brush secondary RGB as a tuple."""
         try:
+            ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
+            if ups.use_unified_color:
+                return tuple(ups.secondary_color[:3])
             return tuple(brush.secondary_color[:3]) if brush else (0.0, 0.0, 0.0)
         except Exception:
             return (0.0, 0.0, 0.0)
@@ -59,8 +65,11 @@ class PixelPainterSettingsService:
     def set_brush_rgb(self, context, r, g, b):
         """Set brush primary RGB color."""
         try:
+            ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
-            if brush:
+            if ups.use_unified_color:
+                ups.color = (r, g, b)
+            elif brush:
                 brush.color = (r, g, b)
         except Exception:
             pass
@@ -68,8 +77,11 @@ class PixelPainterSettingsService:
     def set_brush_secondary_rgb(self, context, r, g, b):
         """Set brush secondary RGB color."""
         try:
+            ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
-            if brush:
+            if ups.use_unified_color:
+                ups.secondary_color = (r, g, b)
+            elif brush:
                 brush.secondary_color = (r, g, b)
         except Exception:
             pass
