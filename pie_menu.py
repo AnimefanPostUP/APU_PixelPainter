@@ -47,6 +47,8 @@ _custom_pie_state = {
     'draw_handler': None,
     'center_x': 0,
     'center_y': 0,
+    'start_mouse_x': 0,
+    'start_mouse_y': 0,
     'mouse_x': 0,
     'mouse_y': 0,
     'hover_index': None,
@@ -758,7 +760,19 @@ class PixelPainterCustomPieOperator(Operator):
         else:
             bpy.ops.image.pixel_painter_set_mode(mode=mode)
 
-    def _finish(self, context):
+    def _warp_cursor_to_start(self, context):
+        start_x = _custom_pie_state.get('start_mouse_x')
+        start_y = _custom_pie_state.get('start_mouse_y')
+        if start_x is None or start_y is None:
+            return
+        try:
+            context.window.cursor_warp(int(start_x), int(start_y))
+        except Exception:
+            pass
+
+    def _finish(self, context, warp_to_start=False):
+        if warp_to_start:
+            self._warp_cursor_to_start(context)
         _custom_pie_state['running'] = False
         _custom_pie_state['hover_index'] = None
         _custom_pie_state['curve_initialized'] = False
@@ -782,6 +796,8 @@ class PixelPainterCustomPieOperator(Operator):
         _custom_pie_state['running'] = True
         _custom_pie_state['center_x'] = event.mouse_region_x
         _custom_pie_state['center_y'] = event.mouse_region_y
+        _custom_pie_state['start_mouse_x'] = event.mouse_x
+        _custom_pie_state['start_mouse_y'] = event.mouse_y
         _custom_pie_state['mouse_x'] = event.mouse_region_x
         _custom_pie_state['mouse_y'] = event.mouse_region_y
         _custom_pie_state['hover_index'] = None
@@ -814,7 +830,7 @@ class PixelPainterCustomPieOperator(Operator):
                 context.area.tag_redraw()
                 if close_t >= 1.0:
                     self._apply_selection(context)
-                    self._finish(context)
+                    self._finish(context, warp_to_start=True)
                     return {'FINISHED'}
                 return {'RUNNING_MODAL'}
             return {'RUNNING_MODAL'}
