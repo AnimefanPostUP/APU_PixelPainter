@@ -637,6 +637,17 @@ class PixelPainterOperator(Operator):
         _sync_external_brush_size_into_tool_setting(context)
         apply_active_tool_settings(context)
 
+        def _cancel_temp_shift_override_for_shortcut():
+            """Exit temporary Shift->SMOOTH override before opening E/W shortcuts."""
+            if not _state['temp_shift_mode_active']:
+                return
+            restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
+            context.window_manager.pixel_painter_mode = restore_mode
+            _state['temp_shift_mode_active'] = False
+            _state['temp_shift_prev_mode'] = None
+            context.window_manager.pixel_painter_temp_smooth_force_global = False
+            apply_active_tool_settings(context)
+
         # If the cursor has left the OS window, cancel any active stroke and
         # ignore all input until it returns.
         win_w = context.window.width
@@ -1008,15 +1019,22 @@ class PixelPainterOperator(Operator):
 
         # Shift+E: enter opacity picker sub-mode
         elif event.type == 'E' and event.value == 'PRESS' and event.shift:
+            _cancel_temp_shift_override_for_shortcut()
             if _sub_mode_controller.enter_opacity_mode(context, event):
                 context.area.tag_redraw()
 
         # E key: enter color picker sub-mode
         elif event.type == 'E' and event.value == 'PRESS' and not event.shift:
+            _cancel_temp_shift_override_for_shortcut()
             if _sub_mode_controller.active_mode_name() == 'COLOR_PICK':
                 return {'PASS_THROUGH'}
             if _sub_mode_controller.enter_color_pick_mode(context, event):
                 context.area.tag_redraw()
+
+        # W key: open pie menu; ensure temporary smooth override is cleared first.
+        elif event.type == 'W' and event.value == 'PRESS':
+            _cancel_temp_shift_override_for_shortcut()
+            return {'PASS_THROUGH'}
 
         return {'PASS_THROUGH'}
 
