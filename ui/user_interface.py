@@ -20,7 +20,8 @@ class PixelPainterTool(WorkSpaceTool):
         ("image.pixel_painter_operator", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
         ("image.pixel_painter_undo",     {"type": 'Z', "value": 'PRESS', "ctrl": True}, None),
         ("image.pixel_painter_redo",     {"type": 'Z', "value": 'PRESS', "ctrl": True, "shift": True}, None),
-        ("image.pixel_painter_custom_pie", {"type": 'W', "value": 'PRESS'}, None),
+        ("image.pixel_painter_open_blend_pie", {"type": 'W', "value": 'PRESS', "shift": True}, None),
+        ("image.pixel_painter_custom_pie", {"type": 'W', "value": 'PRESS', "shift": False}, None),
     )
 
     def draw_settings(context, layout, _tool):

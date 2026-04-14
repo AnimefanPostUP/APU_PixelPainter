@@ -37,7 +37,7 @@ from .ui import tool_settings_ui
 
 
 bl_info = {
-    "name": "Pixel Painter",
+    "name": "APU Pixel Painter",
     "description": "Paint pixel-perfect strokes in the Image Editor",
     "author": "Kushiro",
     "version": (1, 0, 0),
@@ -198,6 +198,7 @@ def register():
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
+    bpy.utils.register_class(pie_menu.PixelPainterOpenBlendPieOperator)
     bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
@@ -236,6 +237,7 @@ def unregister():
     bpy.utils.unregister_class(core.PixelPainterRedoOperator)
     bpy.utils.unregister_class(core.PixelPainterUndoOperator)
     bpy.utils.unregister_class(pie_menu.PixelPainterCustomPieOperator)
+    bpy.utils.unregister_class(pie_menu.PixelPainterOpenBlendPieOperator)
     bpy.utils.unregister_class(core.PixelPainterSetBlendOperator)
     bpy.utils.unregister_class(core.PixelPainterSetModeOperator)
 

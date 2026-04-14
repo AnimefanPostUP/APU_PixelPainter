@@ -6,13 +6,13 @@ import bpy
 import numpy as np
 from bpy.types import Operator
 
-from ..utils import math_utils
-from ..utils import blender_utils
-from ..tools import draw_functions
+from . import math_utils
+from . import blender_utils
+from . import draw_functions
 from .core_runtime import PixelPainterCoreRuntime
-from ..ui.menu_controllers import MenuControllerRegistry
-from ..utils.settings_service import PixelPainterSettingsService
-from ..tools.tool_logic import DrawEnvironment, ToolRegistry
+from .menu_controllers import MenuControllerRegistry
+from .settings_service import PixelPainterSettingsService
+from .tool_logic import DrawEnvironment, ToolRegistry
 from .variables import build_default_variable_store
 
 
@@ -871,7 +871,7 @@ class PixelPainterOperator(Operator):
                 if event.shift:
                     _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
                 context.area.tag_redraw()
-            elif event.type == 'E' and event.value == 'PRESS' and not event.shift:
+            elif event.type == 'E' and event.value == 'PRESS':
                 if _state.get('sub_color_target') == 'SECONDARY':
                     if _state.get('sub_orig_color_secondary') is not None:
                         _settings.set_brush_secondary_rgb(context, *_state['sub_orig_color_secondary'])
@@ -1216,8 +1216,8 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        # Shift+E: enter opacity picker sub-mode
-        elif event.type == 'E' and event.value == 'PRESS' and event.shift:
+        # R key: enter opacity picker sub-mode
+        elif event.type == 'R' and event.value == 'PRESS':
             _state['sub_mode']           = 'OPACITY'
             _state['sub_last_x']         = event.mouse_region_x
             _state['sub_last_y']         = event.mouse_region_y
@@ -1232,7 +1232,7 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
 
         # E key: enter color picker sub-mode
-        elif event.type == 'E' and event.value == 'PRESS' and not event.shift:
+        elif event.type == 'E' and event.value == 'PRESS':
             if _state['sub_mode'] == 'COLOR_PICK':
                 return {'PASS_THROUGH'}
 
@@ -1287,8 +1287,8 @@ class PixelPainterOperator(Operator):
 
         _sync_runtime_tool_info(context)
 
-        self.button_down       = (not is_rmb) and not start_with_picker
-        self.button_right_down = is_rmb and not start_with_picker
+        self.button_down       = (not is_rmb) and not start_with_picker and not start_with_shift_override
+        self.button_right_down = is_rmb and not start_with_picker and not start_with_shift_override
         _state['outline_immediate'] = self.button_down or self.button_right_down
         self._set_modal_cursor(context)
         self._disable_builtin_brush_overlay(context)

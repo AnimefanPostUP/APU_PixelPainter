@@ -73,10 +73,9 @@ _custom_pie_state = {
 
 _custom_pie_items = [
     ('CIRCLE', 'Circle'),
-    ('SMOOTH', 'Smooth'),
-    ('BLEND', 'Blend'),
-    ('SPRAY', 'Spray'),
     ('SQUARE', 'Square'),
+    ('SPRAY', 'Spray'),
+    ('SMOOTH', 'Smooth'),
     ('SMEAR', 'Smear'),
 ]
 
@@ -103,7 +102,7 @@ _mode_icon_files = {
 }
 
 # left, right, bottom, top, top-left, top-right
-_custom_pie_dirs = [
+_falloff_pie_dirs = [
     (-1.0, 0.0),
     (1.0, 0.0),
     (0.0, -1.0),
@@ -111,6 +110,19 @@ _custom_pie_dirs = [
     (-0.7, 0.7),
     (0.7, 0.7),
 ]
+
+# left, top-left, top, top-right, right
+_mode_pie_dirs = [
+    (-1.0, 0.0),
+    (-0.7, 0.7),
+    (0.0, 1.0),
+    (0.7, 0.7),
+    (1.0, 0.0),
+]
+
+
+def _pie_dirs_for_type(pie_type):
+    return _falloff_pie_dirs if pie_type == 'FALLOFF' else _mode_pie_dirs
 
 
 def register_icons():
@@ -184,6 +196,82 @@ def _draw_mode_operator_slot(pie, mode, label):
 def _add_blend_item(layout, label, blend, favorites):
     icon = 'CHECKMARK' if blend in favorites else 'BLANK1'
     layout.operator("image.pixel_painter_set_blend", text=label, icon=icon).blend = blend
+
+
+def _queue_open_blend_pie():
+    def _open_blend_pie():
+        try:
+            bpy.ops.wm.call_menu_pie(name="PIXELPAINTER_MT_blend_pie")
+        except Exception:
+            pass
+        return None
+
+    bpy.app.timers.register(_open_blend_pie, first_interval=0.01)
+
+
+def _draw_rect(x0, y0, x1, y1, color):
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    verts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    batch = batch_for_shader(shader, 'TRI_FAN', {'pos': verts})
+    shader.bind()
+    shader.uniform_float('color', color)
+    batch.draw(shader)
+
+
+def _draw_rect_outline(x0, y0, x1, y1, color, width=1.5):
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    verts = [
+        (x0, y0), (x1, y0),
+        (x1, y0), (x1, y1),
+        (x1, y1), (x0, y1),
+        (x0, y1), (x0, y0),
+    ]
+    batch = batch_for_shader(shader, 'LINES', {'pos': verts})
+    gpu.state.line_width_set(width)
+    shader.bind()
+    shader.uniform_float('color', color)
+    batch.draw(shader)
+    gpu.state.line_width_set(1.0)
+
+
+def _get_falloff_grid_layout(cx, cy):
+    button_size = 46.0
+    gap = 12.0
+    first_row_y = cy - 136.0
+    second_row_y = first_row_y - button_size - gap
+    first_row_x = cx - ((button_size * 3.0) + (gap * 2.0)) * 0.5 + (button_size * 0.5)
+
+    centers = [
+        (first_row_x, first_row_y),
+        (first_row_x + button_size + gap, first_row_y),
+        (first_row_x + (button_size + gap) * 2.0, first_row_y),
+        (first_row_x, second_row_y),
+        (first_row_x + button_size + gap, second_row_y),
+        (first_row_x + (button_size + gap) * 2.0, second_row_y),
+    ]
+
+    layout = []
+    for (mode, label), (item_cx, item_cy) in zip(_falloff_pie_items, centers):
+        half = button_size * 0.5
+        layout.append({
+            'mode': mode,
+            'label': label,
+            'cx': item_cx,
+            'cy': item_cy,
+            'x0': item_cx - half,
+            'y0': item_cy - half,
+            'x1': item_cx + half,
+            'y1': item_cy + half,
+            'size': button_size,
+        })
+    return layout
+
+
+def _pick_falloff_grid_index(mx, my, cx, cy):
+    for index, item in enumerate(_get_falloff_grid_layout(cx, cy)):
+        if item['x0'] <= mx <= item['x1'] and item['y0'] <= my <= item['y1']:
+            return index
+    return None
 
 
 def _draw_circle(cx, cy, radius, color, segments=36):
@@ -435,6 +523,8 @@ def _draw_bubble_icon_text(mode, label, cx, cy, item_r, scale=1.0, alpha=1.0):
 
 
 def _pick_custom_pie_index(mx, my):
+    pie_type = _custom_pie_state.get('pie_type', 'MODE')
+    pie_dirs = _pie_dirs_for_type(pie_type)
     cx = _custom_pie_state['center_x']
     cy = _custom_pie_state['center_y']
     dx = mx - cx
@@ -447,7 +537,7 @@ def _pick_custom_pie_index(mx, my):
     ux, uy = dx / dlen, dy / dlen
     best_i = None
     best_dot = -2.0
-    for i, (vx, vy) in enumerate(_custom_pie_dirs):
+    for i, (vx, vy) in enumerate(pie_dirs):
         dot = ux * vx + uy * vy
         if dot > best_dot:
             best_dot = dot
@@ -466,6 +556,7 @@ def _draw_custom_pie_overlay():
     hover = _custom_pie_state['hover_index']
     pie_type = _custom_pie_state.get('pie_type', 'MODE')
     pie_items = _custom_pie_items_for_type(pie_type)
+    pie_dirs = _pie_dirs_for_type(pie_type)
     try:
         current_mode = bpy.context.window_manager.pixel_painter_mode
         active_falloff = _active_falloff_value(bpy.context)
@@ -499,7 +590,7 @@ def _draw_custom_pie_overlay():
     arrow_data = _draw_triangle_arrow(cx, cy, mx, my, color=(0.66, 0.44, 0.92, 0.92 * close_alpha))
 
     if hover is not None and arrow_data is not None:
-        hvx, hvy = _custom_pie_dirs[hover]
+        hvx, hvy = pie_dirs[hover]
         hix = cx + hvx * ring_r
         hiy = cy + hvy * ring_r
         ht = anim[hover] if hover < len(anim) else 0.0
@@ -609,13 +700,10 @@ def _draw_custom_pie_overlay():
         _custom_pie_state['curve_hover_index'] = None
 
     for i, (mode, label) in enumerate(pie_items):
-        vx, vy = _custom_pie_dirs[i]
+        vx, vy = pie_dirs[i]
         ix = cx + vx * ring_r * open_ease
         iy = cy + vy * ring_r * open_ease
-        if pie_type == 'FALLOFF':
-            is_selected = (mode == active_falloff)
-        else:
-            is_selected = (mode != 'BLEND' and mode == current_mode)
+        is_selected = (mode == active_falloff)
 
         t = anim[i] if i < len(anim) else 0.0
         te = _ease_in_out(t)
@@ -650,11 +738,57 @@ def _draw_custom_pie_overlay():
             col = (0.18, 0.18, 0.18, 0.9 * bubble_alpha)
 
         _draw_circle(ix, iy, radius, col)
-        if mode in {'BLEND', 'FALLOFF'}:
+        if mode == 'FALLOFF':
             _draw_bubble_text_only(label, ix, iy, scale=content_scale, alpha=content_alpha)
         else:
             icon_key = _falloff_icon_key(mode) if pie_type == 'FALLOFF' else mode
             _draw_bubble_icon_text(icon_key, label, ix, iy, item_r, scale=content_scale, alpha=content_alpha)
+
+    if pie_type == 'MODE':
+        panel_alpha = 0.92 * close_alpha
+        panel_width = 220.0
+        panel_height = 132.0
+        panel_x0 = cx - panel_width * 0.5
+        panel_y0 = cy - 240.0
+        panel_x1 = panel_x0 + panel_width
+        panel_y1 = panel_y0 + panel_height
+        falloff_hover = _pick_falloff_grid_index(mx, my, cx, cy)
+
+        _draw_rect(panel_x0, panel_y0, panel_x1, panel_y1, (0.12, 0.12, 0.12, panel_alpha))
+        _draw_rect_outline(panel_x0, panel_y0, panel_x1, panel_y1, (0.30, 0.30, 0.30, 0.95 * close_alpha))
+        _draw_text_centered("Brush Falloff", cx, panel_y1 - 10.0, size=12, alpha=0.95 * close_alpha)
+
+        for index, item in enumerate(_get_falloff_grid_layout(cx, cy)):
+            ix = cx + (item['cx'] - cx) * open_ease
+            iy = cy + (item['cy'] - cy) * open_ease
+            is_selected = (item['mode'] == active_falloff)
+            is_hovered = (index == falloff_hover)
+            button_size = item['size'] * (0.6 + 0.4 * open_ease)
+
+            if is_closing:
+                button_size = button_size * (1.0 - close_ease)
+            if button_size <= 1.0:
+                continue
+
+            half = button_size * 0.5
+            x0 = ix - half
+            y0 = iy - half
+            x1 = ix + half
+            y1 = iy + half
+
+            if is_selected:
+                fill = (0.66, 0.44, 0.92, 0.94 * close_alpha)
+                border = (0.90, 0.80, 1.00, 0.95 * close_alpha)
+            elif is_hovered:
+                fill = (0.24, 0.24, 0.24, 0.96 * close_alpha)
+                border = (0.66, 0.44, 0.92, 0.90 * close_alpha)
+            else:
+                fill = (0.18, 0.18, 0.18, 0.92 * close_alpha)
+                border = (0.30, 0.30, 0.30, 0.92 * close_alpha)
+
+            _draw_rect(x0, y0, x1, y1, fill)
+            _draw_rect_outline(x0, y0, x1, y1, border)
+            _draw_mode_icon(_falloff_icon_key(item['mode']), ix, iy, max(1, int(button_size * 0.62)), alpha=close_alpha)
 
     gpu.state.blend_set('NONE')
 
@@ -748,19 +882,15 @@ class PixelPainterCustomPieOperator(Operator):
                 return None
 
             bpy.app.timers.register(_open_falloff_pie, first_interval=0.01)
-        elif mode == 'BLEND':
-            # Defer opening so the click that selected this entry cannot leak
-            # into the freshly opened Blender pie menu.
-            def _open_blend_pie():
-                try:
-                    bpy.ops.wm.call_menu_pie(name="PIXELPAINTER_MT_blend_pie")
-                except Exception:
-                    pass
-                return None
-
-            bpy.app.timers.register(_open_blend_pie, first_interval=0.01)
         else:
             bpy.ops.image.pixel_painter_set_mode(mode=mode)
+
+    def _apply_falloff_selection(self, context, falloff):
+        wm = context.window_manager
+        if wm.pixel_painter_mode == 'SPRAY':
+            wm.pixel_painter_spray_falloff = falloff
+        else:
+            wm.pixel_painter_circle_falloff = falloff
 
     def _warp_cursor_to_start(self, context):
         start_x = _custom_pie_state.get('start_mouse_x')
@@ -773,7 +903,6 @@ class PixelPainterCustomPieOperator(Operator):
             pass
 
     def _finish(self, context, warp_to_start=False):
-        """Clean up pie menu state."""
         if warp_to_start:
             self._warp_cursor_to_start(context)
         _custom_pie_state['running'] = False
@@ -841,6 +970,17 @@ class PixelPainterCustomPieOperator(Operator):
         if event.type == 'MOUSEMOVE':
             _custom_pie_state['mouse_x'] = event.mouse_region_x
             _custom_pie_state['mouse_y'] = event.mouse_region_y
+            if _custom_pie_state.get('pie_type', 'MODE') == 'MODE':
+                falloff_idx = _pick_falloff_grid_index(
+                    event.mouse_region_x,
+                    event.mouse_region_y,
+                    _custom_pie_state.get('center_x', 0),
+                    _custom_pie_state.get('center_y', 0),
+                )
+                if falloff_idx is not None:
+                    _custom_pie_state['hover_index'] = None
+                    context.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
             _custom_pie_state['hover_index'] = _pick_custom_pie_index(
                 event.mouse_region_x, event.mouse_region_y)
             context.area.tag_redraw()
@@ -855,6 +995,17 @@ class PixelPainterCustomPieOperator(Operator):
             return {'CANCELLED'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if _custom_pie_state.get('pie_type', 'MODE') == 'MODE':
+                idx = _pick_falloff_grid_index(
+                    event.mouse_region_x,
+                    event.mouse_region_y,
+                    _custom_pie_state.get('center_x', 0),
+                    _custom_pie_state.get('center_y', 0),
+                )
+                if idx is not None and idx < len(_falloff_pie_items):
+                    self._apply_falloff_selection(context, _falloff_pie_items[idx][0])
+                    self._finish(context, warp_to_start=True)
+                    return {'FINISHED'}
             if _custom_pie_state.get('hover_index') is not None:
                 _custom_pie_state['is_closing'] = True
                 _custom_pie_state['closing_index'] = _custom_pie_state.get('hover_index')
@@ -875,6 +1026,21 @@ class PixelPainterCustomPieOperator(Operator):
         return {'RUNNING_MODAL'}
 
 
+class PixelPainterOpenBlendPieOperator(Operator):
+    bl_idname = "image.pixel_painter_open_blend_pie"
+    bl_label = "Open Pixel Painter Blend Pie"
+
+    def execute(self, context):
+        del context
+        _queue_open_blend_pie()
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        del context, event
+        _queue_open_blend_pie()
+        return {'FINISHED'}
+
+
 class PixelPainterModePie(Menu):
     bl_idname = "PIXELPAINTER_MT_mode_pie"
     bl_label = "Drawing Mode"
@@ -885,18 +1051,13 @@ class PixelPainterModePie(Menu):
         pie.scale_x = 1.0
         pie.scale_y = 1.0
 
-        # Explicitly fill pie slots so both Blend and Falloff are always shown.
-        # Order: left, right, bottom, top, top-left, top-right, bottom-left, bottom-right
+        # Match the custom popup's visible arc: left -> top-left -> top -> top-right -> right.
         _draw_mode_operator_slot(pie, 'CIRCLE', "Circle")
-        _draw_mode_operator_slot(pie, 'SMOOTH', "Smooth")
-        blend_op = pie.operator("wm.call_menu_pie", text="Blend")
-        blend_op.name = "PIXELPAINTER_MT_blend_pie"
-        pie.operator_context = 'INVOKE_DEFAULT'
-        pie.operator("image.pixel_painter_custom_pie", text="Falloff").pie_type = 'FALLOFF'
-        _draw_mode_operator_slot(pie, 'SPRAY', "Spray")
-        _draw_mode_operator_slot(pie, 'SQUARE', "Square")
         _draw_mode_operator_slot(pie, 'SMEAR', "Smear")
         pie.separator()
+        _draw_mode_operator_slot(pie, 'SMOOTH', "Smooth")
+        _draw_mode_operator_slot(pie, 'SQUARE', "Square")
+        _draw_mode_operator_slot(pie, 'SPRAY', "Spray")
 
 
 class PixelPainterBlendPie(Menu):
