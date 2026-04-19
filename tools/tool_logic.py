@@ -241,7 +241,7 @@ class SmoothTool(ToolBase):
             all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
         draw_functions.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
         if all_pixels:
-            draw_functions.set_pixels_alpha(env.img, all_pixels, env.alpha_opacity)
+            draw_functions.set_pixels_alpha(env.img, all_pixels, env.alpha_opacity, opacity=env.opacity)
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
 
@@ -276,6 +276,7 @@ class SmearTool(ToolBase):
                 env.img,
                 list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')),
                 env.alpha_opacity,
+                opacity=env.opacity,
             )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y

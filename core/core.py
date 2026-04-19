@@ -491,10 +491,13 @@ class PixelPainterOperator(Operator):
         color   = self._get_brush_color(context)
         blend   = blender_utils.get_brush_blend_mode(context)
         strength = _settings.get_tool_strength(context, mode, force_global=force_global, button=button)
+        modifier = _settings.get_tool_modifier(context, mode, force_global=force_global, button=button)
         alpha_opacity = _settings.get_tool_alpha(context, mode, force_global=force_global, button=button)
         radius  = _settings.get_tool_size(context, mode, force_global=force_global)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
+        # Apply button-specific modifier so tools that read wm.pixel_painter_modifier see the correct value.
+        wm.pixel_painter_modifier = modifier
         env = DrawEnvironment(
             context=context,
             state=_state,

@@ -184,7 +184,13 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     arr[flat_idx]     = out[:, 0]
     arr[flat_idx + 1] = out[:, 1]
     arr[flat_idx + 2] = out[:, 2]
-    arr[flat_idx + 3] = float(max(0.0, min(1.0, alpha_opacity)))
+
+    # Apply alpha with the same effective opacity used for RGB so strength
+    # controls how strongly target alpha is written.
+    alpha_target = float(max(0.0, min(1.0, alpha_opacity)))
+    alpha_dst = arr[flat_idx + 3]
+    alpha_mix = np.clip(opacity * np.array(weight_values, dtype=np.float32), 0.0, 1.0)
+    arr[flat_idx + 3] = alpha_dst + (alpha_target - alpha_dst) * alpha_mix
 
     img.pixels.foreach_set(arr)
     img.update()
@@ -201,16 +207,18 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
         pass
 
 
-def set_pixels_alpha(img, pixels, alpha_opacity):
-    """Overwrite image alpha for the given pixel coordinates."""
+def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0):
+    """Blend image alpha toward target alpha for the given pixel coordinates."""
     w, h = img.size
     arr = np.array(img.pixels, dtype=np.float32)
     alpha = float(max(0.0, min(1.0, alpha_opacity)))
+    mix = float(max(0.0, min(1.0, opacity)))
 
     for (px, py) in pixels:
         if 0 <= px < w and 0 <= py < h:
             idx = (py * w + px) * 4
-            arr[idx + 3] = alpha
+            curr = arr[idx + 3]
+            arr[idx + 3] = curr + (alpha - curr) * mix
 
     img.pixels.foreach_set(arr)
     img.update()
@@ -881,18 +889,27 @@ def _draw_sub_mode_cursor_dot(context, state):
         try:
             edit_btn = state.get('sub_edit_button', 'LMB')
             suffix = '_rmb' if edit_btn == 'RMB' else ''
-            curr_strength = ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0)
-            mod = context.window_manager.pixel_painter_modifier
-            if edit_btn == 'RMB':
-                wm = context.window_manager
-                mode = wm.pixel_painter_mode
-                use_global = getattr(wm, f'pixel_painter_{mode}_use_global_alpha_rmb', True)
-                if use_global:
-                    curr_alpha = getattr(wm, 'pixel_painter_global_alpha_rmb', 1.0)
-                else:
-                    curr_alpha = getattr(wm, f'pixel_painter_{mode}_alpha_rmb', 1.0)
+            wm = context.window_manager
+            mode = wm.pixel_painter_mode
+            # Strength
+            use_global_str = getattr(wm, f'pixel_painter_{mode}_use_global_strength{suffix}', True)
+            if use_global_str or not hasattr(wm, f'pixel_painter_{mode}_strength{suffix}'):
+                curr_strength = getattr(wm, f'pixel_painter_global_strength{suffix}',
+                                        ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0))
             else:
-                curr_alpha = context.window_manager.pixel_painter_active_alpha
+                curr_strength = getattr(wm, f'pixel_painter_{mode}_strength{suffix}', 1.0)
+            # Modifier
+            use_global_mod = getattr(wm, f'pixel_painter_{mode}_use_global_modifier{suffix}', True)
+            if use_global_mod or not hasattr(wm, f'pixel_painter_{mode}_modifier{suffix}'):
+                mod = getattr(wm, f'pixel_painter_global_modifier{suffix}', 0.5)
+            else:
+                mod = getattr(wm, f'pixel_painter_{mode}_modifier{suffix}', 0.5)
+            # Alpha
+            use_global_alp = getattr(wm, f'pixel_painter_{mode}_use_global_alpha{suffix}', True)
+            if use_global_alp or not hasattr(wm, f'pixel_painter_{mode}_alpha{suffix}'):
+                curr_alpha = getattr(wm, f'pixel_painter_global_alpha{suffix}', 1.0)
+            else:
+                curr_alpha = getattr(wm, f'pixel_painter_{mode}_alpha{suffix}', 1.0)
         except Exception:
             curr_strength, mod, curr_alpha = 1.0, 0.5, 1.0
 
@@ -1025,14 +1042,34 @@ def draw_sub_mode_overlay(context, state):
         brush = context.tool_settings.image_paint.brush
 
         if sub == 'STRENGTH':
-            val = ups.strength if ups.use_unified_strength else (brush.strength if brush else 0.0)
             edit_btn = state.get('sub_edit_button', 'LMB')
             try:
-                mod = context.window_manager.pixel_painter_modifier
-                alpha = context.window_manager.pixel_painter_active_alpha
+                wm = context.window_manager
+                mode = wm.pixel_painter_mode
+                suffix = '_rmb' if edit_btn == 'RMB' else ''
+                # Strength
+                use_global_str = getattr(wm, f'pixel_painter_{mode}_use_global_strength{suffix}', True)
+                global_str_key = f'pixel_painter_global_strength{suffix}'
+                if use_global_str or not hasattr(wm, f'pixel_painter_{mode}_strength{suffix}'):
+                    val = getattr(wm, global_str_key, ups.strength if ups.use_unified_strength else (brush.strength if brush else 0.0))
+                else:
+                    val = getattr(wm, f'pixel_painter_{mode}_strength{suffix}', 1.0)
+                # Modifier
+                use_global_mod = getattr(wm, f'pixel_painter_{mode}_use_global_modifier{suffix}', True)
+                global_mod_key = f'pixel_painter_global_modifier{suffix}'
+                if use_global_mod or not hasattr(wm, f'pixel_painter_{mode}_modifier{suffix}'):
+                    mod = getattr(wm, global_mod_key, 0.5)
+                else:
+                    mod = getattr(wm, f'pixel_painter_{mode}_modifier{suffix}', 0.5)
+                # Alpha
+                use_global_alp = getattr(wm, f'pixel_painter_{mode}_use_global_alpha{suffix}', True)
+                global_alp_key = f'pixel_painter_global_alpha{suffix}'
+                if use_global_alp or not hasattr(wm, f'pixel_painter_{mode}_alpha{suffix}'):
+                    alpha = getattr(wm, global_alp_key, 1.0)
+                else:
+                    alpha = getattr(wm, f'pixel_painter_{mode}_alpha{suffix}', 1.0)
             except Exception:
-                mod = 0.5
-                alpha = 1.0
+                val, mod, alpha = 1.0, 0.5, 1.0
             line1 = f"[{edit_btn}]  Strength  {val * 100:.1f}%    Alpha  {alpha * 100:.1f}%    Modifier  {mod * 100:.1f}%"
             line2 = "Left arc Strength + right arc Modifier: mouse height   Center Alpha: scroll   E toggle LMB/RMB   LMB apply   RMB cancel"
 
