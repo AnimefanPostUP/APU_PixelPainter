@@ -367,6 +367,7 @@ class PixelPainterSetModeOperator(Operator):
             ('LINE',    "Line",    ""),
             ('SMOOTH',  "Smooth",  ""),
             ('SMEAR',   "Smear",   ""),
+            ('ERASER',  "Eraser",  "Erase alpha by strength"),
         ]
     )
 
@@ -1020,15 +1021,20 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        # Right mouse press: secondary color stroke
+        # Right mouse press: Eraser (unless Shift for Smooth)
         elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-            active_mode = mode
             if event.shift and not event.ctrl and not event.alt:
+                # Shift+RMB = Smooth
                 if not _state['temp_shift_mode_active']:
                     _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
                     _state['temp_shift_mode_active'] = True
                 context.window_manager.pixel_painter_mode = 'SMOOTH'
                 active_mode = 'SMOOTH'
+            else:
+                # RMB = Eraser
+                _state['prev_mode_before_eraser'] = context.window_manager.pixel_painter_mode
+                context.window_manager.pixel_painter_mode = 'ERASER'
+                active_mode = 'ERASER'
 
             if event.ctrl or _state['ctrl_pick_active']:
                 if _state['ctrl_hovered_color'] is None:
@@ -1073,6 +1079,10 @@ class PixelPainterOperator(Operator):
                         context.window_manager.pixel_painter_mode = _state['last_shape']
                     _state['start_position'] = None
                     _state['back_buffer']    = None
+                # Restore previous mode if we switched to Eraser
+                if getattr(_state, 'prev_mode_before_eraser', None) is not None and context.window_manager.pixel_painter_mode == 'ERASER':
+                    context.window_manager.pixel_painter_mode = _state['prev_mode_before_eraser']
+                    _state['prev_mode_before_eraser'] = None
             _state['last_paint_cx'] = None
             _state['last_paint_cy'] = None
             _state['use_secondary'] = False
@@ -1080,6 +1090,24 @@ class PixelPainterOperator(Operator):
             _state['outline_immediate'] = False
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
+        # Number keys: quick tool switching
+        elif event.type in {'ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE'} and event.value == 'PRESS':
+            tool_map = {
+                'ONE': 'SQUARE',
+                'TWO': 'CIRCLE',
+                'THREE': 'SPRAY',
+                'FOUR': 'LINE',
+                'FIVE': 'SMOOTH',
+                'SIX': 'SMEAR',
+                'SEVEN': 'ERASER',
+                # Add more if you add more tools
+            }
+            tool_id = tool_map.get(event.type)
+            if tool_id:
+                context.window_manager.pixel_painter_mode = tool_id
+                _sync_runtime_tool_info(context)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
 
         # Ctrl PRESS: activate the eyedropper while held.
         elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'PRESS':

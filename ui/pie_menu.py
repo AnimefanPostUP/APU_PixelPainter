@@ -77,6 +77,8 @@ _custom_pie_items = [
     ('SPRAY', 'Spray'),
     ('SMOOTH', 'Smooth'),
     ('SMEAR', 'Smear'),
+    ('LINE', 'Line'),
+    ('ERASER', 'Eraser'),
 ]
 
 _falloff_pie_items = [
@@ -94,6 +96,8 @@ _mode_icon_files = {
     'SPRAY': "Tool_Spray.png",
     'SMOOTH': "Tool_Smooth.png",
     'SMEAR': "Tool_Smear.png",
+    'LINE': "Tool_Line.png",
+    'ERASER': "Tool_Eraser.png",
     'CONSTANT': "Falloff_Const.png",
     'LINEAR': "Falloff_Linea.png",
     'SMOOTH_FALLOFF': "Falloff_Smooth.png",
@@ -111,13 +115,16 @@ _falloff_pie_dirs = [
     (0.7, 0.7),
 ]
 
-# left, top-left, top, top-right, right
+# 7-point top half-circle (left to right, skipping bottom)
+import math
 _mode_pie_dirs = [
-    (-1.0, 0.0),
-    (-0.7, 0.7),
-    (0.0, 1.0),
-    (0.7, 0.7),
-    (1.0, 0.0),
+    (math.cos(math.pi), math.sin(math.pi)),           # left
+    (math.cos(5*math.pi/6), math.sin(5*math.pi/6)),  # upper-left
+    (math.cos(4*math.pi/6), math.sin(4*math.pi/6)),  # mid-upper-left
+    (math.cos(math.pi/2), math.sin(math.pi/2)),      # top
+    (math.cos(2*math.pi/6), math.sin(2*math.pi/6)),  # mid-upper-right
+    (math.cos(math.pi/6), math.sin(math.pi/6)),      # upper-right
+    (math.cos(0), math.sin(0)),                     # right
 ]
 
 
@@ -128,6 +135,7 @@ def _pie_dirs_for_type(pie_type):
 def register_icons():
     """Load custom tool icons from the addon textures folder."""
     global _preview_collection
+    print("[PixelPainter][DEBUG] register_icons aufgerufen")
     unregister_icons()
 
     pcoll = bpy.utils.previews.new()
@@ -136,16 +144,25 @@ def register_icons():
     for key, filename in _mode_icon_files.items():
         path = os.path.join(textures_dir, filename)
         if os.path.exists(path):
+            print(f"[PixelPainter][DEBUG] Lade Icon: {key} -> {path}")
             pcoll.load(key, path, 'IMAGE')
+        else:
+            print(f"[PixelPainter][DEBUG] Icon nicht gefunden: {key} -> {path}")
 
     _preview_collection = pcoll
+    print("[PixelPainter][DEBUG] register_icons abgeschlossen")
 
 
 def unregister_icons():
     global _preview_collection
+    print("[PixelPainter][DEBUG] unregister_icons aufgerufen")
     if _preview_collection is not None:
         bpy.utils.previews.remove(_preview_collection)
+        print("[PixelPainter][DEBUG] _preview_collection entfernt")
         _preview_collection = None
+    else:
+        print("[PixelPainter][DEBUG] _preview_collection war bereits None")
+    print("[PixelPainter][DEBUG] unregister_icons abgeschlossen")
 
 
 def _tool_icon_value(mode_name):
@@ -1023,6 +1040,25 @@ class PixelPainterCustomPieOperator(Operator):
 
         context.window_manager.modal_handler_add(self)
         context.area.tag_redraw()
+        # Shift+1 bis Shift+7 für Tool-Auswahl
+        if event.value == 'PRESS' and event.shift:
+            number_map = {
+                'ONE': 0,
+                'TWO': 1,
+                'THREE': 2,
+                'FOUR': 3,
+                'FIVE': 4,
+                'SIX': 5,
+                'SEVEN': 6,
+            }
+            idx = number_map.get(event.type)
+            if idx is not None and idx < len(_custom_pie_items):
+                _custom_pie_state['hover_index'] = idx
+                _custom_pie_state['is_closing'] = True
+                _custom_pie_state['closing_index'] = idx
+                _custom_pie_state['close_started_at'] = time.perf_counter()
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):

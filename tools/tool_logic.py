@@ -321,6 +321,31 @@ class SquareBrushTool(BrushTool):
         env.state['last_paint_cy'] = env.cursor_y
 
 
+
+# --- Eraser Tool ---
+class EraserTool(ToolBase):
+    """Erase by reducing alpha by strength (opacity)."""
+    tool_id = 'ERASER'
+
+    def on_draw(self, env: DrawEnvironment):
+        # For each pixel, reduce alpha by opacity (strength), clamp to 0
+        all_pixels = set()
+        for (sx, sy) in env.interpolation_steps():
+            all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
+        if not all_pixels:
+            return
+        w, h = env.img.size
+        arr = np.array(env.img.pixels, dtype=np.float32)
+        for (px, py) in all_pixels:
+            if 0 <= px < w and 0 <= py < h:
+                idx = (py * w + px) * 4
+                curr_alpha = arr[idx + 3]
+                arr[idx + 3] = max(0.0, curr_alpha - env.opacity)
+        env.img.pixels.foreach_set(arr)
+        env.img.update()
+        env.state['last_paint_cx'] = env.cursor_x
+        env.state['last_paint_cy'] = env.cursor_y
+
 class ToolRegistry:
     """Registry that maps tool IDs to class-based draw handlers."""
 
@@ -332,6 +357,7 @@ class ToolRegistry:
             'SMOOTH': SmoothTool(),
             'SMEAR': SmearTool(),
             'SQUARE': SquareBrushTool(),
+            'ERASER': EraserTool(),
         }
 
     def draw_active_tool(self, env: DrawEnvironment):

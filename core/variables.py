@@ -108,7 +108,7 @@ def build_default_variable_store() -> ToolVariableStore:
     store.register_global('modifier', float, 0.5, "Generic tool modifier")
     store.register_global('falloff', str, 'CONSTANT', "Brush falloff preset")
 
-    for tool_id in ('SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR'):
+    for tool_id in ('SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER'):
         store.register_tool_variable(tool_id, 'size', int, 1, "Brush radius in image pixels")
         store.register_tool_variable(tool_id, 'modifier', float, 0.5, "Generic tool modifier")
         store.register_tool_variable(tool_id, 'falloff', str, 'CONSTANT', "Brush falloff preset")

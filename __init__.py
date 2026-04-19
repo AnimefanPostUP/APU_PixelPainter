@@ -45,8 +45,8 @@ bl_info = {
     "name": "APU Pixel Painter",
     "description": "Paint pixel-perfect strokes in the Image Editor",
     "author": "Kushiro",
-    "version": (1, 0, 0),
-    "blender": (2, 83, 0),
+    "version": (1, 0, 2),
+    "blender": (4, 2, 0),
     "location": "Image Editor > Paint mode toolbar",
     "category": "Image Editor",
 }
@@ -183,6 +183,12 @@ def _set_active_modifier(self, value):
 
 
 def register():
+    # Force delete pixel_painter_mode EnumProperty before re-registering
+    try:
+        del bpy.types.WindowManager.pixel_painter_mode
+        print("[PixelPainter] pixel_painter_mode property deleted before re-registering.")
+    except Exception:
+        pass
     # Clean up old custom-pie handlers/timers before reloading module code.
     try:
         pie_menu.force_cleanup()
@@ -220,6 +226,7 @@ def register():
     bpy.types.WindowManager.pixel_painter_radius = bpy.props.IntProperty(
         name="Radius", description="Brush radius in pixels", min=0, max=64, default=1,
     )
+    print("[PixelPainter][DEBUG] Registered IntProperty: pixel_painter_radius")
     bpy.types.WindowManager.pixel_painter_mode = bpy.props.EnumProperty(
         name="Mode",
         items=[
@@ -229,10 +236,12 @@ def register():
             ('LINE',    "Line",    "Draw a straight line (V key)"),
             ('SMOOTH',  "Smooth",  "Blur pixels — Spread sets kernel size, Strength sets blend strength"),
             ('SMEAR',   "Smear",   "Drag pixels — Spread sets reach, Strength sets blend strength"),
+            ('ERASER',  "Eraser",  "Erase alpha by strength"),
         ],
         default='SQUARE',
         update=_update_mode,
     )
+    print("[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_mode with items SQUARE, CIRCLE, SPRAY, LINE, SMOOTH, SMEAR, ERASER")
 
     _falloff_items = [
         ('CONSTANT', "Constant", "Uniform strength across the brush"),
@@ -246,10 +255,12 @@ def register():
         name="Circle Falloff", items=_falloff_items, default='CONSTANT',
         update=_update_circle_falloff,
     )
+    print(f"[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_circle_falloff with items: {[i[0] for i in _falloff_items]}")
     bpy.types.WindowManager.pixel_painter_spray_falloff = bpy.props.EnumProperty(
         name="Spray Falloff", items=_falloff_items, default='LINEAR',
         update=_update_spray_falloff,
     )
+    print(f"[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_spray_falloff with items: {[i[0] for i in _falloff_items]}")
     bpy.types.WindowManager.pixel_painter_spray_strength = bpy.props.FloatProperty(
         name="Spray Density",
         description="Fraction of the circle area painted per frame (0 = sparse, 1 = full fill)",
@@ -264,6 +275,7 @@ def register():
         ],
         default='FREE',
     )
+    print("[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_spacing with items FREE, PIXEL")
     bpy.types.WindowManager.pixel_painter_modifier = bpy.props.FloatProperty(
         name="Modifier",
         description="Generic modifier value (currently used as Spread)",
@@ -342,49 +354,54 @@ def register():
     # - Modifier: SMOOTH, SMEAR use global; SQUARE, CIRCLE, SPRAY, LINE use local
     # - Alpha: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
     
-    _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
-    _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
-    _strength_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
-    _alpha_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
-    
-    for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR']:
-        # Size settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size',
-                bpy.props.IntProperty(name=f"{tool} Size", min=0, max=64, default=1))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Size", default=_size_use_global.get(tool, True)))
-        
-        # Modifier settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier',
-                bpy.props.FloatProperty(name=f"{tool} Modifier", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True)))
-        
-        # Strength settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength',
-                bpy.props.FloatProperty(name=f"{tool} Strength", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Strength", default=_strength_use_global.get(tool, True)))
+    _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': True}
+    _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': False}
+    _strength_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False}
+    _alpha_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False}
 
-        # Alpha settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha',
-            bpy.props.FloatProperty(name=f"{tool} Alpha", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha',
-            bpy.props.BoolProperty(name=f"{tool} Use Global Alpha", default=_alpha_use_global.get(tool, True)))
+    # Register per-tool properties for all tools, including ERASER
+    for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']:
+        try:
+            # Size settings
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size',
+                    bpy.props.IntProperty(name=f"{tool} Size", min=0, max=64, default=1))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size',
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Size", default=_size_use_global.get(tool, True)))
 
-        # RMB per-tool settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb',
-            bpy.props.FloatProperty(name=f"{tool} Strength RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb',
-            bpy.props.BoolProperty(name=f"{tool} Use Global Strength RMB", default=_strength_use_global.get(tool, True)))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb',
-            bpy.props.FloatProperty(name=f"{tool} Modifier RMB", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb',
-            bpy.props.BoolProperty(name=f"{tool} Use Global Modifier RMB", default=_modifier_use_global.get(tool, True)))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb',
-            bpy.props.FloatProperty(name=f"{tool} Alpha RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb',
-            bpy.props.BoolProperty(name=f"{tool} Use Global Alpha RMB", default=_alpha_use_global.get(tool, True)))
+            # Modifier settings
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier',
+                    bpy.props.FloatProperty(name=f"{tool} Modifier", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier',
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True)))
+
+            # Strength settings
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength',
+                    bpy.props.FloatProperty(name=f"{tool} Strength", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength',
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Strength", default=_strength_use_global.get(tool, True)))
+
+            # Alpha settings
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha',
+                bpy.props.FloatProperty(name=f"{tool} Alpha", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha", default=_alpha_use_global.get(tool, True)))
+
+            # RMB per-tool settings
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb',
+                bpy.props.FloatProperty(name=f"{tool} Strength RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Strength RMB", default=_strength_use_global.get(tool, True)))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb',
+                bpy.props.FloatProperty(name=f"{tool} Modifier RMB", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Modifier RMB", default=_modifier_use_global.get(tool, True)))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb',
+                bpy.props.FloatProperty(name=f"{tool} Alpha RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+            setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha RMB", default=_alpha_use_global.get(tool, True)))
+            print(f"[PixelPainter][DEBUG] Registered per-tool properties for {tool}")
+        except Exception as e:
+            print(f"[PixelPainter] Failed to register properties for tool {tool}: {e}")
     
     _blend_items = [
         ('MIX',        "Normal",      "Normal blend"),
@@ -489,7 +506,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_grid_opacity
     
     # Delete per-tool settings
-    _tools = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR']
+    _tools = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']
     for tool in _tools:
         if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size'):
             delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size')

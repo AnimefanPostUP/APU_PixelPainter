@@ -17,13 +17,14 @@ def _draw_tool_mode_buttons(layout, current_mode):
     left = split.column(align=True)
     right = split.column(align=True)
 
-    left.operator("image.pixel_painter_set_mode", text="Circle", depress=(current_mode == 'CIRCLE')).mode = 'CIRCLE'
-    left.operator("image.pixel_painter_set_mode", text="Spray", depress=(current_mode == 'SPRAY')).mode = 'SPRAY'
-    left.operator("image.pixel_painter_set_mode", text="Smear", depress=(current_mode == 'SMEAR')).mode = 'SMEAR'
+    left.operator("image.pixel_painter_set_mode", text="Circle (2)", depress=(current_mode == 'CIRCLE')).mode = 'CIRCLE'
+    left.operator("image.pixel_painter_set_mode", text="Spray (3)", depress=(current_mode == 'SPRAY')).mode = 'SPRAY'
+    left.operator("image.pixel_painter_set_mode", text="Smear (6)", depress=(current_mode == 'SMEAR')).mode = 'SMEAR'
 
-    right.operator("image.pixel_painter_set_mode", text="Square", depress=(current_mode == 'SQUARE')).mode = 'SQUARE'
-    right.operator("image.pixel_painter_set_mode", text="Smooth", depress=(current_mode == 'SMOOTH')).mode = 'SMOOTH'
-    right.operator("image.pixel_painter_set_mode", text="Line", depress=(current_mode == 'LINE')).mode = 'LINE'
+    right.operator("image.pixel_painter_set_mode", text="Square (1)", depress=(current_mode == 'SQUARE')).mode = 'SQUARE'
+    right.operator("image.pixel_painter_set_mode", text="Smooth (5)", depress=(current_mode == 'SMOOTH')).mode = 'SMOOTH'
+    right.operator("image.pixel_painter_set_mode", text="Line (4)", depress=(current_mode == 'LINE')).mode = 'LINE'
+    right.operator("image.pixel_painter_set_mode", text="Eraser (7)", depress=(current_mode == 'ERASER')).mode = 'ERASER'
 
 
 def _draw_spacing_buttons(layout, wm):
