@@ -46,6 +46,8 @@ class ColorPickSubMode(SubModeHandler):
             self.state['sub_color_h'],
             self.state['sub_color_v'],
         )
+        self.state['sub_fake_cursor_x'] = self.state.get('sub_last_x')
+        self.state['sub_fake_cursor_y'] = self.state.get('sub_last_y')
 
     def on_cancel(self, context):
         self.settings.set_brush_rgb(context, *self.state['sub_orig_color'])
@@ -78,6 +80,8 @@ class ColorPickSubMode(SubModeHandler):
             self.helpers.warp_cursor_to_color_pick_hv(
                 self.state, context, self.state['sub_color_h'], self.state['sub_color_v'])
         self.helpers.wrap_cursor_at_window_edge(self.state, context, event)
+        self.state['sub_fake_cursor_x'] = self.state.get('sub_last_x')
+        self.state['sub_fake_cursor_y'] = self.state.get('sub_last_y')
         context.area.tag_redraw()
 
     def on_shift_press(self, context, event):
@@ -119,6 +123,8 @@ class ColorPickSubMode(SubModeHandler):
             self.state['sub_color_h'],
             self.state['sub_color_v'],
         )
+        self.state['sub_fake_cursor_x'] = self.state.get('sub_last_x')
+        self.state['sub_fake_cursor_y'] = self.state.get('sub_last_y')
         context.area.tag_redraw()
 
     def on_mouse_left_press(self, context, event):
@@ -154,4 +160,6 @@ class ColorPickSubMode(SubModeHandler):
             self.state.get('sub_color_h') or 0.5,
             self.state.get('sub_color_v') or 0.5,
         )
+        self.state['sub_fake_cursor_x'] = self.state.get('sub_last_x')
+        self.state['sub_fake_cursor_y'] = self.state.get('sub_last_y')
         context.area.tag_redraw()

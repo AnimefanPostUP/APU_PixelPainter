@@ -195,9 +195,12 @@ def draw_brush_outline(context, state):
     }.get(mode, (1.0, 1.0, 0.0, 0.9))
 
     def _outline_pixels_at(ix, iy):
-        if mode == 'LINE' and state['start_position'] is not None:
-            shape = state['last_shape']
+        if mode == 'LINE':
+            shape = state.get('last_shape') or 'SQUARE'
             tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
+            if state['start_position'] is None:
+                return math_utils.get_pixels_in_shape(ix, iy, radius, tip_shape)
+
             x0, y0 = state['start_position']
             pixels = set()
             for (lx, ly) in math_utils.get_line_pixels(x0, y0, ix, iy):
