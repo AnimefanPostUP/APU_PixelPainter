@@ -16,6 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 # Created by Kushiro
+# Addon Recoded and Drastically Expanded by AnimefanPostUP 
 
 import bpy
 import importlib
@@ -43,11 +44,11 @@ from .ui import tool_settings_ui
 
 bl_info = {
     "name": "APU Pixel Painter",
-    "description": "Paint pixel-perfect strokes in the Image Editor",
-    "author": "Kushiro",
-    "version": (1, 0, 2),
+    "description": "All in One Tool for Pixelpainting",
+    "author": "Kushiro, AnimefanPostUP",
+    "version": (1, 0, 3),
     "blender": (4, 2, 0),
-    "location": "Image Editor > Paint mode toolbar",
+    "location": "Image Editor > Toolbar",
     "category": "Image Editor",
 }
 
