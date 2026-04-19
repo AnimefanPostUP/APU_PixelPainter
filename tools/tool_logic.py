@@ -20,6 +20,7 @@ class DrawEnvironment:
     color: object
     blend: str
     opacity: float
+    alpha_opacity: float
     radius: int
     spacing: str
     wm: object
@@ -77,6 +78,7 @@ class LineBrushTool(BrushTool):
                     base_buffer=env.state['back_buffer'],
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
                 )
             return
@@ -91,6 +93,7 @@ class LineBrushTool(BrushTool):
             base_buffer=env.state['back_buffer'],
             blend=env.blend,
             opacity=env.opacity,
+            alpha_opacity=env.alpha_opacity,
         )
 
 
@@ -130,6 +133,7 @@ class SprayBrushTool(BrushTool):
                     base_buffer=env.state['stroke_back_buffer'],
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(swm.values()),
                 )
         else:
@@ -153,6 +157,7 @@ class SprayBrushTool(BrushTool):
                     env.color,
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
                 )
         env.state['last_paint_cx'] = env.cursor_x
@@ -192,6 +197,7 @@ class CircleBrushTool(BrushTool):
                     base_buffer=env.state['stroke_back_buffer'],
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(swm.values()),
                 )
         else:
@@ -214,6 +220,7 @@ class CircleBrushTool(BrushTool):
                     env.color,
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
                 )
         env.state['last_paint_cx'] = env.cursor_x
@@ -233,6 +240,8 @@ class SmoothTool(ToolBase):
         for (sx, sy) in env.interpolation_steps():
             all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
         draw_functions.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
+        if all_pixels:
+            draw_functions.set_pixels_alpha(env.img, all_pixels, env.alpha_opacity)
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
 
@@ -263,6 +272,11 @@ class SmearTool(ToolBase):
                 smear_reach,
                 env.opacity,
             )
+            draw_functions.set_pixels_alpha(
+                env.img,
+                list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')),
+                env.alpha_opacity,
+            )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
 
@@ -286,6 +300,7 @@ class SquareBrushTool(BrushTool):
                         env.color,
                         blend=env.blend,
                         opacity=env.opacity,
+                        alpha_opacity=env.alpha_opacity,
                     )
                     painted |= step_pixels
         else:
@@ -299,6 +314,7 @@ class SquareBrushTool(BrushTool):
                     env.color,
                     blend=env.blend,
                     opacity=env.opacity,
+                    alpha_opacity=env.alpha_opacity,
                 )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y

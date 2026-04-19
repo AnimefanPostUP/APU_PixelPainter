@@ -2,7 +2,7 @@
 
 from . import helpers
 from .color_pick import ColorPickSubMode
-from .opacity import OpacitySubMode
+from .opacity import StrengthSubMode
 
 
 class SubModeController:
@@ -13,7 +13,7 @@ class SubModeController:
         self.core_runtime = core_runtime
         self.settings = settings
         self.handlers = {
-            'OPACITY': OpacitySubMode(state, settings, helpers, self._exit_mode),
+            'STRENGTH': StrengthSubMode(state, settings, helpers, self._exit_mode),
             'COLOR_PICK': ColorPickSubMode(state, settings, helpers, self._exit_mode),
         }
 
@@ -30,17 +30,17 @@ class SubModeController:
             return False
         return handler.handle_event(context, event)
 
-    def enter_opacity_mode(self, context, event):
+    def enter_strength_mode(self, context, event):
         if self.has_active_mode():
             return False
-        self.handlers['OPACITY'].on_enter(context, event)
-        self._register_process('OPACITY')
+        self.handlers['STRENGTH'].on_enter(context, event)
+        self._register_process('STRENGTH')
         return True
 
     def enter_color_pick_mode(self, context, event):
         if self.active_mode_name() == 'COLOR_PICK':
             return False
-        if self.active_mode_name() == 'OPACITY':
+        if self.active_mode_name() == 'STRENGTH':
             return False
         self.handlers['COLOR_PICK'].on_enter(context, event)
         self._register_process('COLOR_PICK')
@@ -56,7 +56,7 @@ class SubModeController:
         return True
 
     def clear_processes(self):
-        self.core_runtime.clear_process('SUB_MODE:OPACITY')
+        self.core_runtime.clear_process('SUB_MODE:STRENGTH')
         self.core_runtime.clear_process('SUB_MODE:COLOR_PICK')
 
     def _register_process(self, mode_name):
@@ -68,4 +68,5 @@ class SubModeController:
             return
         self.state['sub_mode'] = None
         self.core_runtime.clear_process(f'SUB_MODE:{mode_name}')
-        helpers.warp_cursor_to_sub_start(self.state, context)
+        if mode_name != 'COLOR_PICK':
+            helpers.warp_cursor_to_sub_start(self.state, context)

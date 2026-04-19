@@ -1,4 +1,4 @@
-"""Opacity sub-mode handler."""
+"""Strength sub-mode handler."""
 
 import math
 
@@ -12,6 +12,7 @@ _SLIDER_HEIGHT = 150.0
 _RADIUS_TOLERANCE = 16.0
 _ANGLE_MARGIN_DEG = 12.0
 _SHIFT_SLOW_FACTOR = 10.0
+_CENTER_RADIUS = 24.0
 
 
 def _normalize_signed_angle(rad):
@@ -37,7 +38,7 @@ def _is_near_arc_side(cx, cy, mx, my, side):
         return False
 
     angle = math.atan2(dy, dx)
-    side_center = math.pi if side == 'OPACITY' else 0.0
+    side_center = math.pi if side == 'STRENGTH' else 0.0
     half_span = math.radians(_ARC_SPAN_DEG * 0.5 + _ANGLE_MARGIN_DEG)
     delta = abs(_normalize_signed_angle(angle - side_center))
     return delta <= half_span
@@ -47,14 +48,18 @@ def _value_from_mouse_height(cy, my):
     return max(0.0, min(1.0, 0.5 + ((my - cy) / _SLIDER_HEIGHT)))
 
 
-def _opacity_value_from_mouse_height(cy, my):
-    # Expand low-end travel so small opacity values get more bar distance.
+def _is_near_center_circle(cx, cy, mx, my):
+    return math.hypot(mx - cx, my - cy) <= (_CENTER_RADIUS + 12.0)
+
+
+def _strength_value_from_mouse_height(cy, my):
+    # Expand low-end travel so small strength values get more bar distance.
     linear = _value_from_mouse_height(cy, my)
     return linear * linear
 
 
-class OpacitySubMode(SubModeHandler):
-    mode_name = 'OPACITY'
+class StrengthSubMode(SubModeHandler):
+    mode_name = 'STRENGTH'
 
     def __init__(self, state, settings, helpers, on_exit):
         self.state = state
@@ -75,19 +80,24 @@ class OpacitySubMode(SubModeHandler):
         self.state['sub_last_y'] = event.mouse_region_y
         self.state['sub_fake_cursor_x'] = event.mouse_region_x
         self.state['sub_fake_cursor_y'] = event.mouse_region_y
-        self.state['sub_opacity_virtual_x'] = float(event.mouse_region_x)
-        self.state['sub_opacity_virtual_y'] = float(event.mouse_region_y)
+        self.state['sub_strength_virtual_x'] = float(event.mouse_region_x)
+        self.state['sub_strength_virtual_y'] = float(event.mouse_region_y)
+        self.state['sub_edit_button'] = 'LMB'
         mode, force_global = self._tool_context(context)
-        self.state['sub_orig_opacity'] = self.settings.get_tool_opacity(context, mode, force_global=force_global)
-        self.state['sub_orig_modifier'] = self.settings.get_tool_modifier(context, mode, force_global=force_global)
+        btn = 'LMB'
+        self.state['sub_orig_strength'] = self.settings.get_tool_strength(context, mode, force_global=force_global, button=btn)
+        self.state['sub_orig_alpha'] = self.settings.get_tool_alpha(context, mode, force_global=force_global, button=btn)
+        self.state['sub_orig_modifier'] = self.settings.get_tool_modifier(context, mode, force_global=force_global, button=btn)
         self.state['sub_total_delta'] = 0.0
-        self.state['sub_opacity_hover_target'] = 'OPACITY'
+        self.state['sub_strength_hover_target'] = 'STRENGTH'
         self.helpers.set_sub_start_to_event(self.state, event)
 
     def on_cancel(self, context):
         mode, force_global = self._tool_context(context)
-        self.settings.set_tool_opacity(context, mode, self.state.get('sub_orig_opacity'), force_global=force_global)
-        self.settings.set_tool_modifier(context, mode, self.state.get('sub_orig_modifier'), force_global=force_global)
+        btn = self.state.get('sub_edit_button', 'LMB')
+        self.settings.set_tool_strength(context, mode, self.state.get('sub_orig_strength'), force_global=force_global, button=btn)
+        self.settings.set_tool_alpha(context, mode, self.state.get('sub_orig_alpha'), force_global=force_global, button=btn)
+        self.settings.set_tool_modifier(context, mode, self.state.get('sub_orig_modifier'), force_global=force_global, button=btn)
         self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
 
     def on_mouse_move(self, context, event):
@@ -96,8 +106,8 @@ class OpacitySubMode(SubModeHandler):
         self.state['sub_last_x'] = event.mouse_region_x
         self.state['sub_last_y'] = event.mouse_region_y
 
-        vx = self.state.get('sub_opacity_virtual_x')
-        vy = self.state.get('sub_opacity_virtual_y')
+        vx = self.state.get('sub_strength_virtual_x')
+        vy = self.state.get('sub_strength_virtual_y')
         if vx is None or vy is None:
             vx = float(event.mouse_region_x)
             vy = float(event.mouse_region_y)
@@ -105,8 +115,8 @@ class OpacitySubMode(SubModeHandler):
         slow = _SHIFT_SLOW_FACTOR if event.shift else 1.0
         vx += dx / slow
         vy += dy / slow
-        self.state['sub_opacity_virtual_x'] = vx
-        self.state['sub_opacity_virtual_y'] = vy
+        self.state['sub_strength_virtual_x'] = vx
+        self.state['sub_strength_virtual_y'] = vy
         self.state['sub_fake_cursor_x'] = vx
         self.state['sub_fake_cursor_y'] = vy
 
@@ -117,33 +127,42 @@ class OpacitySubMode(SubModeHandler):
 
         mx = vx
         my = vy
-        near_left = _is_near_arc_side(cx, cy, mx, my, 'OPACITY')
+        near_left = _is_near_arc_side(cx, cy, mx, my, 'STRENGTH')
         near_right = _is_near_arc_side(cx, cy, mx, my, 'MODIFIER')
+        near_center = _is_near_center_circle(cx, cy, mx, my)
 
         target = None
-        if near_left and not near_right:
-            target = 'OPACITY'
+        if near_center:
+            target = 'ALPHA'
+        elif near_left and not near_right:
+            target = 'STRENGTH'
         elif near_right and not near_left:
             target = 'MODIFIER'
         elif near_left and near_right:
-            target = 'OPACITY' if mx < cx else 'MODIFIER'
+            target = 'STRENGTH' if mx < cx else 'MODIFIER'
 
         if target is not None:
             mode, force_global = self._tool_context(context)
-            self.state['sub_opacity_hover_target'] = target
-            if target == 'OPACITY':
-                self.settings.set_tool_opacity(
+            btn = self.state.get('sub_edit_button', 'LMB')
+            self.state['sub_strength_hover_target'] = target
+            if target == 'STRENGTH':
+                self.settings.set_tool_strength(
                     context,
                     mode,
-                    _opacity_value_from_mouse_height(cy, my),
+                    _strength_value_from_mouse_height(cy, my),
                     force_global=force_global,
+                    button=btn,
                 )
+            elif target == 'ALPHA':
+                # Alpha is intentionally not changed by mouse movement.
+                pass
             else:
                 self.settings.set_tool_modifier(
                     context,
                     mode,
                     _value_from_mouse_height(cy, my),
                     force_global=force_global,
+                    button=btn,
                 )
             self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
 
@@ -153,16 +172,34 @@ class OpacitySubMode(SubModeHandler):
     def on_wheel_up(self, context, event):
         step = 0.01 if event.shift else 0.05
         mode, force_global = self._tool_context(context)
-        value = self.settings.get_tool_modifier(context, mode, force_global=force_global)
-        self.settings.set_tool_modifier(context, mode, value + step, force_global=force_global)
+        btn = self.state.get('sub_edit_button', 'LMB')
+        hover = self.state.get('sub_strength_hover_target', 'STRENGTH')
+        if hover == 'MODIFIER':
+            value = self.settings.get_tool_modifier(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_modifier(context, mode, value + step, force_global=force_global, button=btn)
+        elif hover == 'ALPHA':
+            value = self.settings.get_tool_alpha(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_alpha(context, mode, value + step, force_global=force_global, button=btn)
+        else:
+            value = self.settings.get_tool_strength(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_strength(context, mode, value + step, force_global=force_global, button=btn)
         self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
         context.area.tag_redraw()
 
     def on_wheel_down(self, context, event):
         step = 0.01 if event.shift else 0.05
         mode, force_global = self._tool_context(context)
-        value = self.settings.get_tool_modifier(context, mode, force_global=force_global)
-        self.settings.set_tool_modifier(context, mode, value - step, force_global=force_global)
+        btn = self.state.get('sub_edit_button', 'LMB')
+        hover = self.state.get('sub_strength_hover_target', 'STRENGTH')
+        if hover == 'MODIFIER':
+            value = self.settings.get_tool_modifier(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_modifier(context, mode, value - step, force_global=force_global, button=btn)
+        elif hover == 'ALPHA':
+            value = self.settings.get_tool_alpha(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_alpha(context, mode, value - step, force_global=force_global, button=btn)
+        else:
+            value = self.settings.get_tool_strength(context, mode, force_global=force_global, button=btn)
+            self.settings.set_tool_strength(context, mode, value - step, force_global=force_global, button=btn)
         self.settings.apply_tool_runtime_settings(context, mode, force_global=force_global)
         context.area.tag_redraw()
 
@@ -173,4 +210,16 @@ class OpacitySubMode(SubModeHandler):
     def on_mouse_right_press(self, context, event):
         self.on_cancel(context)
         self.on_exit(context, self.mode_name)
+        context.area.tag_redraw()
+
+    def on_key_e_press(self, context, event):
+        """Toggle between editing LMB and RMB settings."""
+        current = self.state.get('sub_edit_button', 'LMB')
+        new_btn = 'RMB' if current == 'LMB' else 'LMB'
+        self.state['sub_edit_button'] = new_btn
+        # Capture originals for the newly selected button so cancel restores correctly.
+        mode, force_global = self._tool_context(context)
+        self.state['sub_orig_strength'] = self.settings.get_tool_strength(context, mode, force_global=force_global, button=new_btn)
+        self.state['sub_orig_alpha'] = self.settings.get_tool_alpha(context, mode, force_global=force_global, button=new_btn)
+        self.state['sub_orig_modifier'] = self.settings.get_tool_modifier(context, mode, force_global=force_global, button=new_btn)
         context.area.tag_redraw()

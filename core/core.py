@@ -38,17 +38,20 @@ _state = {
     'stroke_weight_map':  None,  # dict (px,py)→max_weight for CIRCLE/SPRAY Free mode
     'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Free mode
     'use_secondary':  False,  # True while RMB is held (paint with secondary color)
-    # ---- interactive sub-modes (R = opacity, E = color pick) ----------------
-    'sub_mode':           None,  # 'OPACITY' | 'COLOR_PICK' | None
+    # ---- interactive sub-modes (R = strength, E = color pick) ----------------
+    'sub_mode':           None,  # 'STRENGTH' | 'COLOR_PICK' | None
     'sub_last_x':         None,  # mouse region X on last MOUSEMOVE in sub-mode
     'sub_last_y':         None,  # mouse region Y on last MOUSEMOVE in sub-mode
     'sub_fake_cursor_x':  None,  # fake cursor X for sub-mode precision display
     'sub_fake_cursor_y':  None,  # fake cursor Y for sub-mode precision display
-    'sub_opacity_virtual_x': None,  # virtual opacity cursor X (shift-slow)
-    'sub_opacity_virtual_y': None,  # virtual opacity cursor Y (shift-slow)
-    'sub_orig_opacity':   None,  # brush strength captured when entering OPACITY mode
-    'sub_orig_modifier':  None,  # modifier value captured when entering OPACITY mode
-    'sub_total_delta':    0.0,   # accumulated real mouse displacement for OPACITY mode
+    'sub_strength_virtual_x': None,  # virtual strength cursor X (shift-slow)
+    'sub_strength_virtual_y': None,  # virtual strength cursor Y (shift-slow)
+    'sub_strength_hover_target': 'STRENGTH',
+    'sub_edit_button':    'LMB',  # 'LMB' | 'RMB' — which button's settings are shown in STRENGTH sub-mode
+    'sub_orig_strength':   None,  # brush strength captured when entering STRENGTH mode
+    'sub_orig_alpha':      None,  # canvas alpha captured when entering STRENGTH mode
+    'sub_orig_modifier':  None,  # modifier value captured when entering STRENGTH mode
+    'sub_total_delta':    0.0,   # accumulated real mouse displacement for STRENGTH mode
     'sub_orig_color':     None,  # brush RGB tuple captured when entering COLOR_PICK mode
     'sub_orig_color_secondary': None,  # secondary RGB captured when entering COLOR_PICK mode
     'sub_color_target':   'PRIMARY',  # active COLOR_PICK target: PRIMARY | SECONDARY
@@ -445,7 +448,7 @@ class PixelPainterOperator(Operator):
         self._brush_overlay_restore = []
 
     def _set_modal_cursor(self, context):
-        desired = 'NONE' if _state.get('sub_mode') in {'COLOR_PICK', 'OPACITY'} else 'CROSSHAIR'
+        desired = 'NONE' if _state.get('sub_mode') in {'COLOR_PICK', 'STRENGTH'} else 'CROSSHAIR'
         if getattr(self, '_cursor_mode', None) == desired and getattr(self, '_cursor_is_custom', False):
             return
         self._cursor_is_custom = False
@@ -484,9 +487,11 @@ class PixelPainterOperator(Operator):
 
         mode    = context.window_manager.pixel_painter_mode
         force_global = _is_shift_smooth_global(context)
+        button  = 'RMB' if _state.get('use_secondary') else 'LMB'
         color   = self._get_brush_color(context)
         blend   = blender_utils.get_brush_blend_mode(context)
-        opacity = _settings.get_tool_opacity(context, mode, force_global=force_global)
+        strength = _settings.get_tool_strength(context, mode, force_global=force_global, button=button)
+        alpha_opacity = _settings.get_tool_alpha(context, mode, force_global=force_global, button=button)
         radius  = _settings.get_tool_size(context, mode, force_global=force_global)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
@@ -497,7 +502,8 @@ class PixelPainterOperator(Operator):
             mode=mode,
             color=color,
             blend=blend,
-            opacity=opacity,
+            opacity=strength,
+            alpha_opacity=alpha_opacity,
             radius=radius,
             spacing=spacing,
             wm=wm,
@@ -563,9 +569,11 @@ class PixelPainterOperator(Operator):
         _state['sub_mode']           = None
         _state['sub_fake_cursor_x']  = None
         _state['sub_fake_cursor_y']  = None
-        _state['sub_opacity_virtual_x'] = None
-        _state['sub_opacity_virtual_y'] = None
-        _state['sub_orig_opacity']   = None
+        _state['sub_strength_virtual_x'] = None
+        _state['sub_strength_virtual_y'] = None
+        _state['sub_strength_hover_target'] = 'STRENGTH'
+        _state['sub_orig_strength']   = None
+        _state['sub_orig_alpha']      = None
         _state['sub_orig_modifier']  = None
         _state['sub_total_delta']    = 0.0
         _state['sub_orig_color']     = None
@@ -1020,10 +1028,10 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        # Shift+E: enter opacity picker sub-mode
+        # Shift+E: enter strength picker sub-mode
         elif event.type == 'E' and event.value == 'PRESS' and event.shift:
             _cancel_temp_shift_override_for_shortcut()
-            if _sub_mode_controller.enter_opacity_mode(context, event):
+            if _sub_mode_controller.enter_strength_mode(context, event):
                 context.area.tag_redraw()
 
         # E key: enter color picker sub-mode

@@ -80,7 +80,7 @@ def _draw_shortcuts(layout):
         ("Hold Alt", "Line draw while held"),
         ("Hold Ctrl", "Pick image color"),
         ("E", "Open color bubble"),
-        ("Shift+E", "Open opacity bubble"),
+        ("Shift+E", "Open strength/alpha bubble"),
         ("W", "Open brush type menu"),
         ("Shift+W", "Open blend mode pie"),
         ("Ctrl+Z", "Undo"),
@@ -107,7 +107,9 @@ def draw_tool_settings(context, layout):
     layout.prop(wm, "pixel_painter_active_size", text="Size")
 
     row = layout.row(align=True)
-    row.prop(wm, "pixel_painter_active_opacity", text="Opacity", slider=True)
+    row.prop(wm, "pixel_painter_active_strength", text="Strength", slider=True)
+    row.prop(wm, "pixel_painter_active_alpha", text="Alpha", slider=True)
+    row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
 
     row = layout.row(align=True)
@@ -177,11 +179,17 @@ def draw_tool_settings(context, layout):
         if not getattr(wm, f'pixel_painter_{mode}_use_global_modifier', True):
             row.prop(wm, f'pixel_painter_{mode}_modifier', text="Modifier", slider=True)
         
-        # Opacity toggle and value
+        # Strength toggle and value
         row = tool_col.row(align=True)
-        row.prop(wm, f'pixel_painter_{mode}_use_global_opacity', text="Use Global Opacity")
-        if not getattr(wm, f'pixel_painter_{mode}_use_global_opacity', True):
-            row.prop(wm, f'pixel_painter_{mode}_opacity', text="Opacity", slider=True)
+        row.prop(wm, f'pixel_painter_{mode}_use_global_strength', text="Use Global Strength")
+        if not getattr(wm, f'pixel_painter_{mode}_use_global_strength', True):
+            row.prop(wm, f'pixel_painter_{mode}_strength', text="Strength", slider=True)
+
+        # Alpha toggle and value
+        row = tool_col.row(align=True)
+        row.prop(wm, f'pixel_painter_{mode}_use_global_alpha', text="Use Global Alpha")
+        if not getattr(wm, f'pixel_painter_{mode}_use_global_alpha', True):
+            row.prop(wm, f'pixel_painter_{mode}_alpha', text="Alpha", slider=True)
 
     if _draw_foldout(col, wm, "pixel_painter_ui_show_blend_mode", "Blend Mode"):
         blend_col = col.box().column(align=True)

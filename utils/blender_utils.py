@@ -77,8 +77,8 @@ def get_brush_secondary_color(context):
         return (0.0, 0.0, 0.0)
 
 
-def get_brush_opacity(context):
-    """Return the active brush opacity [0.0-1.0], respecting unified strength."""
+def get_brush_strength(context):
+    """Return the active brush strength [0.0-1.0], respecting unified strength."""
     try:
         ups   = context.tool_settings.unified_paint_settings
         brush = context.tool_settings.image_paint.brush

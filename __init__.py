@@ -113,24 +113,47 @@ def _set_active_size(self, value):
         pass
 
 
-def _get_active_opacity(self):
+def _get_active_strength(self):
     try:
         ctx = bpy.context
         svc = settings_service.PixelPainterSettingsService()
         mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
         force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
-        return float(svc.get_tool_opacity(ctx, mode, force_global=force_global))
+        return float(svc.get_tool_strength(ctx, mode, force_global=force_global))
     except Exception:
         return 1.0
 
 
-def _set_active_opacity(self, value):
+def _set_active_strength(self, value):
     try:
         ctx = bpy.context
         svc = settings_service.PixelPainterSettingsService()
         mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
         force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
-        svc.set_tool_opacity(ctx, mode, value, force_global=force_global)
+        svc.set_tool_strength(ctx, mode, value, force_global=force_global)
+        core.apply_active_tool_settings(ctx)
+    except Exception:
+        pass
+
+
+def _get_active_alpha(self):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        return float(svc.get_tool_alpha(ctx, mode, force_global=force_global))
+    except Exception:
+        return 1.0
+
+
+def _set_active_alpha(self, value):
+    try:
+        ctx = bpy.context
+        svc = settings_service.PixelPainterSettingsService()
+        mode = getattr(self, 'pixel_painter_mode', 'SQUARE')
+        force_global = bool(mode == 'SMOOTH' and getattr(self, 'pixel_painter_temp_smooth_force_global', False))
+        svc.set_tool_alpha(ctx, mode, value, force_global=force_global)
         core.apply_active_tool_settings(ctx)
     except Exception:
         pass
@@ -204,8 +227,8 @@ def register():
             ('CIRCLE',  "Circle",  "Circle brush shape with falloff"),
             ('SPRAY',   "Spray",   "Randomised spray within a circle"),
             ('LINE',    "Line",    "Draw a straight line (V key)"),
-            ('SMOOTH',  "Smooth",  "Blur pixels — Spread sets kernel size, Opacity sets blend strength"),
-            ('SMEAR',   "Smear",   "Drag pixels — Spread sets reach, Opacity sets blend strength"),
+            ('SMOOTH',  "Smooth",  "Blur pixels — Spread sets kernel size, Strength sets blend strength"),
+            ('SMEAR',   "Smear",   "Drag pixels — Spread sets reach, Strength sets blend strength"),
         ],
         default='SQUARE',
         update=_update_mode,
@@ -250,8 +273,25 @@ def register():
         name="Global Modifier",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR', options={'HIDDEN'},
     )
-    bpy.types.WindowManager.pixel_painter_global_opacity = bpy.props.FloatProperty(
-        name="Global Opacity",
+    bpy.types.WindowManager.pixel_painter_global_strength = bpy.props.FloatProperty(
+        name="Global Strength",
+        min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_global_alpha = bpy.props.FloatProperty(
+        name="Global Alpha",
+        min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+    )
+    # RMB global settings
+    bpy.types.WindowManager.pixel_painter_global_strength_rmb = bpy.props.FloatProperty(
+        name="Global Strength RMB",
+        min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_global_modifier_rmb = bpy.props.FloatProperty(
+        name="Global Modifier RMB",
+        min=0.0, max=1.0, default=0.5, subtype='FACTOR', options={'HIDDEN'},
+    )
+    bpy.types.WindowManager.pixel_painter_global_alpha_rmb = bpy.props.FloatProperty(
+        name="Global Alpha RMB",
         min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
     )
     bpy.types.WindowManager.pixel_painter_temp_smooth_force_global = bpy.props.BoolProperty(
@@ -267,14 +307,14 @@ def register():
         get=_get_active_size,
         set=_set_active_size,
     )
-    bpy.types.WindowManager.pixel_painter_active_opacity = bpy.props.FloatProperty(
-        name="Opacity",
-        description="Active opacity setter routing to global or local value for current tool",
+    bpy.types.WindowManager.pixel_painter_active_strength = bpy.props.FloatProperty(
+        name="Strength",
+        description="Active strength setter routing to global or local value for current tool",
         min=0.0,
         max=1.0,
         subtype='FACTOR',
-        get=_get_active_opacity,
-        set=_set_active_opacity,
+        get=_get_active_strength,
+        set=_set_active_strength,
     )
     bpy.types.WindowManager.pixel_painter_active_modifier = bpy.props.FloatProperty(
         name="Modifier",
@@ -285,16 +325,27 @@ def register():
         get=_get_active_modifier,
         set=_set_active_modifier,
     )
+    bpy.types.WindowManager.pixel_painter_active_alpha = bpy.props.FloatProperty(
+        name="Alpha",
+        description="Active alpha setter routing to global or local value for current tool",
+        min=0.0,
+        max=1.0,
+        subtype='FACTOR',
+        get=_get_active_alpha,
+        set=_set_active_alpha,
+    )
     
-    # Per-tool settings: Size, Modifier, Opacity with global/per-tool toggles
+    # Per-tool settings: Size, Modifier, Strength, Alpha with global/per-tool toggles
     # Defaults:
     # - Size: SQUARE, CIRCLE, SMOOTH, SMEAR use global; SPRAY, LINE use local
-    # - Opacity: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
+    # - Strength: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
     # - Modifier: SMOOTH, SMEAR use global; SQUARE, CIRCLE, SPRAY, LINE use local
+    # - Alpha: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
     
     _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
     _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True}
-    _opacity_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
+    _strength_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
+    _alpha_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False}
     
     for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR']:
         # Size settings
@@ -309,11 +360,31 @@ def register():
         setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier',
                 bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True)))
         
-        # Opacity settings
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity',
-                bpy.props.FloatProperty(name=f"{tool} Opacity", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
-        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Opacity", default=_opacity_use_global.get(tool, True)))
+        # Strength settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength',
+                bpy.props.FloatProperty(name=f"{tool} Strength", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength',
+                bpy.props.BoolProperty(name=f"{tool} Use Global Strength", default=_strength_use_global.get(tool, True)))
+
+        # Alpha settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha',
+            bpy.props.FloatProperty(name=f"{tool} Alpha", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha',
+            bpy.props.BoolProperty(name=f"{tool} Use Global Alpha", default=_alpha_use_global.get(tool, True)))
+
+        # RMB per-tool settings
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb',
+            bpy.props.FloatProperty(name=f"{tool} Strength RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb',
+            bpy.props.BoolProperty(name=f"{tool} Use Global Strength RMB", default=_strength_use_global.get(tool, True)))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb',
+            bpy.props.FloatProperty(name=f"{tool} Modifier RMB", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb',
+            bpy.props.BoolProperty(name=f"{tool} Use Global Modifier RMB", default=_modifier_use_global.get(tool, True)))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb',
+            bpy.props.FloatProperty(name=f"{tool} Alpha RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+        setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb',
+            bpy.props.BoolProperty(name=f"{tool} Use Global Alpha RMB", default=_alpha_use_global.get(tool, True)))
     
     _blend_items = [
         ('MIX',        "Normal",      "Normal blend"),
@@ -373,7 +444,7 @@ def register():
     bpy.utils.register_tool(user_interface.PixelPainterTool)
     try:
         svc = settings_service.PixelPainterSettingsService()
-        bpy.context.window_manager.pixel_painter_global_opacity = svc.get_brush_opacity(bpy.context)
+        bpy.context.window_manager.pixel_painter_global_strength = svc.get_brush_strength(bpy.context)
     except Exception:
         pass
     try:
@@ -400,11 +471,16 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_spray_strength
     del bpy.types.WindowManager.pixel_painter_modifier
     del bpy.types.WindowManager.pixel_painter_global_modifier
-    del bpy.types.WindowManager.pixel_painter_global_opacity
+    del bpy.types.WindowManager.pixel_painter_global_strength
+    del bpy.types.WindowManager.pixel_painter_global_alpha
+    del bpy.types.WindowManager.pixel_painter_global_strength_rmb
+    del bpy.types.WindowManager.pixel_painter_global_modifier_rmb
+    del bpy.types.WindowManager.pixel_painter_global_alpha_rmb
     del bpy.types.WindowManager.pixel_painter_temp_smooth_force_global
     del bpy.types.WindowManager.pixel_painter_active_size
-    del bpy.types.WindowManager.pixel_painter_active_opacity
+    del bpy.types.WindowManager.pixel_painter_active_strength
     del bpy.types.WindowManager.pixel_painter_active_modifier
+    del bpy.types.WindowManager.pixel_painter_active_alpha
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
@@ -423,10 +499,26 @@ def unregister():
             delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier')
         if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier'):
             delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier')
-        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity'):
-            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_opacity')
-        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity'):
-            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_opacity')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb')
+        if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb'):
+            delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb')
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)

@@ -37,13 +37,13 @@ _state = {
     'stroke_weight_map':  None,  # dict (px,py)→max_weight for CIRCLE/SPRAY Free mode
     'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Free mode
     'use_secondary':  False,  # True while RMB is held (paint with secondary color)
-    # ---- interactive sub-modes (R = opacity, E = color pick) ----------------
-    'sub_mode':           None,  # 'OPACITY' | 'COLOR_PICK' | None
+    # ---- interactive sub-modes (R = strength, E = color pick) ----------------
+    'sub_mode':           None,  # 'STRENGTH' | 'COLOR_PICK' | None
     'sub_last_x':         None,  # mouse region X on last MOUSEMOVE in sub-mode
     'sub_last_y':         None,  # mouse region Y on last MOUSEMOVE in sub-mode
-    'sub_orig_opacity':   None,  # brush strength captured when entering OPACITY mode
-    'sub_orig_modifier':  None,  # modifier value captured when entering OPACITY mode
-    'sub_total_delta':    0.0,   # accumulated real mouse displacement for OPACITY mode
+    'sub_orig_strength':   None,  # brush strength captured when entering STRENGTH mode
+    'sub_orig_modifier':  None,  # modifier value captured when entering STRENGTH mode
+    'sub_total_delta':    0.0,   # accumulated real mouse displacement for STRENGTH mode
     'sub_orig_color':     None,  # brush RGB tuple captured when entering COLOR_PICK mode
     'sub_orig_color_secondary': None,  # secondary RGB captured when entering COLOR_PICK mode
     'sub_color_target':   'PRIMARY',  # active COLOR_PICK target: PRIMARY | SECONDARY
@@ -138,7 +138,7 @@ def _register_sub_mode_process(mode_name):
 def _clear_sub_mode_process(mode_name=None):
     """Clear one or all registered sub-mode processes."""
     if mode_name is None:
-        _core_runtime.clear_process('SUB_MODE:OPACITY')
+        _core_runtime.clear_process('SUB_MODE:STRENGTH')
         _core_runtime.clear_process('SUB_MODE:COLOR_PICK')
         return
     _core_runtime.clear_process(f"SUB_MODE:{mode_name}")
@@ -204,7 +204,7 @@ def _undo_clear():
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Sub-mode helpers  (opacity / color-pick interactive modes)
+# Sub-mode helpers  (strength / color-pick interactive modes)
 # ---------------------------------------------------------------------------
 
 def _warp_cursor_to_sub_start(context):
@@ -582,7 +582,7 @@ class PixelPainterOperator(Operator):
         mode    = context.window_manager.pixel_painter_mode
         color   = self._get_brush_color(context)
         blend   = blender_utils.get_brush_blend_mode(context)
-        opacity = blender_utils.get_brush_opacity(context)
+        strength = blender_utils.get_brush_strength(context)
         radius  = blender_utils.get_brush_image_radius(context)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
@@ -593,7 +593,7 @@ class PixelPainterOperator(Operator):
             mode=mode,
             color=color,
             blend=blend,
-            opacity=opacity,
+            opacity=strength,
             radius=radius,
             spacing=spacing,
             wm=wm,
@@ -653,7 +653,7 @@ class PixelPainterOperator(Operator):
         _state['stroke_back_buffer']  = None
         _state['use_secondary']       = False
         _state['sub_mode']           = None
-        _state['sub_orig_opacity']   = None
+        _state['sub_orig_strength']   = None
         _state['sub_orig_modifier']  = None
         _state['sub_total_delta']    = 0.0
         _state['sub_orig_color']     = None
@@ -766,8 +766,8 @@ class PixelPainterOperator(Operator):
         if event.type == 'ESC':
             if _state['sub_mode'] is not None:
                 # restore original values and leave sub-mode
-                if _state['sub_mode'] == 'OPACITY' and _state['sub_orig_opacity'] is not None:
-                    _settings.set_brush_opacity(context, _state['sub_orig_opacity'])
+                if _state['sub_mode'] == 'STRENGTH' and _state['sub_orig_strength'] is not None:
+                    _settings.set_brush_strength(context, _state['sub_orig_strength'])
                 elif _state['sub_mode'] == 'COLOR_PICK' and _state['sub_orig_color'] is not None:
                     _settings.set_brush_rgb(context, *_state['sub_orig_color'])
                     if _state['sub_orig_color_secondary'] is not None:
@@ -781,13 +781,13 @@ class PixelPainterOperator(Operator):
             return {'CANCELLED'}
 
         # ------------------------------------------------------------------ #
-        # Sub-mode: R = opacity picker, E = color picker                      #
+        # Sub-mode: R = strength picker, E = color picker                      #
         # While a sub-mode is active all events are consumed here; painting   #
         # is blocked until the sub-mode is exited.                            #
         # ------------------------------------------------------------------ #
         sub = _state['sub_mode']
 
-        if sub == 'OPACITY':
+        if sub == 'STRENGTH':
             if event.type == 'MOUSEMOVE':
                 dx = event.mouse_region_x - _state['sub_last_x']
                 dy = event.mouse_region_y - _state['sub_last_y']
@@ -797,8 +797,8 @@ class PixelPainterOperator(Operator):
                 # the teleport jump never enters sub_total_delta).
                 _state['sub_total_delta'] += dx + dy
                 divisor  = 3000.0 if event.shift else 300.0
-                orig_op  = _state['sub_orig_opacity'] or 0.0
-                _settings.set_brush_opacity(context, orig_op + _state['sub_total_delta'] / divisor)
+                orig_op  = _state['sub_orig_strength'] or 0.0
+                _settings.set_brush_strength(context, orig_op + _state['sub_total_delta'] / divisor)
                 _wrap_cursor_at_window_edge(context, event)
                 context.area.tag_redraw()
             elif event.type == 'WHEELUPMOUSE':
@@ -811,14 +811,14 @@ class PixelPainterOperator(Operator):
                 context.area.tag_redraw()
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 _state['sub_mode'] = None          # keep new values
-                _clear_sub_mode_process('OPACITY')
+                _clear_sub_mode_process('STRENGTH')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-                _settings.set_brush_opacity(context, _state['sub_orig_opacity'])
+                _settings.set_brush_strength(context, _state['sub_orig_strength'])
                 _settings.set_modifier(context, _state['sub_orig_modifier'])
                 _state['sub_mode'] = None
-                _clear_sub_mode_process('OPACITY')
+                _clear_sub_mode_process('STRENGTH')
                 _warp_cursor_to_sub_start(context)
                 context.area.tag_redraw()
             return {'RUNNING_MODAL'}

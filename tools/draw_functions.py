@@ -137,7 +137,7 @@ def _apply_blend(dst, src, blend, opacity):
 
 
 def write_pixels_to_image(img, pixels, color, base_buffer=None,
-                          blend='MIX', opacity=1.0, pixel_weights=None):
+                          blend='MIX', opacity=1.0, alpha_opacity=1.0, pixel_weights=None):
     """Paint a set of (px, py) coordinates onto img.
 
     Parameters
@@ -148,6 +148,7 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     base_buffer   — optional float32 pixel array to start from (line preview)
     blend         — Blender BrushBlend mode string (default 'MIX')
     opacity       — float [0, 1] brush strength / alpha (default 1.0)
+    alpha_opacity — float [0, 1] absolute alpha written to affected pixels
     pixel_weights — optional list of float [0, 1], same length and order as
                     *pixels*, multiplied into opacity per pixel.  Used for
                     falloff on circle/spray brushes.  Requires *pixels* to be
@@ -183,7 +184,7 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     arr[flat_idx]     = out[:, 0]
     arr[flat_idx + 1] = out[:, 1]
     arr[flat_idx + 2] = out[:, 2]
-    arr[flat_idx + 3] = 1.0  # always fully opaque image alpha
+    arr[flat_idx + 3] = float(max(0.0, min(1.0, alpha_opacity)))
 
     img.pixels.foreach_set(arr)
     img.update()
@@ -198,6 +199,21 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
                     area.tag_redraw()
     except Exception:
         pass
+
+
+def set_pixels_alpha(img, pixels, alpha_opacity):
+    """Overwrite image alpha for the given pixel coordinates."""
+    w, h = img.size
+    arr = np.array(img.pixels, dtype=np.float32)
+    alpha = float(max(0.0, min(1.0, alpha_opacity)))
+
+    for (px, py) in pixels:
+        if 0 <= px < w and 0 <= py < h:
+            idx = (py * w + px) * 4
+            arr[idx + 3] = alpha
+
+    img.pixels.foreach_set(arr)
+    img.update()
 
 
 # ---------------------------------------------------------------------------
@@ -795,8 +811,8 @@ def _draw_sub_mode_cursor_dot(context, state):
 
     COLOR_PICK: top half = current target color; bottom half = original
                 color of the active target (primary or secondary).
-    OPACITY:    checker background circle showing brush color at current opacity,
-                with percentage label to the right.
+    STRENGTH:   left arc = strength, right arc = modifier,
+                center circle = canvas opacity.
     """
     sub = state.get('sub_mode')
     if not sub:
@@ -861,21 +877,33 @@ def _draw_sub_mode_cursor_dot(context, state):
         blf.draw(font_id, label)
         gpu.state.blend_set('ALPHA')
 
-    elif sub == 'OPACITY':
+    elif sub == 'STRENGTH':
         try:
-            curr_op = ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0)
+            edit_btn = state.get('sub_edit_button', 'LMB')
+            suffix = '_rmb' if edit_btn == 'RMB' else ''
+            curr_strength = ups.strength if ups.use_unified_strength else (brush.strength if brush else 1.0)
             mod = context.window_manager.pixel_painter_modifier
+            if edit_btn == 'RMB':
+                wm = context.window_manager
+                mode = wm.pixel_painter_mode
+                use_global = getattr(wm, f'pixel_painter_{mode}_use_global_alpha_rmb', True)
+                if use_global:
+                    curr_alpha = getattr(wm, 'pixel_painter_global_alpha_rmb', 1.0)
+                else:
+                    curr_alpha = getattr(wm, f'pixel_painter_{mode}_alpha_rmb', 1.0)
+            else:
+                curr_alpha = context.window_manager.pixel_painter_active_alpha
         except Exception:
-            curr_op, mod = 1.0, 0.5
+            curr_strength, mod, curr_alpha = 1.0, 0.5, 1.0
 
         arc_mid_r = 156.0
         arc_thickness = 8.0
         arc_span = math.radians(50.0)
-        hover_target = state.get('sub_opacity_hover_target')
+        hover_target = state.get('sub_strength_hover_target')
 
         left_bg = (0.26, 0.26, 0.26, 0.55)
         right_bg = (0.26, 0.26, 0.26, 0.55)
-        if hover_target == 'OPACITY':
+        if hover_target == 'STRENGTH':
             left_bg = (0.34, 0.34, 0.34, 0.70)
         elif hover_target == 'MODIFIER':
             right_bg = (0.34, 0.34, 0.34, 0.70)
@@ -889,12 +917,20 @@ def _draw_sub_mode_cursor_dot(context, state):
             arc_thickness,
             math.pi,
             arc_span,
-            curr_op,
+            curr_strength,
             left_bg,
             left_fill,
             invert_fill=True,
         )
         _draw_rounded_arc_bar(rx, ry, arc_mid_r, arc_thickness, 0.0, arc_span, mod, right_bg, right_fill)
+
+        center_bg = (0.14, 0.14, 0.14, 0.72)
+        center_fill = (0.2, 0.9, 0.95, 0.92)
+        if hover_target == 'ALPHA':
+            center_bg = (0.2, 0.2, 0.2, 0.85)
+        _draw_filled_circle(rx, ry, 24.0, center_bg)
+        _draw_filled_circle(rx, ry, max(2.0, 22.0 * curr_alpha), center_fill)
+        _draw_circle_outline(rx, ry, 24.0, (0.0, 0.0, 0.0, 0.85), width=1.4, steps=42)
 
         _draw_circle_outline(rx, ry, arc_mid_r + arc_thickness * 0.9, (0.0, 0.0, 0.0, 0.35), width=1.2, steps=72)
 
@@ -902,8 +938,9 @@ def _draw_sub_mode_cursor_dot(context, state):
         gpu.state.blend_set('NONE')
         font_id = 0
         blf.size(font_id, 12)
-        left_txt = f"Opacity  {curr_op * 100:.0f}%"
+        left_txt = f"Strength  {curr_strength * 100:.0f}%"
         right_txt = f"Modifier  {mod * 100:.0f}%"
+        center_txt = f"Alpha  {curr_alpha * 100:.0f}%"
 
         lw, lh = blf.dimensions(font_id, left_txt)
         rw, rh = blf.dimensions(font_id, right_txt)
@@ -915,6 +952,11 @@ def _draw_sub_mode_cursor_dot(context, state):
         blf.color(font_id, 0.86, 0.76, 0.98, 1.0)
         blf.position(font_id, rx + arc_mid_r + 14, ry - rh * 0.5, 0)
         blf.draw(font_id, right_txt)
+
+        cw, ch = blf.dimensions(font_id, center_txt)
+        blf.color(font_id, 0.55, 0.97, 1.0, 1.0)
+        blf.position(font_id, rx - cw * 0.5, ry - 24 - ch - 8, 0)
+        blf.draw(font_id, center_txt)
         gpu.state.blend_set('ALPHA')
 
     _draw_circle_outline(rx, ry, radius, (0.0, 0.0, 0.0, 0.85))
@@ -968,7 +1010,7 @@ def draw_sub_mode_overlay(context, state):
             _draw_color_pick_axes(rx, ry, h, s, v, 0.0)
 
     _draw_sub_mode_cursor_dot(context, state)
-    if sub in {'COLOR_PICK', 'OPACITY'}:
+    if sub in {'COLOR_PICK', 'STRENGTH'}:
         _draw_fake_color_pick_cursor(state)
 
     area = context.area
@@ -982,14 +1024,17 @@ def draw_sub_mode_overlay(context, state):
         ups   = context.tool_settings.unified_paint_settings
         brush = context.tool_settings.image_paint.brush
 
-        if sub == 'OPACITY':
+        if sub == 'STRENGTH':
             val = ups.strength if ups.use_unified_strength else (brush.strength if brush else 0.0)
+            edit_btn = state.get('sub_edit_button', 'LMB')
             try:
                 mod = context.window_manager.pixel_painter_modifier
+                alpha = context.window_manager.pixel_painter_active_alpha
             except Exception:
                 mod = 0.5
-            line1 = f"Opacity  {val * 100:.1f}%    Modifier  {mod * 100:.1f}%"
-            line2 = "Move near left/right arc; mouse height sets value   Shift slow precision   Scroll fine-tunes Modifier   LMB apply   RMB cancel"
+                alpha = 1.0
+            line1 = f"[{edit_btn}]  Strength  {val * 100:.1f}%    Alpha  {alpha * 100:.1f}%    Modifier  {mod * 100:.1f}%"
+            line2 = "Left arc Strength + right arc Modifier: mouse height   Center Alpha: scroll   E toggle LMB/RMB   LMB apply   RMB cancel"
 
         elif sub == 'COLOR_PICK':
             target = state.get('sub_color_target') or 'PRIMARY'

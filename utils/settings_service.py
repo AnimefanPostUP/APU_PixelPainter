@@ -12,8 +12,8 @@ class PixelPainterSettingsService:
         except Exception:
             return False
 
-    def get_brush_opacity(self, context):
-        """Return active opacity respecting unified paint strength."""
+    def get_brush_strength(self, context):
+        """Return active strength respecting unified paint strength."""
         try:
             ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
@@ -21,8 +21,8 @@ class PixelPainterSettingsService:
         except Exception:
             return 1.0
 
-    def set_brush_opacity(self, context, value):
-        """Set active opacity with [0,1] clamping and unified fallback."""
+    def set_brush_strength(self, context, value):
+        """Set active strength with [0,1] clamping and unified fallback."""
         value = max(0.0, min(1.0, value))
         try:
             ups = context.tool_settings.unified_paint_settings
@@ -182,74 +182,123 @@ class PixelPainterSettingsService:
         except Exception:
             pass
 
-    def get_tool_modifier(self, context, tool_mode, force_global=False):
+    def get_tool_modifier(self, context, tool_mode, force_global=False, button='LMB'):
         """Get modifier value for the tool, respecting global vs per-tool toggle."""
+        suffix = '_rmb' if button == 'RMB' else ''
         try:
             wm = context.window_manager
-            if not hasattr(wm, 'pixel_painter_global_modifier'):
+            global_key = f'pixel_painter_global_modifier{suffix}'
+            if not hasattr(wm, global_key):
                 base_global = wm.pixel_painter_modifier
             else:
-                base_global = wm.pixel_painter_global_modifier
+                base_global = getattr(wm, global_key)
             if force_global or self._is_shift_smooth_global(context, tool_mode):
                 return base_global
-            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_modifier', True)
+            use_global_key = f'pixel_painter_{tool_mode}_use_global_modifier{suffix}'
+            use_global = getattr(wm, use_global_key, True)
             if use_global:
                 return base_global
-            return getattr(wm, f'pixel_painter_{tool_mode}_modifier', 0.5)
+            return getattr(wm, f'pixel_painter_{tool_mode}_modifier{suffix}', 0.5)
         except Exception:
             return 0.5
 
-    def set_tool_modifier(self, context, tool_mode, value, force_global=False):
+    def set_tool_modifier(self, context, tool_mode, value, force_global=False, button='LMB'):
         """Set modifier value for the tool (updates the active per-tool or global value)."""
+        suffix = '_rmb' if button == 'RMB' else ''
         value = max(0.0, min(1.0, float(value)))
         try:
             wm = context.window_manager
+            global_key = f'pixel_painter_global_modifier{suffix}'
             if force_global or self._is_shift_smooth_global(context, tool_mode):
-                if hasattr(wm, 'pixel_painter_global_modifier'):
-                    wm.pixel_painter_global_modifier = value
-                wm.pixel_painter_modifier = value
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+                if suffix == '':
+                    wm.pixel_painter_modifier = value
                 return
-            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_modifier', True)
+            use_global_key = f'pixel_painter_{tool_mode}_use_global_modifier{suffix}'
+            use_global = getattr(wm, use_global_key, True)
             if use_global:
-                if hasattr(wm, 'pixel_painter_global_modifier'):
-                    wm.pixel_painter_global_modifier = value
-                wm.pixel_painter_modifier = value
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+                if suffix == '':
+                    wm.pixel_painter_modifier = value
             else:
-                setattr(wm, f'pixel_painter_{tool_mode}_modifier', value)
+                setattr(wm, f'pixel_painter_{tool_mode}_modifier{suffix}', value)
         except Exception:
             pass
 
-    def get_tool_opacity(self, context, tool_mode, force_global=False):
-        """Get opacity (brush strength) for the tool, respecting global vs per-tool toggle."""
+    def get_tool_strength(self, context, tool_mode, force_global=False, button='LMB'):
+        """Get strength (brush strength) for the tool, respecting global vs per-tool toggle."""
+        suffix = '_rmb' if button == 'RMB' else ''
         try:
             wm = context.window_manager
-            base_global = getattr(wm, 'pixel_painter_global_opacity', self.get_brush_opacity(context))
+            base_global = getattr(wm, f'pixel_painter_global_strength{suffix}',
+                                   self.get_brush_strength(context))
             if force_global or self._is_shift_smooth_global(context, tool_mode):
                 return base_global
-            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_opacity', True)
+            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_strength{suffix}', True)
             if use_global:
                 return base_global
-            return getattr(wm, f'pixel_painter_{tool_mode}_opacity', 1.0)
+            return getattr(wm, f'pixel_painter_{tool_mode}_strength{suffix}', 1.0)
         except Exception:
             return 1.0
 
-    def set_tool_opacity(self, context, tool_mode, value, force_global=False):
-        """Set opacity (brush strength) for the tool (updates the active per-tool or global value)."""
+    def set_tool_strength(self, context, tool_mode, value, force_global=False, button='LMB'):
+        """Set strength (brush strength) for the tool (updates the active per-tool or global value)."""
+        suffix = '_rmb' if button == 'RMB' else ''
         value = max(0.0, min(1.0, float(value)))
         try:
             wm = context.window_manager
+            global_key = f'pixel_painter_global_strength{suffix}'
             if force_global or self._is_shift_smooth_global(context, tool_mode):
-                if hasattr(wm, 'pixel_painter_global_opacity'):
-                    wm.pixel_painter_global_opacity = value
-                self.set_brush_opacity(context, value)
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+                if suffix == '':
+                    self.set_brush_strength(context, value)
                 return
-            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_opacity', True)
+            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_strength{suffix}', True)
             if use_global:
-                if hasattr(wm, 'pixel_painter_global_opacity'):
-                    wm.pixel_painter_global_opacity = value
-                self.set_brush_opacity(context, value)
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+                if suffix == '':
+                    self.set_brush_strength(context, value)
             else:
-                setattr(wm, f'pixel_painter_{tool_mode}_opacity', value)
+                setattr(wm, f'pixel_painter_{tool_mode}_strength{suffix}', value)
+        except Exception:
+            pass
+
+    def get_tool_alpha(self, context, tool_mode, force_global=False, button='LMB'):
+        """Get canvas alpha for the tool (global/per-tool aware)."""
+        suffix = '_rmb' if button == 'RMB' else ''
+        try:
+            wm = context.window_manager
+            base_global = getattr(wm, f'pixel_painter_global_alpha{suffix}', 1.0)
+            if force_global or self._is_shift_smooth_global(context, tool_mode):
+                return base_global
+            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_alpha{suffix}', True)
+            if use_global:
+                return base_global
+            return getattr(wm, f'pixel_painter_{tool_mode}_alpha{suffix}', 1.0)
+        except Exception:
+            return 1.0
+
+    def set_tool_alpha(self, context, tool_mode, value, force_global=False, button='LMB'):
+        """Set canvas alpha for the tool (global/per-tool aware)."""
+        suffix = '_rmb' if button == 'RMB' else ''
+        value = max(0.0, min(1.0, float(value)))
+        try:
+            wm = context.window_manager
+            global_key = f'pixel_painter_global_alpha{suffix}'
+            if force_global or self._is_shift_smooth_global(context, tool_mode):
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+                return
+            use_global = getattr(wm, f'pixel_painter_{tool_mode}_use_global_alpha{suffix}', True)
+            if use_global:
+                if hasattr(wm, global_key):
+                    setattr(wm, global_key, value)
+            else:
+                setattr(wm, f'pixel_painter_{tool_mode}_alpha{suffix}', value)
         except Exception:
             pass
 
@@ -258,6 +307,6 @@ class PixelPainterSettingsService:
         try:
             wm = context.window_manager
             wm.pixel_painter_modifier = self.get_tool_modifier(context, tool_mode, force_global=force_global)
-            self.set_brush_opacity(context, self.get_tool_opacity(context, tool_mode, force_global=force_global))
+            self.set_brush_strength(context, self.get_tool_strength(context, tool_mode, force_global=force_global))
         except Exception:
             pass
