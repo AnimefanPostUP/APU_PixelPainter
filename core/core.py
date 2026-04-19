@@ -489,12 +489,21 @@ class PixelPainterOperator(Operator):
         mode    = context.window_manager.pixel_painter_mode
         force_global = _is_shift_smooth_global(context)
         button  = 'RMB' if _state.get('use_secondary') else 'LMB'
+
+        # Special case: Shift+RightClick Eraser should always use Eraser tool's RMB settings
+        if _state.get('temp_shift_mode_active') and mode == 'ERASER' and button == 'RMB':
+            settings_mode = 'ERASER'
+            settings_button = 'RMB'
+        else:
+            settings_mode = mode
+            settings_button = button
+
         color   = self._get_brush_color(context)
         blend   = blender_utils.get_brush_blend_mode(context)
-        strength = _settings.get_tool_strength(context, mode, force_global=force_global, button=button)
-        modifier = _settings.get_tool_modifier(context, mode, force_global=force_global, button=button)
-        alpha_opacity = _settings.get_tool_alpha(context, mode, force_global=force_global, button=button)
-        radius  = _settings.get_tool_size(context, mode, force_global=force_global)
+        strength = _settings.get_tool_strength(context, settings_mode, force_global=force_global, button=settings_button)
+        modifier = _settings.get_tool_modifier(context, settings_mode, force_global=force_global, button=settings_button)
+        alpha_opacity = _settings.get_tool_alpha(context, settings_mode, force_global=force_global, button=settings_button)
+        radius  = _settings.get_tool_size(context, settings_mode, force_global=force_global)
         wm      = context.window_manager
         spacing = wm.pixel_painter_spacing
         # Apply button-specific modifier so tools that read wm.pixel_painter_modifier see the correct value.
@@ -818,8 +827,8 @@ class PixelPainterOperator(Operator):
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
                         self.draw_pixels(context)
-                    # Only switch back to previous tool if Line was activated via Alt
-                    if _state['temp_alt_mode_active']:
+                    # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
+                    if _state['temp_alt_mode_active'] and not event.alt:
                         context.window_manager.pixel_painter_mode = _state['last_shape']
                     _state['start_position'] = None
                     _state['back_buffer']    = None
@@ -838,10 +847,9 @@ class PixelPainterOperator(Operator):
                 if not _state['temp_shift_mode_active']:
                     _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
                     _state['temp_shift_mode_active'] = True
-                context.window_manager.pixel_painter_temp_smooth_force_global = True
-                context.window_manager.pixel_painter_mode = 'SMOOTH'
+                context.window_manager.pixel_painter_mode = 'ERASER'
                 apply_active_tool_settings(context)
-                active_mode = 'SMOOTH'
+                active_mode = 'ERASER'
 
             if event.ctrl or _state['ctrl_pick_active']:
                 if _state['ctrl_hovered_color'] is None:
@@ -882,8 +890,8 @@ class PixelPainterOperator(Operator):
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
                         self.draw_pixels(context)
-                    # Only switch back to previous tool if Line was activated via Alt
-                    if _state['temp_alt_mode_active']:
+                    # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
+                    if _state['temp_alt_mode_active'] and not event.alt:
                         context.window_manager.pixel_painter_mode = _state['last_shape']
                     _state['start_position'] = None
                     _state['back_buffer']    = None
