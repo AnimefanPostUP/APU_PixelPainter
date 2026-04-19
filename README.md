@@ -1,11 +1,11 @@
-Control: Colorpicker
-Alt:       Linedrawer
-Shift:     Smoothing (LMB) | Eraser (RMB)
-W:         Toolmenu
-W+Shift:   Blendmodes
-E:         Color Select
-E + Shift: Strength, Modifier Alpha Menu
-Shift + 1-7 : Tool Selection (Quick)
+<p>  Control: Colorpicker  </p>
+<p>  Alt:       Linedrawer </p>
+<p>  Shift:     Smoothing (LMB) | Eraser (RMB) </p>
+<p>  W:         Toolmenu </p>
+<p>  W+Shift:   Blendmodes </p>
+<p>  E:         Color Select </p>
+<p>  E + Shift: Strength, Modifier Alpha Menu </p>
+<p>  Shift + 1-7 : Tool Selection (Quick) </p>
 
 In the Npanel theres Settings for Spacing!
 It sets if drawing is just while moving or per pixel.
