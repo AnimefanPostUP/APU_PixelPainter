@@ -446,7 +446,7 @@ def register():
     bpy.types.WindowManager.pixel_painter_grid_opacity = bpy.props.FloatProperty(
         name="Grid Opacity",
         description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
-        min=0.0, max=1.0, default=0.3, subtype='FACTOR',
+        min=0.0, max=1.0, default=0.0, subtype='FACTOR',
     )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)

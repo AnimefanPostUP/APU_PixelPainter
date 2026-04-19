@@ -818,7 +818,8 @@ class PixelPainterOperator(Operator):
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
                         self.draw_pixels(context)
-                    if not _state['temp_alt_mode_active']:
+                    # Only switch back to previous tool if Line was activated via Alt
+                    if _state['temp_alt_mode_active']:
                         context.window_manager.pixel_painter_mode = _state['last_shape']
                     _state['start_position'] = None
                     _state['back_buffer']    = None
@@ -881,7 +882,8 @@ class PixelPainterOperator(Operator):
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
                         self.draw_pixels(context)
-                    if not _state['temp_alt_mode_active']:
+                    # Only switch back to previous tool if Line was activated via Alt
+                    if _state['temp_alt_mode_active']:
                         context.window_manager.pixel_painter_mode = _state['last_shape']
                     _state['start_position'] = None
                     _state['back_buffer']    = None
