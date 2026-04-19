@@ -196,6 +196,14 @@ def _undo_pop(context):
     _undo_stack.pop()
     img.pixels.foreach_set(pixels)
     img.update()
+    # Force refresh of all 3D Viewports and Image Editors
+    try:
+        for screen in bpy.data.screens:
+            for area in screen.areas:
+                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
+                    area.tag_redraw()
+    except Exception:
+        pass
     return True
 
 
@@ -216,6 +224,14 @@ def _redo_pop(context):
     _redo_stack.pop()
     img.pixels.foreach_set(pixels)
     img.update()
+    # Force refresh of all 3D Viewports and Image Editors
+    try:
+        for screen in bpy.data.screens:
+            for area in screen.areas:
+                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
+                    area.tag_redraw()
+    except Exception:
+        pass
     return True
 
 
