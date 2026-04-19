@@ -1034,8 +1034,9 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        # Shift+1 bis Shift+7: Toolwechsel nur im normalen Zeichenmodus (kein Pie, kein Submode)
-        elif event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode():
+
+        # Shift+1 bis Shift+7: Toolwechsel nur für Nummerntasten (kein Pie, kein Submode)
+        elif event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode() and event.type in {'ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN'}:
             number_map = {
                 'ONE': 'CIRCLE',
                 'TWO': 'SQUARE',
