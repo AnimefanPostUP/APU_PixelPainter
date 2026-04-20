@@ -1,3 +1,8 @@
+import bpy
+import numpy as np
+from bpy.types import Operator
+
+
 class PixelPainterResetToolSettingsOperator(Operator):
     """Reset all Pixel Painter tool settings to their default values."""
     bl_idname = "image.pixel_painter_reset_tool_settings"

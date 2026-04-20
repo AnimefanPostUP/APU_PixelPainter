@@ -176,17 +176,15 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     # Destination RGB as [N, 3]
     dst = np.stack([arr[flat_idx], arr[flat_idx + 1], arr[flat_idx + 2]], axis=1)
 
-    # Effective per-pixel opacity: scalar * weight → [N, 1] for broadcasting
-    eff_opacity = opacity * np.array(weight_values, dtype=np.float32)[:, np.newaxis]
 
-    out = np.clip(_apply_blend(dst, src, blend, eff_opacity), 0.0, 1.0)
+    # RGB blend uses only the global opacity (not falloff/weight)
+    out = np.clip(_apply_blend(dst, src, blend, opacity), 0.0, 1.0)
 
     arr[flat_idx]     = out[:, 0]
     arr[flat_idx + 1] = out[:, 1]
     arr[flat_idx + 2] = out[:, 2]
 
-    # Apply alpha with the same effective opacity used for RGB so strength
-    # controls how strongly target alpha is written.
+    # Alpha blend uses opacity * falloff (weight)
     alpha_target = float(max(0.0, min(1.0, alpha_opacity)))
     alpha_dst = arr[flat_idx + 3]
     alpha_mix = np.clip(opacity * np.array(weight_values, dtype=np.float32), 0.0, 1.0)
