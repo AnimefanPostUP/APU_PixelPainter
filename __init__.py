@@ -46,7 +46,7 @@ bl_info = {
     "name": "APU Pixel Painter",
     "description": "All in One Tool for Pixelpainting",
     "author": "Kushiro, AnimefanPostUP",
-    "version": (1, 0, 3),
+    "version": (1, 0, 4),
     "blender": (4, 2, 0),
     "location": "Image Editor > Toolbar",
     "category": "Image Editor",
