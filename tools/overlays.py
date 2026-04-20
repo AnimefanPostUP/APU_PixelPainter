@@ -190,8 +190,9 @@ def draw_brush_outline(context, state):
 
     outline_color = {
         'SPRAY': (1.0, 0.55, 0.0, 0.9),
-        'SMEAR': (1.0, 0.2, 0.2, 0.9),
+        'SMEAR': (1.0, 0.3, 0.7, 0.9),   # pink
         'SMOOTH': (0.7, 0.3, 1.0, 0.9),
+        'ERASER': (1.0, 0.1, 0.1, 0.9),  # red
     }.get(mode, (1.0, 1.0, 0.0, 0.9))
 
     def _outline_pixels_at(ix, iy):
