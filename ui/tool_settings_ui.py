@@ -201,3 +201,7 @@ def draw_tool_settings(context, layout):
     if _draw_foldout(col, wm, "pixel_painter_ui_show_shortcuts", "Shortcuts"):
         shortcuts_col = col.box().column(align=True)
         _draw_shortcuts(shortcuts_col)
+
+        # Add a button to reset tool settings to defaults
+        col.separator()
+        col.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')

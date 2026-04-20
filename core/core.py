@@ -1,3 +1,45 @@
+class PixelPainterResetToolSettingsOperator(Operator):
+    """Reset all Pixel Painter tool settings to their default values."""
+    bl_idname = "image.pixel_painter_reset_tool_settings"
+    bl_label = "Reset Tool Settings"
+
+    def execute(self, context):
+        wm = context.window_manager
+        # Reset global settings
+        wm.pixel_painter_radius = 1
+        wm.pixel_painter_mode = 'SQUARE'
+        wm.pixel_painter_circle_falloff = 'CONSTANT'
+        wm.pixel_painter_spray_falloff = 'LINEAR'
+        wm.pixel_painter_spray_strength = 0.1
+        wm.pixel_painter_spacing = 'FREE'
+        wm.pixel_painter_modifier = 0.5
+        wm.pixel_painter_global_modifier = 0.5
+        wm.pixel_painter_global_strength = 1.0
+        wm.pixel_painter_global_alpha = 1.0
+        wm.pixel_painter_global_strength_rmb = 1.0
+        wm.pixel_painter_global_modifier_rmb = 0.5
+        wm.pixel_painter_global_alpha_rmb = 1.0
+        wm.pixel_painter_temp_smooth_force_global = False
+        wm.pixel_painter_grid_opacity = 0.0
+        # Reset per-tool settings
+        for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']:
+            setattr(wm, f'pixel_painter_{tool}_size', 1)
+            setattr(wm, f'pixel_painter_{tool}_use_global_size', tool in ['SQUARE', 'CIRCLE', 'SMOOTH', 'SMEAR', 'ERASER'])
+            setattr(wm, f'pixel_painter_{tool}_modifier', 0.5)
+            setattr(wm, f'pixel_painter_{tool}_use_global_modifier', tool in ['SMOOTH', 'SMEAR'])
+            setattr(wm, f'pixel_painter_{tool}_strength', 1.0)
+            setattr(wm, f'pixel_painter_{tool}_use_global_strength', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_alpha', 1.0)
+            setattr(wm, f'pixel_painter_{tool}_use_global_alpha', tool in ['SQUARE', 'CIRCLE'])
+            # RMB
+            setattr(wm, f'pixel_painter_{tool}_strength_rmb', 1.0)
+            setattr(wm, f'pixel_painter_{tool}_use_global_strength_rmb', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_modifier_rmb', 0.5)
+            setattr(wm, f'pixel_painter_{tool}_use_global_modifier_rmb', tool in ['SMOOTH', 'SMEAR'])
+            setattr(wm, f'pixel_painter_{tool}_alpha_rmb', 1.0)
+            setattr(wm, f'pixel_painter_{tool}_use_global_alpha_rmb', tool in ['SQUARE', 'CIRCLE'])
+        self.report({'INFO'}, "Pixel Painter tool settings reset to defaults.")
+        return {'FINISHED'}
 """Operator classes and module-level tool state."""
 import colorsys
 import time

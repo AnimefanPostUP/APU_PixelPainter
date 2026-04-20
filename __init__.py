@@ -452,10 +452,11 @@ def register():
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
-    bpy.utils.register_class(pie_menu.PixelPainterOpenBlendPieOperator)
-    bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
+    bpy.utils.register_class(core.PixelPainterResetToolSettingsOperator)
+    bpy.utils.register_class(pie_menu.PixelPainterOpenBlendPieOperator)
+    bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.register_class(pie_menu.PixelPainterModePie)
     bpy.utils.register_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.register_class(core.PixelPainterOperator)
