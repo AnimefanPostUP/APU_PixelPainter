@@ -46,8 +46,109 @@ class PixelPainterModePie(AnimatedPieMenu):
             name="Drawing Mode Pie"
         )
 
-    def draw(self, layout, cx=0, cy=0, ring_r=120, item_r=28, open_ease=1.0, close_alpha=1.0, is_closing=False, closing_index=None, close_ease=0.0):
-        super().draw(layout, cx, cy, ring_r, item_r, open_ease, close_alpha, is_closing, closing_index, close_ease)
+    def draw(self, layout, cx=0, cy=0, ring_r=120, item_r=28, open_ease=1.0, close_alpha=1.0, is_closing=False, closing_index=None, close_ease=0.0, mx=None, my=None):
+        print("[DEBUG] PixelPainterModePie.draw() called", flush=True)
+        # Tools im Halbkreis anordnen (links bis rechts, oben)
+        n = len(self.operators)
+        if n == 0:
+            return
+        if mx is None:
+            mx, my = cx, cy
+        # Halbkreis: 0° (rechts) bis 180° (links), also 0 bis pi
+        for i, op in enumerate(self.operators):
+            angle = math.pi * (i / (n - 1))  # 0 (rechts) bis pi (links)
+            r = ring_r * open_ease
+            op_cx = cx + math.cos(angle) * r
+            op_cy = cy + math.sin(angle) * r
+            scale = 1.0
+            is_selected = (i == self.direction_index)
+            if is_selected:
+                scale = 1.18
+            closing_idx = closing_index if closing_index is not None else -1
+            # PieOperator.draw erwartet: (cx, cy, item_r, open_ease, close_alpha, is_hovered, is_closing, closing_index, close_ease)
+            op.draw(
+                None, op_cx, op_cy, ring_r, item_r * scale, open_ease, close_alpha,
+                is_selected, is_closing, closing_idx, close_ease
+            )
+        # Dann Falloff-Grid darunter
+        from .custompie_tools_falloff import _falloff_pie_items, _mode_icon_files
+        from ..ui.pie_menu import _get_falloff_grid_layout, _active_falloff_value, _draw_rect, _draw_rect_outline, _draw_mode_icon, _draw_text_centered
+        import blf
+        # Grid-Layout berechnen
+        falloff_layout = _get_falloff_grid_layout(cx, cy)
+        try:
+            active_falloff = _active_falloff_value(bpy.context)
+        except Exception:
+            active_falloff = None
+        # Überschrift
+        panel_y1 = falloff_layout[0]['y0'] - 10.0 if falloff_layout else cy - 180.0
+        blf.size(0, 12)
+        blf.position(0, cx - 60, panel_y1, 0)
+        blf.color(0, 1.0, 1.0, 1.0, 0.95 * close_alpha)
+        blf.draw(0, "Brush Falloff")
+        # Grid zeichnen
+        for index, item in enumerate(falloff_layout):
+            ix = item['cx']
+            iy = item['cy']
+            is_selected = (item['mode'] == active_falloff)
+            button_size = item['size']
+            half = button_size * 0.5
+            x0 = ix - half
+            y0 = iy - half
+            x1 = ix + half
+            y1 = iy + half
+            # Farben
+            if is_selected:
+                fill = (0.66, 0.44, 0.92, 0.94 * close_alpha)
+                border = (0.90, 0.80, 1.00, 0.95 * close_alpha)
+                icon_alpha = 1.00 * close_alpha
+            else:
+                fill = (0.18, 0.18, 0.18, 0.92 * close_alpha)
+                border = (0.30, 0.30, 0.30, 0.92 * close_alpha)
+                icon_alpha = 0.78 * close_alpha
+            _draw_rect(x0, y0, x1, y1, fill)
+            _draw_rect_outline(x0, y0, x1, y1, border)
+            icon_size = max(1, int(button_size * 0.62))
+            icon_y = iy + (icon_size * 0.2)
+            icon_key = item['mode'] if item['mode'] != 'SMOOTH' else 'SMOOTH_FALLOFF'
+            icon_drawn = _draw_mode_icon(icon_key, ix, icon_y, icon_size, alpha=icon_alpha)
+            label_alpha = max(0.72 * close_alpha, icon_alpha)
+            if icon_drawn:
+                label_y = iy - (button_size * 0.22)
+            else:
+                label_y = iy
+            _draw_text_centered(item['label'], ix, label_y, size=10, alpha=label_alpha)
+
+# --- Richtungscurve und Dreieck wie im AnimatedPieMenu ---
+        dx = mx - cx
+        dy = my - cy
+        if n > 0 and (dx != 0 or dy != 0):
+            d = math.sqrt(dx * dx + dy * dy)
+            ux = dx / d
+            uy = dy / d
+            base_cx = cx + ux * 7.0
+            base_cy = cy + uy * 7.0
+            if hasattr(self, 'draw_triangle_arrow'):
+                arrow_data = self.draw_triangle_arrow(base_cx, base_cy, mx, my, color=(0.66, 0.44, 0.92, 0.92 * close_alpha))
+            else:
+                arrow_data = None
+            # Curve nur zeichnen, wenn draw_bezier_curve vorhanden und arrow_data existiert
+            if arrow_data is not None and hasattr(self, 'draw_bezier_curve'):
+                tx, ty = arrow_data['tip']
+                ux, uy = arrow_data['dir']
+                # Zielpunkt auf Tool-Kreis
+                sel_idx = self.direction_index if self.direction_index is not None else 0
+                angle = math.pi * (sel_idx / (n - 1))
+                hix = cx + math.cos(angle) * ring_r * open_ease
+                hiy = cy + math.sin(angle) * r * open_ease
+                # Endpunkt etwas vor dem Tool-Kreis
+                ex = hix - ux * 12.0
+                ey = hiy - uy * 12.0
+                p0 = (tx, ty)
+                p1 = (tx + ux * 52.0, ty + uy * 52.0)
+                p2 = (ex - ux * 4.0, ey - uy * 4.0)
+                p3 = (ex, ey)
+                self.draw_bezier_curve(p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70 * close_alpha))
 
 class PixelPainterModePieOperator(Operator):
     bl_idname = "wm.pixel_painter_mode_pie_oo"
@@ -68,10 +169,10 @@ class PixelPainterModePieOperator(Operator):
         self.handler = None
         self.last_mx = None
         self.last_my = None
+        self.falloff_hover_index = None
 
     def invoke(self, context, event):
-        from .custompie_tools import _custom_pie_items, _mode_icon_files
-        self.menu = AnimatedPieMenu(_custom_pie_items, icons=_mode_icon_files, ref_func=lambda: context.window_manager.pixel_painter_mode)
+        self.menu = PixelPainterModePie()
         self.cx = event.mouse_region_x
         self.cy = event.mouse_region_y
         self.last_mx = event.mouse_region_x
@@ -88,25 +189,48 @@ class PixelPainterModePieOperator(Operator):
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
+        from ..ui.pie_menu import _get_falloff_grid_layout, _pick_falloff_grid_index, _falloff_pie_items
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
             self.last_mx = mx
             self.last_my = my
             cx, cy = self.cx, self.cy
+            # Prüfe ob Maus im Falloff-Grid ist
+            falloff_idx = _pick_falloff_grid_index(mx, my, cx, cy)
+            if falloff_idx is not None:
+                self.falloff_hover_index = falloff_idx
+            else:
+                self.falloff_hover_index = None
+            # Tool-Kreis Richtung
             n = len(self.menu.operators)
             sel_idx = None
             dx = mx - cx
             dy = my - cy
-            if n > 0:
+            if n > 0 and falloff_idx is None:
                 if dx != 0 or dy != 0:
                     angle = math.atan2(dy, dx)
-                    if angle < 0:
-                        angle += 2 * math.pi
-                    sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+                    # Clamp auf [0, pi] für Halbkreis rechts->links
+                    angle = max(0, min(math.pi, angle))
+                    sel_idx = int((angle / math.pi) * (n - 1) + 0.5)
             self.menu.update_direction(sel_idx)
             self.menu.update_animations()
             context.area.tag_redraw()
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            # Auswahl im Falloff-Grid
+            if self.falloff_hover_index is not None:
+                idx = self.falloff_hover_index
+                mode = _falloff_pie_items[idx][0]
+                wm = context.window_manager
+                if wm.pixel_painter_mode == 'SPRAY':
+                    wm.pixel_painter_spray_falloff = mode
+                else:
+                    wm.pixel_painter_circle_falloff = mode
+                self.is_closing = True
+                self.closing_index = None
+                self.close_started_at = time.perf_counter()
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            # Sonst Tool-Kreis-Auswahl
             self.is_closing = True
             self.closing_index = self.menu.direction_index
             self.close_started_at = time.perf_counter()
@@ -192,9 +316,9 @@ class PixelPainterBlendPieOperator(Operator):
             if n > 0:
                 if dx != 0 or dy != 0:
                     angle = math.atan2(dy, dx)
-                    if angle < 0:
-                        angle += 2 * math.pi
-                    sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+                    # Clamp auf [0, pi] für Halbkreis rechts->links
+                    angle = max(0, min(math.pi, angle))
+                    sel_idx = int((angle / math.pi) * (n - 1) + 0.5)
             self.menu.update_direction(sel_idx)
             self.menu.update_animations()
             context.area.tag_redraw()
