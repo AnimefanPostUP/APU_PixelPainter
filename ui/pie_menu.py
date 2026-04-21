@@ -1,3 +1,96 @@
+# ...bisheriger Code...
+
+"""
+PieMenu Basisklasse für Blender Addons
+======================================
+
+Diese Klasse ermöglicht das Erstellen und Verwalten von Pie Menus.
+Sie ist wiederverwendbar und kann mit Grids, Operatoren, Formen etc. erweitert werden.
+
+Verwendung:
+-----------
+from .pie_menu import PieMenu
+
+class MyPieMenu(PieMenu):
+    def __init__(self):
+        super().__init__(name="My Tools Pie")
+        self.add_operator("mesh.primitive_cube_add", label="Cube")
+        self.add_shape("circle", position=(0, 1))
+
+    def draw(self, context):
+        super().draw(context)
+        # eigene Zeichnungen
+
+pie = MyPieMenu()
+
+Features:
+- Hinzufügen von Operatoren, Grids, Formen
+- Verwaltung eines aktiven Elements (z.B. für Linien)
+- Event-Handling für Auswahl
+- Wiederverwendbar für verschiedene PieMenu-Varianten
+"""
+
+
+import bpy
+import math
+from .pie_utils import draw_circle, draw_text_centered, draw_rect, draw_rect_outline
+from .pie_operators import PieMenuBaseOperator
+
+class PieMenu:
+    def __init__(self, name="Pie Menu"):
+        self.name = name
+        self.operators = []
+        self.shapes = []
+        self.active_element = None  # (index, position)
+
+    def add_operator(self, operator_id, label=None, icon=None):
+        self.operators.append({
+            "operator_id": operator_id,
+            "label": label or operator_id,
+            "icon": icon,
+        })
+
+    def add_shape(self, shape_type, position, label=None):
+        self.shapes.append({
+            "type": shape_type,
+            "position": position,
+            "label": label,
+        })
+
+    def set_active_element(self, index, position):
+        self.active_element = {"index": index, "position": position}
+
+    def draw(self, context):
+        # Zeichnet das Pie Menu, Formen und Linie zum aktiven Element
+        self.draw_shapes(context)
+        self.draw_active_line(context)
+
+
+    def draw_shapes(self, context):
+        # Beispiel: Zeichne Kreise für alle Shapes
+        for shape in self.shapes:
+            if shape["type"] == "circle":
+                draw_circle(shape["position"][0], shape["position"][1], 20, (0.8, 0.8, 0.8, 1.0))
+            elif shape["type"] == "square":
+                x, y = shape["position"]
+                draw_rect(x-20, y-20, x+20, y+20, (0.8, 0.8, 0.8, 1.0))
+            # Weitere Formen nach Bedarf
+
+
+    def draw_active_line(self, context):
+        # Zeichnet eine Linie vom Zentrum zum aktiven Element
+        if self.active_element:
+            # Beispiel: Linie von (0,0) zum aktiven Element
+            x, y = self.active_element["position"]
+            # Hier könnte draw_line(x0, y0, x1, y1, color) stehen, falls in pie_utils vorhanden
+            pass
+
+    def handle_event(self, event):
+        # Event-Handling für Auswahl etc.
+        pass
+
+
+# ...weitere Hilfsfunktionen oder Utility-Klassen können in pie_utils.py ergänzt werden...
 """Pie and custom radial menu UI for Pixel Painter."""
 import math
 import os
