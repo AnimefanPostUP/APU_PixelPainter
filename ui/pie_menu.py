@@ -311,7 +311,7 @@ def _add_blend_item(layout, label, blend, favorites):
 def _queue_open_blend_pie():
     def _open_blend_pie():
         try:
-            bpy.ops.wm.call_menu_pie(name="PIXELPAINTER_MT_blend_pie")
+            bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
         except Exception:
             pass
         return None
@@ -1248,13 +1248,11 @@ class PixelPainterOpenBlendPieOperator(Operator):
     bl_label = "Open Pixel Painter Blend Pie"
 
     def execute(self, context):
-        del context
-        _queue_open_blend_pie()
+        bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        del context, event
-        _queue_open_blend_pie()
+        bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
         return {'FINISHED'}
 
 

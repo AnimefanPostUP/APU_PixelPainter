@@ -95,6 +95,8 @@ class PixelPainterBlendPieOperator(Operator):
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
+            self.last_mx = mx
+            self.last_my = my
             cx, cy = self.cx, self.cy
             n = len(self.menu.operators)
             sel_idx = None
@@ -140,7 +142,13 @@ class PixelPainterBlendPieOperator(Operator):
         open_t = min(1.0, max(0.0, (now - self.open_started_at) / 0.165))
         open_ease = PieMenuBase.ease_in_out(open_t)
         close_alpha = 1.0 - self.close_ease if self.is_closing else 1.0
-        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease)
+        mx = getattr(self, 'last_mx', None)
+        my = getattr(self, 'last_my', None)
+        if mx is None:
+            mx = self.cx
+        if my is None:
+            my = self.cy
+        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease, mx=mx, my=my)
 
 # Registrierung für Blender
 classes = [PixelPainterBlendPieOperator]
