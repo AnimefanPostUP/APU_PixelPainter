@@ -1263,6 +1263,7 @@ class PixelPainterModePie(Menu):
     bl_label = "Drawing Mode"
 
     def draw(self, context):
+        print("[DEBUG] PixelPainterModePie.draw() aufgerufen")
         layout = self.layout
         pie = layout.menu_pie()
         pie.scale_x = 1.0
@@ -1282,6 +1283,7 @@ class PixelPainterBlendPie(Menu):
     bl_label = "Blend Mode"
 
     def draw(self, context):
+        print("[DEBUG] PixelPainterBlendPie.draw() aufgerufen")
         layout = self.layout
         pie = layout.menu_pie()
         favorites = _get_favorites(context)

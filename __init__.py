@@ -454,11 +454,13 @@ def register():
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
-    bpy.utils.register_class(core.PixelPainterResetToolSettingsOperator)
+    bpy.utils.register_class(core.PixelPainterResetToolSettingsOperatorV2)
     bpy.utils.register_class(pie_menu.PixelPainterOpenBlendPieOperator)
     bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
     bpy.utils.register_class(pie_menu.PixelPainterModePie)
     bpy.utils.register_class(pie_menu.PixelPainterBlendPie)
+    # Registriere neue CustomPie Menüs
+
     bpy.utils.register_class(core.PixelPainterOperator)
     bpy.utils.register_tool(user_interface.PixelPainterTool)
     try:
@@ -541,8 +543,29 @@ def unregister():
 
     bpy.utils.unregister_tool(user_interface.PixelPainterTool)
     bpy.utils.unregister_class(core.PixelPainterOperator)
+    # Unregister neue CustomPie Menüs
+    try:
+        from .ui.custompie_tools import PixelPainterModePie as CustomPieMode
+        from .ui.custompie_blending import PixelPainterBlendPie as CustomPieBlend
+        bpy.utils.unregister_class(CustomPieMode)
+        bpy.utils.unregister_class(CustomPieBlend)
+    except Exception:
+        pass
     bpy.utils.unregister_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.unregister_class(pie_menu.PixelPainterModePie)
+    # Entferne Keymaps
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    addon_keymaps = globals().get('addon_keymaps', [])
+    if kc and addon_keymaps:
+        km = kc.keymaps.get('3D View')
+        if km:
+            for kmi in addon_keymaps:
+                try:
+                    km.keymap_items.remove(kmi)
+                except Exception:
+                    pass
+        globals()['addon_keymaps'] = []
     bpy.utils.unregister_class(core.PixelPainterRedoOperator)
     bpy.utils.unregister_class(core.PixelPainterUndoOperator)
     bpy.utils.unregister_class(pie_menu.PixelPainterCustomPieOperator)

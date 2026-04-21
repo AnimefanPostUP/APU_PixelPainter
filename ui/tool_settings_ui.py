@@ -204,4 +204,4 @@ def draw_tool_settings(context, layout):
 
         # Add a button to reset tool settings to defaults
         col.separator()
-        col.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')
+        col.operator("image.pixel_painter_reset_tool_settings_v2", text="Reset Tool Settings", icon='LOOP_BACK')

@@ -3,10 +3,10 @@ import numpy as np
 from bpy.types import Operator
 
 
-class PixelPainterResetToolSettingsOperator(Operator):
-    """Reset all Pixel Painter tool settings to their default values."""
-    bl_idname = "image.pixel_painter_reset_tool_settings"
-    bl_label = "Reset Tool Settings"
+class PixelPainterResetToolSettingsOperatorV2(Operator):
+    """Reset all Pixel Painter tool settings to their default values (neue Version)."""
+    bl_idname = "image.pixel_painter_reset_tool_settings_v2"
+    bl_label = "Reset Tool Settings (Neu)"
 
     def execute(self, context):
         wm = context.window_manager
@@ -1142,6 +1142,24 @@ class PixelPainterOperator(Operator):
         elif event.type == 'W' and event.value == 'PRESS':
             _cancel_temp_shift_override_for_shortcut()
             return {'PASS_THROUGH'}
+
+        # Pie-Menüs auf J/K
+        if event.type == 'J' and event.value == 'PRESS':
+            print("[DEBUG] Shortcut J erkannt, versuche PIXELPAINTER_MT_mode_pie zu öffnen")
+            try:
+                import bpy
+                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_mode_pie")
+            except Exception as e:
+                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_mode_pie: {e}")
+            return {'RUNNING_MODAL'}
+        if event.type == 'K' and event.value == 'PRESS':
+            print("[DEBUG] Shortcut K erkannt, versuche PIXELPAINTER_MT_blend_pie zu öffnen")
+            try:
+                import bpy
+                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_blend_pie")
+            except Exception as e:
+                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_blend_pie: {e}")
+            return {'RUNNING_MODAL'}
 
         return {'PASS_THROUGH'}
 

@@ -695,11 +695,28 @@ class PixelPainterOperator(Operator):
         self.button_right_down = False
 
     def modal(self, context, event):
+
         # Guard: exit if we've left the Image Editor
         if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
             self._cleanup()
             return {'CANCELLED'}
-
+        
+        # Pie-Menüs auf J/K
+        if event.type == 'J' and event.value == 'PRESS':
+            print("[DEBUG] Shortcut J erkannt, versuche PIXELPAINTER_MT_mode_pie zu öffnen")
+            try:
+                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_mode_pie")
+            except Exception as e:
+                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_mode_pie: {e}")
+            return {'RUNNING_MODAL'}
+        if event.type == 'K' and event.value == 'PRESS':
+            print("[DEBUG] Shortcut K erkannt, versuche PIXELPAINTER_MT_blend_pie zu öffnen")
+            try:
+                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_blend_pie")
+            except Exception as e:
+                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_blend_pie: {e}")
+            return {'RUNNING_MODAL'}
+        
         # Blender may reset modal cursor after certain transient tools
         # (e.g. brush size with F). Re-apply ours while this operator runs.
         self._set_modal_cursor(context)
