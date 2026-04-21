@@ -40,7 +40,8 @@ from .core import core
 from .ui import user_interface
 from .ui import pie_menu
 from .ui import tool_settings_ui
-
+from .ui.custompie_tools import PixelPainterModePieOperator
+from .ui.custompie_blending import PixelPainterBlendPieOperator
 
 bl_info = {
     "name": "APU Pixel Painter",
@@ -184,6 +185,15 @@ def _set_active_modifier(self, value):
 
 
 def register():
+    # Registriere animierte OO-Overlay-Operatoren
+    try:
+        bpy.utils.register_class(PixelPainterModePieOperator)
+    except Exception:
+        pass
+    try:
+        bpy.utils.register_class(PixelPainterBlendPieOperator)
+    except Exception:
+        pass
     # Force delete pixel_painter_mode EnumProperty before re-registering
     try:
         del bpy.types.WindowManager.pixel_painter_mode
@@ -449,6 +459,11 @@ def register():
         description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
         min=0.0, max=1.0, default=0.0, subtype='FACTOR',
     )
+    bpy.types.WindowManager.pixel_painter_blend = bpy.props.StringProperty(
+        name="Blend Mode",
+        description="Current blend mode for Pixel Painter",
+        default="MIX"
+    )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
@@ -475,6 +490,16 @@ def register():
 
 
 def unregister():
+    # Entferne animierte OO-Overlay-Operatoren
+    try:
+        bpy.utils.unregister_class(PixelPainterModePieOperator)
+    except Exception:
+        pass
+    try:
+        bpy.utils.unregister_class(PixelPainterBlendPieOperator)
+    except Exception:
+        pass
+    
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)
     core._undo_clear()

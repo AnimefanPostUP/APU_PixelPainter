@@ -1145,20 +1145,18 @@ class PixelPainterOperator(Operator):
 
         # Pie-Menüs auf J/K
         if event.type == 'J' and event.value == 'PRESS':
-            print("[DEBUG] Shortcut J erkannt, versuche PIXELPAINTER_MT_mode_pie zu öffnen")
+            print("[DEBUG] Shortcut J erkannt, starte animiertes OO-ModePie")
             try:
-                import bpy
-                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_mode_pie")
+                bpy.ops.wm.pixel_painter_mode_pie_oo('INVOKE_DEFAULT')
             except Exception as e:
-                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_mode_pie: {e}")
+                print(f"[DEBUG] Fehler beim Öffnen von PixelPainterModePieOperator: {e}")
             return {'RUNNING_MODAL'}
         if event.type == 'K' and event.value == 'PRESS':
-            print("[DEBUG] Shortcut K erkannt, versuche PIXELPAINTER_MT_blend_pie zu öffnen")
+            print("[DEBUG] Shortcut K erkannt, starte animiertes OO-BlendPie")
             try:
-                import bpy
-                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_blend_pie")
+                bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
             except Exception as e:
-                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_blend_pie: {e}")
+                print(f"[DEBUG] Fehler beim Öffnen von PixelPainterBlendPieOperator: {e}")
             return {'RUNNING_MODAL'}
 
         return {'PASS_THROUGH'}

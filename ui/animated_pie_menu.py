@@ -1,64 +1,36 @@
 import bpy
-from bpy.types import Operator
 import time
 import math
+from bpy.types import Operator
+from ..ui.pie_menu_base import PieMenuBase
+from ..ui.pie_operator import PieOperator
+from ..ui.pie_grid import PieGrid
+from ..ui.pie_utils import draw_circle, draw_text_centered, draw_rect, draw_rect_outline
 
-_blend_labels = {
-    'MIX': "Normal",
-    'ADD': "Add",
-    'MUL': "Multiply",
-    'DARKEN': "Darken",
-    'LIGHTEN': "Lighten",
-    'COLOR': "Color",
-    'SCREEN': "Screen",
-    'OVERLAY': "Overlay",
-    'SOFTLIGHT': "Soft Light",
-    'HARDLIGHT': "Hard Light",
-    'SUB': "Subtract",
-    'DIFFERENCE': "Difference",
-    'EXCLUSION': "Exclusion",
-    'COLORDODGE': "Color Dodge",
-    'COLORBURN': "Color Burn",
-    'HUE': "Hue",
-    'SATURATION': "Saturation",
-    'VALUE': "Value",
-    'LUMINOSITY': "Luminosity",
-}
+class AnimatedPieMenu(PieMenuBase):
+    def __init__(self, items, icons=None, ref_func=None, name="Animated Pie Menu"):
+        super().__init__(name=name)
+        self.operators = [
+            PieOperator(label, (icons or {}).get(id), idx, id, ref_func=ref_func)
+            for idx, (id, label) in enumerate(items)
+        ]
+        self.update_hover(None)
+        self.update_animations()
 
-_blend_order = (
-    'MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR',
-    'SCREEN', 'OVERLAY', 'SOFTLIGHT', 'HARDLIGHT',
-    'SUB', 'DIFFERENCE', 'EXCLUSION', 'COLORDODGE', 'COLORBURN',
-    'HUE', 'SATURATION', 'VALUE', 'LUMINOSITY',
-)
+    def draw(self, layout, cx, cy, ring_r, item_r, open_ease=1.0, close_alpha=1.0, is_closing=False, closing_index=None, close_ease=0.0):
+        # Zeichnet alle Operatoren im Kreis mit Animationen
+        n = len(self.operators)
+        for idx, op in enumerate(self.operators):
+            angle = (idx / n) * 2 * math.pi
+            op_cx = cx + math.cos(angle) * ring_r * open_ease
+            op_cy = cy + math.sin(angle) * ring_r * open_ease
+            op.draw(layout, op_cx, op_cy, ring_r, item_r, open_ease, close_alpha, idx == self.hover_index, is_closing, closing_index, close_ease)
+        self.draw_shapes(layout)
+        self.draw_active_line(layout)
 
-_default_favorites = ('MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR')
-
-from .pie_grid import PieGrid
-from .pie_operator import PieOperator
-
-from .pie_menu_base import PieMenuBase
-
-from .animated_pie_menu import AnimatedPieMenu
-
-class PixelPainterBlendPie(AnimatedPieMenu):
-    bl_idname = "PIXELPAINTER_MT_blend_pie"
-    bl_label = "Blend Mode"
-
-    def __init__(self):
-        super().__init__(
-            items=[(blend, _blend_labels[blend]) for blend in _blend_order],
-            icons=None,
-            ref_func=lambda: bpy.context.window_manager.pixel_painter_blend,
-            name="Blend Mode Pie"
-        )
-
-    def draw(self, layout, cx=0, cy=0, ring_r=120, item_r=28, open_ease=1.0, close_alpha=1.0, is_closing=False, closing_index=None, close_ease=0.0):
-        super().draw(layout, cx, cy, ring_r, item_r, open_ease, close_alpha, is_closing, closing_index, close_ease)
-
-class PixelPainterBlendPieOperator(Operator):
-    bl_idname = "wm.pixel_painter_blend_pie_oo"
-    bl_label = "Pixel Painter Blend Pie (OO)"
+class AnimatedPieMenuOperator(Operator):
+    bl_idname = "wm.animated_pie_menu"
+    bl_label = "Animated Pie Menu (OO)"
 
     def __init__(self):
         self.menu = None
@@ -75,10 +47,9 @@ class PixelPainterBlendPieOperator(Operator):
         self.handler = None
 
     def invoke(self, context, event):
-        from .custompie_blending import _blend_labels, _blend_order
-        from .animated_pie_menu import AnimatedPieMenu
-        items = [(blend, _blend_labels[blend]) for blend in _blend_order]
-        self.menu = AnimatedPieMenu(items, icons=None, ref_func=lambda: context.window_manager.pixel_painter_blend)
+        # Beispiel: Mode-Pie
+        from ..ui.custompie_tools import _custom_pie_items, _mode_icon_files
+        self.menu = AnimatedPieMenu(_custom_pie_items, icons=_mode_icon_files, ref_func=lambda: context.window_manager.pixel_painter_mode)
         self.cx = event.mouse_region_x
         self.cy = event.mouse_region_y
         self.open_started_at = time.perf_counter()
@@ -95,6 +66,7 @@ class PixelPainterBlendPieOperator(Operator):
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
+            # Hover-Logik: Finde Index des nächsten Operators
             n = len(self.menu.operators)
             best_idx = None
             best_dist = 1e9
@@ -110,6 +82,7 @@ class PixelPainterBlendPieOperator(Operator):
             self.menu.update_animations()
             context.area.tag_redraw()
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            # Auswahl/Schließen
             self.is_closing = True
             self.closing_index = self.menu.hover_index
             self.close_started_at = time.perf_counter()
@@ -119,6 +92,7 @@ class PixelPainterBlendPieOperator(Operator):
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
             self.finish(context)
             return {'CANCELLED'}
+        # Closing-Animation
         if self.is_closing:
             t = min(1.0, max(0.0, (time.perf_counter() - self.close_started_at) / 0.15))
             self.close_ease = t
@@ -134,8 +108,6 @@ class PixelPainterBlendPieOperator(Operator):
         context.area.tag_redraw()
 
     def draw_callback(self):
-        if not hasattr(self, 'open_started_at'):
-            return
         now = time.perf_counter()
         open_t = min(1.0, max(0.0, (now - self.open_started_at) / 0.165))
         open_ease = PieMenuBase.ease_in_out(open_t)
@@ -143,12 +115,10 @@ class PixelPainterBlendPieOperator(Operator):
         self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease)
 
 # Registrierung für Blender
-classes = [PixelPainterBlendPieOperator]
+classes = [AnimatedPieMenuOperator]
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
-
-
