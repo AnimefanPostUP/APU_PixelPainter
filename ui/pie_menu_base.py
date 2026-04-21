@@ -8,12 +8,15 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 
 class PieMenuBase:
+    def update_hover(self, direction_index):
+        """Setzt den aktuell markierten Operator per Richtung (wie Hover)."""
+        self.direction_index = direction_index
     def __init__(self, name="Pie Menu"):
         self.name = name
         self.operators = []  # List[PieOperator]
         self.shapes = []
         self.active_element = None  # (index, position)
-        self.hover_index = None
+        self.direction_index = None
         self.anim = []
         self.last_anim_time = time.perf_counter()
         self.curve_initialized = False
@@ -41,8 +44,8 @@ class PieMenuBase:
     def set_active_element(self, index, position):
         self.active_element = {"index": index, "position": position}
 
-    def update_hover(self, hover_index):
-        self.hover_index = hover_index
+    def update_direction(self, direction_index):
+        self.direction_index = direction_index
 
     def update_animations(self):
         now = time.perf_counter()
@@ -51,7 +54,7 @@ class PieMenuBase:
         if not self.anim or len(self.anim) != len(self.operators):
             self.anim = [0.0] * len(self.operators)
         for idx, op in enumerate(self.operators):
-            op.update_anim(idx == self.hover_index, dt)
+            op.update_anim(idx == self.direction_index, dt)
 
     def draw_bezier_curve(self, p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70), segments=20):
         verts = []
@@ -201,103 +204,129 @@ class PieMenuBase:
             draw_text_centered(label, cx, cy, max(1, int(12 * scale)), alpha)
 
     def draw(self, layout, cx=0, cy=0, ring_r=120, item_r=28, open_ease=1.0, close_alpha=1.0, is_closing=False, closing_index=None, close_ease=0.0, mx=None, my=None):
-        # Animierte Operatoren als Bubbles im Kreis zeichnen, inkl. animierter Kurve
         n = len(self.operators)
         if n == 0:
             return
         if mx is None:
             mx, my = cx, cy
-        hover = self.hover_index
+
+        # Richtungserkennung wie im Original: immer direction_index bestimmen
+        dx = mx - cx
+        dy = my - cy
+        sel_idx = self.direction_index if self.direction_index is not None else 0
+        if n > 0 and (dx != 0 or dy != 0):
+            angle = math.atan2(dy, dx)
+            if angle < 0:
+                angle += 2 * math.pi
+            sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+            self.update_direction(sel_idx)
+
+        direction = sel_idx
+        self.direction_index = direction
         now = time.perf_counter()
-        anim = self.update_hover_animation(now, hover if not is_closing else None, n)
-        # Draw animated curve if hover
-        if hover is not None:
-            angle = (hover / n) * 2 * math.pi
+        anim = self.update_hover_animation(now, direction if not is_closing else None, n)
+
+        # Kreise wie im Original
+        draw_circle(cx, cy, 22, (0.12, 0.12, 0.12, 0.95 * close_alpha))
+        draw_circle(cx, cy, 7, (0.66, 0.44, 0.92, 0.95 * close_alpha))
+
+        # Pfeil und Kurve immer anzeigen, wenn Maus nicht im Zentrum
+        arrow_data = None
+        if dx != 0 or dy != 0:
+            d = math.sqrt(dx * dx + dy * dy)
+            ux = dx / d
+            uy = dy / d
+            base_cx = cx + ux * 7.0
+            base_cy = cy + uy * 7.0
+            arrow_data = self.draw_triangle_arrow(base_cx, base_cy, mx, my, color=(0.66, 0.44, 0.92, 0.92 * close_alpha))
+
+        if arrow_data is not None and sel_idx is not None:
+            angle = (sel_idx / n) * 2 * math.pi
             hix = cx + math.cos(angle) * ring_r * open_ease
             hiy = cy + math.sin(angle) * ring_r * open_ease
-            arrow_data = self.draw_triangle_arrow(cx, cy, mx, my)
-            if arrow_data is not None:
-                tx, ty = arrow_data['tip']
-                ux, uy = arrow_data['dir']
-                ht = anim[hover] if hover < len(anim) else 0.0
-                hte = self.ease_in_out(ht)
-                target_radius = item_r * (1.0 + 0.18 * hte)
-                cdx = tx - hix
-                cdy = ty - hiy
-                cd2 = cdx * cdx + cdy * cdy
-                if cd2 > 1e-6:
-                    cdl = math.sqrt(cd2)
-                    nx = cdx / cdl
-                    ny = cdy / cdl
-                    target_ex = hix + nx * target_radius
-                    target_ey = hiy + ny * target_radius
-                    prev_hover = getattr(self, 'curve_hover_index', None)
-                    hover_changed = (prev_hover != hover)
-                    ex, ey, transition = self.update_curve_endpoint(now, target_ex, target_ey, restart_transition=hover_changed)
-                    self.curve_hover_index = hover
-                    center_mix = 0.2 * transition
-                    ex = ex * (1.0 - center_mix) + cx * center_mix
-                    ey = ey * (1.0 - center_mix) + cy * center_mix
-                    edx = ex - hix
-                    edy = ey - hiy
-                    el2 = edx * edx + edy * edy
-                    if el2 > 1e-6:
-                        el = math.sqrt(el2)
-                        enx = edx / el
-                        eny = edy / el
-                    else:
-                        enx, eny = nx, ny
-                    esx = tx - ex
-                    esy = ty - ey
-                    es2 = esx * esx + esy * esy
-                    if es2 > 1e-6:
-                        esl = math.sqrt(es2)
-                        tsx = esx / esl
-                        tsy = esy / esl
-                    else:
-                        tsx, tsy = enx, eny
-                    efx = enx * 0.55 + tsx * 0.45
-                    efy = eny * 0.55 + tsy * 0.45
-                    ocx = ex - cx
-                    ocy = ey - cy
-                    oc2 = ocx * ocx + ocy * ocy
-                    if oc2 > 1e-6 and transition > 0.0:
-                        ocl = math.sqrt(oc2)
-                        ocx /= ocl
-                        ocy /= ocl
-                        orient_mix = 0.2 * transition
-                        efx = efx * (1.0 - orient_mix) + ocx * orient_mix
-                        efy = efy * (1.0 - orient_mix) + ocy * orient_mix
-                    ef2 = efx * efx + efy * efy
-                    if ef2 > 1e-6:
-                        efl = math.sqrt(ef2)
-                        efx /= efl
-                        efy /= efl
-                    else:
-                        efx, efy = enx, eny
-                    sdx = ex - tx
-                    sdy = ey - ty
-                    sl2 = sdx * sdx + sdy * sdy
-                    if sl2 > 1e-6:
-                        sl = math.sqrt(sl2)
-                        tux = sdx / sl
-                        tuy = sdy / sl
-                    else:
-                        tux, tuy = ux, uy
-                    sux = ux * 0.55 + tux * 0.45
-                    suy = uy * 0.55 + tuy * 0.45
-                    su2 = sux * sux + suy * suy
-                    if su2 > 1e-6:
-                        sul = math.sqrt(su2)
-                        sux /= sul
-                        suy /= sul
-                    else:
-                        sux, suy = ux, uy
-                    p0 = (tx, ty)
-                    p1 = (tx + sux * 52.0, ty + suy * 52.0)
-                    p2 = (ex - efx * 4.0, ey - efy * 4.0)
-                    p3 = (ex, ey)
-                    self.draw_bezier_curve(p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70 * close_alpha))
+            ht = anim[sel_idx] if sel_idx < len(anim) else 0.0
+            hte = self.ease_in_out(ht)
+            target_radius = item_r * (1.0 + 0.18 * hte)
+            tx, ty = arrow_data['tip']
+            ux, uy = arrow_data['dir']
+            cdx = tx - hix
+            cdy = ty - hiy
+            cd2 = cdx * cdx + cdy * cdy
+            if cd2 > 1e-6:
+                cdl = math.sqrt(cd2)
+                nx = cdx / cdl
+                ny = cdy / cdl
+                target_ex = hix + nx * target_radius
+                target_ey = hiy + ny * target_radius
+                prev_hover = getattr(self, 'curve_hover_index', None)
+                hover_changed = (prev_hover != sel_idx)
+                ex, ey, transition = self.update_curve_endpoint(now, target_ex, target_ey, restart_transition=hover_changed)
+                self.curve_hover_index = sel_idx
+                center_mix = 0.2 * transition
+                ex = ex * (1.0 - center_mix) + cx * center_mix
+                ey = ey * (1.0 - center_mix) + cy * center_mix
+                edx = ex - hix
+                edy = ey - hiy
+                el2 = edx * edx + edy * edy
+                if el2 > 1e-6:
+                    el = math.sqrt(el2)
+                    enx = edx / el
+                    eny = edy / el
+                else:
+                    enx, eny = nx, ny
+                esx = tx - ex
+                esy = ty - ey
+                es2 = esx * esx + esy * esy
+                if es2 > 1e-6:
+                    esl = math.sqrt(es2)
+                    tsx = esx / esl
+                    tsy = esy / esl
+                else:
+                    tsx, tsy = enx, eny
+                efx = enx * 0.55 + tsx * 0.45
+                efy = eny * 0.55 + tsy * 0.45
+                ocx = ex - cx
+                ocy = ey - cy
+                oc2 = ocx * ocx + ocy * ocy
+                if oc2 > 1e-6 and transition > 0.0:
+                    ocl = math.sqrt(oc2)
+                    ocx /= ocl
+                    ocy /= ocl
+                    orient_mix = 0.2 * transition
+                    efx = efx * (1.0 - orient_mix) + ocx * orient_mix
+                    efy = efy * (1.0 - orient_mix) + ocy * orient_mix
+                ef2 = efx * efx + efy * efy
+                if ef2 > 1e-6:
+                    efl = math.sqrt(ef2)
+                    efx /= efl
+                    efy /= efl
+                else:
+                    efx, efy = enx, eny
+                sdx = ex - tx
+                sdy = ey - ty
+                sl2 = sdx * sdx + sdy * sdy
+                if sl2 > 1e-6:
+                    sl = math.sqrt(sl2)
+                    tux = sdx / sl
+                    tuy = sdy / sl
+                else:
+                    tux, tuy = ux, uy
+                sux = ux * 0.55 + tux * 0.45
+                suy = uy * 0.55 + tuy * 0.45
+                su2 = sux * sux + suy * suy
+                if su2 > 1e-6:
+                    sul = math.sqrt(su2)
+                    sux /= sul
+                    suy /= sul
+                else:
+                    sux, suy = ux, uy
+                p0 = (tx, ty)
+                p1 = (tx + sux * 52.0, ty + suy * 52.0)
+                p2 = (ex - efx * 4.0, ey - efy * 4.0)
+                p3 = (ex, ey)
+                self.draw_bezier_curve(p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70 * close_alpha))
+
+        # Operatoren als Bubbles im Kreis
         for idx, op in enumerate(self.operators):
             angle = (idx / n) * 2 * math.pi
             op_cx = cx + math.cos(angle) * ring_r * open_ease
@@ -321,13 +350,14 @@ class PieMenuBase:
                     continue
             if te > 0.0:
                 draw_circle(op_cx, op_cy, radius + 1.9, (0.66, 0.44, 0.92, te * bubble_alpha))
-                col = (0.66, 0.44, 0.92, 0.95 * bubble_alpha) if idx == hover else (0.30 + 0.025 * te, 0.30 + 0.025 * te, 0.30 + 0.025 * te, (0.94 + 0.02 * te) * bubble_alpha)
-            elif idx == hover:
+                col = (0.66, 0.44, 0.92, 0.95 * bubble_alpha) if idx == direction else (0.30 + 0.025 * te, 0.30 + 0.025 * te, 0.30 + 0.025 * te, (0.94 + 0.02 * te) * bubble_alpha)
+            elif idx == direction:
                 col = (0.66, 0.44, 0.92, 0.95 * bubble_alpha)
             else:
                 col = (0.18, 0.18, 0.18, 0.9 * bubble_alpha)
             draw_circle(op_cx, op_cy, radius, col)
             self.draw_bubble_icon_text(op.icon, op.label, op_cx, op_cy, item_r, scale=content_scale, alpha=content_alpha)
+
         self.draw_shapes(layout)
         self.draw_active_line(layout)
 

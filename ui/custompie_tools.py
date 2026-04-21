@@ -64,14 +64,18 @@ class PixelPainterModePieOperator(Operator):
         self.closing_index = None
         self.close_started_at = 0.0
         self.close_ease = 0.0
-        self.hover_index = None
+        self.direction_index = None
         self.handler = None
+        self.last_mx = None
+        self.last_my = None
 
     def invoke(self, context, event):
         from .custompie_tools import _custom_pie_items, _mode_icon_files
         self.menu = AnimatedPieMenu(_custom_pie_items, icons=_mode_icon_files, ref_func=lambda: context.window_manager.pixel_painter_mode)
         self.cx = event.mouse_region_x
         self.cy = event.mouse_region_y
+        self.last_mx = event.mouse_region_x
+        self.last_my = event.mouse_region_y
         self.open_started_at = time.perf_counter()
         self.is_closing = False
         self.closing_index = None
@@ -86,23 +90,25 @@ class PixelPainterModePieOperator(Operator):
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
+            self.last_mx = mx
+            self.last_my = my
+            cx, cy = self.cx, self.cy
             n = len(self.menu.operators)
-            best_idx = None
-            best_dist = 1e9
-            for idx, op in enumerate(self.menu.operators):
-                angle = (idx / n) * 2 * math.pi
-                op_cx = self.cx + math.cos(angle) * self.ring_r
-                op_cy = self.cy + math.sin(angle) * self.ring_r
-                dist = (mx - op_cx) ** 2 + (my - op_cy) ** 2
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = idx
-            self.menu.update_hover(best_idx if best_dist < (self.item_r * 2) ** 2 else None)
+            sel_idx = None
+            dx = mx - cx
+            dy = my - cy
+            if n > 0:
+                if dx != 0 or dy != 0:
+                    angle = math.atan2(dy, dx)
+                    if angle < 0:
+                        angle += 2 * math.pi
+                    sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+            self.menu.update_direction(sel_idx)
             self.menu.update_animations()
             context.area.tag_redraw()
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.is_closing = True
-            self.closing_index = self.menu.hover_index
+            self.closing_index = self.menu.direction_index
             self.close_started_at = time.perf_counter()
             context.area.tag_redraw()
         elif event.type == 'TIMER':
@@ -129,7 +135,9 @@ class PixelPainterModePieOperator(Operator):
         open_t = min(1.0, max(0.0, (now - self.open_started_at) / 0.165))
         open_ease = AnimatedPieMenu.ease_in_out(open_t)
         close_alpha = 1.0 - self.close_ease if self.is_closing else 1.0
-        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease)
+        mx = self.last_mx if self.last_mx is not None else self.cx
+        my = self.last_my if self.last_my is not None else self.cy
+        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease, mx=mx, my=my)
 
 class PixelPainterBlendPieOperator(Operator):
     bl_idname = "wm.pixel_painter_blend_pie_oo"
@@ -146,8 +154,10 @@ class PixelPainterBlendPieOperator(Operator):
         self.closing_index = None
         self.close_started_at = 0.0
         self.close_ease = 0.0
-        self.hover_index = None
+        self.direction_index = None
         self.handler = None
+        self.last_mx = None
+        self.last_my = None
 
     def invoke(self, context, event):
         from .custompie_blending import _blend_labels, _blend_order
@@ -156,6 +166,8 @@ class PixelPainterBlendPieOperator(Operator):
         self.menu = AnimatedPieMenu(items, icons=None, ref_func=lambda: context.window_manager.pixel_painter_blend)
         self.cx = event.mouse_region_x
         self.cy = event.mouse_region_y
+        self.last_mx = event.mouse_region_x
+        self.last_my = event.mouse_region_y
         self.open_started_at = time.perf_counter()
         self.is_closing = False
         self.closing_index = None
@@ -170,23 +182,25 @@ class PixelPainterBlendPieOperator(Operator):
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
+            self.last_mx = mx
+            self.last_my = my
+            cx, cy = self.cx, self.cy
             n = len(self.menu.operators)
-            best_idx = None
-            best_dist = 1e9
-            for idx, op in enumerate(self.menu.operators):
-                angle = (idx / n) * 2 * math.pi
-                op_cx = self.cx + math.cos(angle) * self.ring_r
-                op_cy = self.cy + math.sin(angle) * self.ring_r
-                dist = (mx - op_cx) ** 2 + (my - op_cy) ** 2
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = idx
-            self.menu.update_hover(best_idx if best_dist < (self.item_r * 2) ** 2 else None)
+            sel_idx = None
+            dx = mx - cx
+            dy = my - cy
+            if n > 0:
+                if dx != 0 or dy != 0:
+                    angle = math.atan2(dy, dx)
+                    if angle < 0:
+                        angle += 2 * math.pi
+                    sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+            self.menu.update_direction(sel_idx)
             self.menu.update_animations()
             context.area.tag_redraw()
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.is_closing = True
-            self.closing_index = self.menu.hover_index
+            self.closing_index = self.menu.direction_index
             self.close_started_at = time.perf_counter()
             context.area.tag_redraw()
         elif event.type == 'TIMER':
@@ -213,7 +227,9 @@ class PixelPainterBlendPieOperator(Operator):
         open_t = min(1.0, max(0.0, (now - self.open_started_at) / 0.165))
         open_ease = AnimatedPieMenu.ease_in_out(open_t)
         close_alpha = 1.0 - self.close_ease if self.is_closing else 1.0
-        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease)
+        mx = self.last_mx if self.last_mx is not None else self.cx
+        my = self.last_my if self.last_my is not None else self.cy
+        self.menu.draw(None, self.cx, self.cy, self.ring_r, self.item_r, open_ease, close_alpha, self.is_closing, self.closing_index, self.close_ease, mx=mx, my=my)
 
 # Registrierung für Blender
 classes = [PixelPainterModePieOperator, PixelPainterBlendPieOperator]

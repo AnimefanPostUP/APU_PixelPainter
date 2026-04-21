@@ -95,18 +95,18 @@ class PixelPainterBlendPieOperator(Operator):
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             mx, my = event.mouse_region_x, event.mouse_region_y
+            cx, cy = self.cx, self.cy
             n = len(self.menu.operators)
-            best_idx = None
-            best_dist = 1e9
-            for idx, op in enumerate(self.menu.operators):
-                angle = (idx / n) * 2 * math.pi
-                op_cx = self.cx + math.cos(angle) * self.ring_r
-                op_cy = self.cy + math.sin(angle) * self.ring_r
-                dist = (mx - op_cx) ** 2 + (my - op_cy) ** 2
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = idx
-            self.menu.update_hover(best_idx if best_dist < (self.item_r * 2) ** 2 else None)
+            sel_idx = None
+            dx = mx - cx
+            dy = my - cy
+            if n > 0:
+                if dx != 0 or dy != 0:
+                    angle = math.atan2(dy, dx)
+                    if angle < 0:
+                        angle += 2 * math.pi
+                    sel_idx = int((angle / (2 * math.pi)) * n + 0.5) % n
+            self.menu.update_hover(sel_idx)
             self.menu.update_animations()
             context.area.tag_redraw()
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':

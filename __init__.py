@@ -188,12 +188,12 @@ def register():
     # Registriere animierte OO-Overlay-Operatoren
     try:
         bpy.utils.register_class(PixelPainterModePieOperator)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[PixelPainter][DEBUG] Fehler bei register_class(PixelPainterModePieOperator): {e}")
     try:
         bpy.utils.register_class(PixelPainterBlendPieOperator)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[PixelPainter][DEBUG] Fehler bei register_class(PixelPainterBlendPieOperator): {e}")
     # Force delete pixel_painter_mode EnumProperty before re-registering
     try:
         del bpy.types.WindowManager.pixel_painter_mode

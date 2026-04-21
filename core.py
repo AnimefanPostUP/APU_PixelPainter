@@ -701,20 +701,20 @@ class PixelPainterOperator(Operator):
             self._cleanup()
             return {'CANCELLED'}
         
-        # Pie-Menüs auf J/K
+        # Pie-Menüs auf J/K (jetzt als Operator)
         if event.type == 'J' and event.value == 'PRESS':
-            print("[DEBUG] Shortcut J erkannt, versuche PIXELPAINTER_MT_mode_pie zu öffnen")
+            print("[DEBUG] Shortcut J erkannt, versuche wm.pixel_painter_mode_pie_oo zu öffnen")
             try:
-                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_mode_pie")
+                bpy.ops.wm.pixel_painter_mode_pie_oo('INVOKE_DEFAULT')
             except Exception as e:
-                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_mode_pie: {e}")
+                print(f"[DEBUG] Fehler beim Öffnen von wm.pixel_painter_mode_pie_oo: {e}")
             return {'RUNNING_MODAL'}
         if event.type == 'K' and event.value == 'PRESS':
-            print("[DEBUG] Shortcut K erkannt, versuche PIXELPAINTER_MT_blend_pie zu öffnen")
+            print("[DEBUG] Shortcut K erkannt, versuche wm.pixel_painter_blend_pie_oo zu öffnen")
             try:
-                bpy.ops.wm.call_menu(name="PIXELPAINTER_MT_blend_pie")
+                bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
             except Exception as e:
-                print(f"[DEBUG] Fehler beim Öffnen von PIXELPAINTER_MT_blend_pie: {e}")
+                print(f"[DEBUG] Fehler beim Öffnen von wm.pixel_painter_blend_pie_oo: {e}")
             return {'RUNNING_MODAL'}
         
         # Blender may reset modal cursor after certain transient tools
