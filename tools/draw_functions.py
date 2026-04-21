@@ -177,17 +177,20 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     dst = np.stack([arr[flat_idx], arr[flat_idx + 1], arr[flat_idx + 2]], axis=1)
 
 
-    # RGB blend uses only the global opacity (not falloff/weight)
-    out = np.clip(_apply_blend(dst, src, blend, opacity), 0.0, 1.0)
+
+    # Farbmischung: Stärke * Falloff (weight) pro Pixel
+    per_pixel_opacity = opacity * np.array(weight_values, dtype=np.float32)
+    per_pixel_opacity = np.clip(per_pixel_opacity, 0.0, 1.0)
+    out = np.clip(_apply_blend(dst, src, blend, per_pixel_opacity[:, None]), 0.0, 1.0)
 
     arr[flat_idx]     = out[:, 0]
     arr[flat_idx + 1] = out[:, 1]
     arr[flat_idx + 2] = out[:, 2]
 
-    # Alpha blend uses opacity * falloff (weight)
+    # Alpha blend wie gehabt: opacity * falloff (weight)
     alpha_target = float(max(0.0, min(1.0, alpha_opacity)))
     alpha_dst = arr[flat_idx + 3]
-    alpha_mix = np.clip(opacity * np.array(weight_values, dtype=np.float32), 0.0, 1.0)
+    alpha_mix = per_pixel_opacity
     arr[flat_idx + 3] = alpha_dst + (alpha_target - alpha_dst) * alpha_mix
 
     img.pixels.foreach_set(arr)
