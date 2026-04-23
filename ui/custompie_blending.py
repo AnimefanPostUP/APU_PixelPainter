@@ -51,7 +51,7 @@ class PixelPainterBlendRingSegmentPieOperator(Operator):
             for mode in group['modes']:
                 segments.append({
                     'label': _blend_labels[mode],
-                    'color': (0.3, 0.3, 0.7, 0.95),
+                    'color': (0.5, 0.5, 0.5, 0.95),  # Grau statt Blau
                     'border_color': group['border_color'],
                 })
             # Füge Dummy-Segment für Abstand hinzu (transparent, keine Linie)
@@ -133,7 +133,8 @@ class BlendRingSegmentPieMenu(RingSegmentPieOperator):
     def draw_segment_borders(self, angle_start, angle_end, inner_r, outer_r, border_color):
         cx, cy = self.cx, self.cy
         shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        # Two radial lines
+        # Two radial lines (dickere Outline)
+        gpu.state.line_width_set(4.0)
         for angle in (angle_start, angle_end):
             p1 = (cx + math.cos(angle) * inner_r, cy + math.sin(angle) * inner_r)
             p2 = (cx + math.cos(angle) * outer_r, cy + math.sin(angle) * outer_r)
@@ -141,6 +142,42 @@ class BlendRingSegmentPieMenu(RingSegmentPieOperator):
             shader.bind()
             shader.uniform_float('color', border_color)
             batch.draw(shader)
+        # Outer arc
+        steps = 48
+        arc_points = [
+            (cx + math.cos(a) * outer_r, cy + math.sin(a) * outer_r)
+            for a in self.linspace(angle_start, angle_end, steps)
+        ]
+        batch = batch_for_shader(shader, 'LINE_STRIP', {'pos': arc_points})
+        shader.bind()
+        shader.uniform_float('color', border_color)
+        batch.draw(shader)
+        gpu.state.line_width_set(1.0)
+
+    def draw_label_in_segment(self, angle_start, angle_end, label):
+        # Text entlang des Bogens zeichnen, auf linker/rechter Seite um 180° drehen
+        import blf
+        cx, cy = self.cx, self.cy
+        r = (self.inner_radius + self.outer_radius) * 0.5
+        angle_mid = (angle_start + angle_end) * 0.5
+        # Entscheide, ob Text gedreht werden muss (linke/rechte Seite)
+        angle_deg = math.degrees(angle_mid)
+        flip = angle_deg > 90 and angle_deg < 270
+        font_id = 0
+        blf.size(font_id, 14)
+        text = label
+        # Textbreite bestimmen
+        text_width, text_height = blf.dimensions(font_id, text)
+        # Position auf dem Bogen
+        tx = cx + math.cos(angle_mid) * (r + 10)
+        ty = cy + math.sin(angle_mid) * (r + 10)
+        blf.position(font_id, tx, ty, 0)
+        blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
+        blf.enable(font_id, blf.ROTATION)
+        rot = angle_mid + (math.pi if flip else 0)
+        blf.rotation(font_id, rot)
+        blf.draw(font_id, text)
+        blf.disable(font_id, blf.ROTATION)
         # Two arcs (inner and outer)
         for r in (inner_r, outer_r):
             arc_points = [
