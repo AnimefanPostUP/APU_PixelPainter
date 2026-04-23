@@ -1,26 +1,60 @@
 
 import math
 from .pie_utils import draw_circle, draw_text_centered
+from .pie_element_base import PieElementBase
 
-class PieOperator:
+
+class PieOperator(PieElementBase):
     def __init__(self, label, icon, position, id, ref_func=None):
+        super().__init__()
         self.label = label
         self.icon = icon
         self.position = position
         self.id = id
         self.ref_func = ref_func  # Callable returning current value
         self.anim = 0.0  # Fading/hover animation state
+        self._curve_anchor = None
 
     def is_selected(self):
         return self.id == self.ref_func() if self.ref_func else False
 
     def update_anim(self, hover, dt):
+        # Animation logic, also call highlight hooks
+        if hover:
+            self.on_highlight()
+        else:
+            self.on_unhighlight()
         target = 1.0 if hover else 0.0
         speed = dt / (0.4 / 6.0) if dt > 0.0 else 0.0
         if self.anim < target:
             self.anim = min(target, self.anim + speed)
         elif self.anim > target:
             self.anim = max(target, self.anim - speed)
+        self.anim_state = self.anim
+
+    def on_highlight(self):
+        self._highlighted = True
+        return self.STATUS_RUNNING
+
+    def on_unhighlight(self):
+        self._highlighted = False
+        return self.STATUS_RUNNING
+
+    def on_select(self):
+        self._selected = True
+        return self.STATUS_FINISH
+
+    def on_deselect(self):
+        self._selected = False
+        return self.STATUS_RUNNING
+
+    @property
+    def curve_anchor(self):
+        # Return the anchor point for curve drawing (center for now)
+        return getattr(self, '_curve_anchor', None)
+
+    def set_curve_anchor(self, anchor):
+        self._curve_anchor = anchor
 
     @staticmethod
     def ease_in_out(t):

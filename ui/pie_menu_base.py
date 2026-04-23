@@ -11,8 +11,14 @@ from gpu_extras.batch import batch_for_shader
 
 class PieMenuBase:
     def update_hover(self, direction_index):
-        """Setzt den aktuell markierten Operator per Richtung (wie Hover)."""
+        """Setzt den aktuell markierten Operator per Richtung (wie Hover) und ruft OnHighlight/OnUnhighlight auf."""
+        prev = self.direction_index
         self.direction_index = direction_index
+        for idx, op in enumerate(self.operators):
+            if idx == direction_index:
+                op.on_highlight()
+            else:
+                op.on_unhighlight()
     def __init__(self, name="Pie Menu"):
         self.name = name
         self.operators = []  # List[PieOperator]
@@ -52,8 +58,32 @@ class PieMenuBase:
         self.last_anim_time = now
         if not self.anim or len(self.anim) != len(self.operators):
             self.anim = [0.0] * len(self.operators)
+        status = []
         for idx, op in enumerate(self.operators):
             op.update_anim(idx == self.direction_index, dt)
+            # Collect animation status
+            if idx == self.direction_index:
+                status.append(op.on_highlight())
+            else:
+                status.append(op.on_unhighlight())
+        # Central animation status: if any RUNNING, menu is animating
+        if any(s == 'RUNNING' for s in status):
+            return 'RUNNING'
+        return 'FINISH'
+
+    def select_operator(self, index):
+        """Select an operator and call OnSelect/OnDeselect appropriately."""
+        for idx, op in enumerate(self.operators):
+            if idx == index:
+                op.on_select()
+            else:
+                op.on_deselect()
+
+    def get_curve_anchor(self, index):
+        """Get the curve anchor for a given operator index."""
+        if 0 <= index < len(self.operators):
+            return self.operators[index].curve_anchor
+        return None
 
     def draw_bezier_curve(self, p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70), segments=20):
         return draw_bezier_curve(p0, p1, p2, p3, color, segments)
