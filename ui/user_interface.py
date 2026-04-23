@@ -26,3 +26,6 @@ class PixelPainterTool(WorkSpaceTool):
 
     def draw_settings(context, layout, _tool):
         tool_settings_ui.draw_tool_settings(context, layout)
+        # Add extra button for painting selected faces
+        if hasattr(tool_settings_ui, 'draw_extra_paint_faces_button'):
+            tool_settings_ui.draw_extra_paint_faces_button(layout)

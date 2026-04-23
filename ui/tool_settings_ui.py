@@ -74,6 +74,7 @@ def _draw_favorites_selector(layout, wm):
 
 
 def _draw_shortcuts(layout):
+
     shortcuts = (
         ("LMB", "Paint with primary color"),
         ("RMB", "Paint with secondary color"),
@@ -93,6 +94,10 @@ def _draw_shortcuts(layout):
         row = layout.split(factor=0.36, align=True)
         row.label(text=key_text)
         row.label(text=action_text)
+
+def draw_extra_paint_faces_button(layout):
+    layout.separator()
+    layout.operator("apu.paint_selected_faces_uv", text="Paint Selected Faces (UV)", icon='FACESEL')
 
 
 def draw_tool_settings(context, layout):

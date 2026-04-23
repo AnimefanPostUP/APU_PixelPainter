@@ -40,6 +40,7 @@ from .core import core
 from .ui import user_interface
 from .ui import pie_menu
 from .ui import tool_settings_ui
+from .ui import paint_selected_faces_uv
 
 
 bl_info = {
@@ -184,6 +185,9 @@ def _set_active_modifier(self, value):
 
 
 def register():
+    import bmesh
+    paint_selected_faces_uv.set_bmesh_module(bmesh)
+    paint_selected_faces_uv.register()
     # Force delete pixel_painter_mode EnumProperty before re-registering
     try:
         del bpy.types.WindowManager.pixel_painter_mode
@@ -473,6 +477,7 @@ def register():
 
 
 def unregister():
+    paint_selected_faces_uv.unregister()
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)
     core._undo_clear()
