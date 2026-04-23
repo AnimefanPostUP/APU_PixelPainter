@@ -1152,11 +1152,11 @@ class PixelPainterOperator(Operator):
                 print(f"[DEBUG] Fehler beim Öffnen von PixelPainterModePieOperator: {e}")
             return {'RUNNING_MODAL'}
         if event.type == 'K' and event.value == 'PRESS':
-            print("[DEBUG] Shortcut K erkannt, starte animiertes OO-BlendPie")
+            print("[DEBUG] Shortcut K erkannt, starte RingSegment BlendPie")
             try:
-                bpy.ops.wm.pixel_painter_blend_pie_oo('INVOKE_DEFAULT')
+                bpy.ops.wm.pixel_painter_blend_ring_segment_pie('INVOKE_DEFAULT')
             except Exception as e:
-                print(f"[DEBUG] Fehler beim Öffnen von PixelPainterBlendPieOperator: {e}")
+                print(f"[DEBUG] Fehler beim Öffnen von PixelPainterBlendRingSegmentPieOperator: {e}")
             return {'RUNNING_MODAL'}
 
         return {'PASS_THROUGH'}

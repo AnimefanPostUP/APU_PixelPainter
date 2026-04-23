@@ -3,6 +3,8 @@ import time
 from .pie_operator import PieOperator
 from .pie_grid import PieGrid
 from .pie_utils import draw_circle, draw_text_centered, draw_rect, draw_rect_outline
+from .pie_utils_draw import draw_triangle_arrow, draw_bezier_curve
+from .pie_utils_curve import Point
 
 import gpu
 from gpu_extras.batch import batch_for_shader
@@ -20,12 +22,9 @@ class PieMenuBase:
         self.anim = []
         self.last_anim_time = time.perf_counter()
         self.curve_initialized = False
-        self.curve_end_x = 0.0
-        self.curve_end_y = 0.0
-        self.curve_from_x = 0.0
-        self.curve_from_y = 0.0
-        self.curve_to_x = 0.0
-        self.curve_to_y = 0.0
+        self.curve_end = Point()
+        self.curve_from = Point()
+        self.curve_to = Point()
         self.curve_progress = 1.0
         self.last_curve_time = time.perf_counter()
 
@@ -57,106 +56,43 @@ class PieMenuBase:
             op.update_anim(idx == self.direction_index, dt)
 
     def draw_bezier_curve(self, p0, p1, p2, p3, color=(0.66, 0.44, 0.92, 0.70), segments=20):
-        verts = []
-        for i in range(segments + 1):
-            t = i / segments
-            it = 1.0 - t
-            x = (
-                it * it * it * p0[0]
-                + 3.0 * it * it * t * p1[0]
-                + 3.0 * it * t * t * p2[0]
-                + t * t * t * p3[0]
-            )
-            y = (
-                it * it * it * p0[1]
-                + 3.0 * it * it * t * p1[1]
-                + 3.0 * it * t * t * p2[1]
-                + t * t * t * p3[1]
-            )
-            verts.append((x, y))
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        batch = batch_for_shader(shader, 'LINE_STRIP', {'pos': verts})
-        gpu.state.line_width_set(3.0)
-        shader.bind()
-        shader.uniform_float('color', color)
-        batch.draw(shader)
-        gpu.state.line_width_set(1.0)
+        return draw_bezier_curve(p0, p1, p2, p3, color, segments)
 
     def draw_triangle_arrow(self, cx, cy, mx, my, color=(0.66, 0.44, 0.92, 0.92)):
-        dx = mx - cx
-        dy = my - cy
-        d2 = dx * dx + dy * dy
-        if d2 < 1e-4:
-            return None
-        d = math.sqrt(d2)
-        ux = dx / d
-        uy = dy / d
-        px = -uy
-        py = ux
-        base_dist = 12.0
-        tri_len = 22.0
-        tri_half_w = 7.0
-        bx = cx + ux * base_dist
-        by = cy + uy * base_dist
-        tx = bx + ux * tri_len
-        ty = by + uy * tri_len
-        lx = bx + px * tri_half_w
-        ly = by + py * tri_half_w
-        rx = bx - px * tri_half_w
-        ry = by - py * tri_half_w
-        verts = [(tx, ty), (lx, ly), (rx, ry)]
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        batch = batch_for_shader(shader, 'TRI_FAN', {'pos': verts})
-        shader.bind()
-        shader.uniform_float('color', color)
-        batch.draw(shader)
-        return {'tip': (tx, ty), 'dir': (ux, uy)}
+        return draw_triangle_arrow(cx, cy, mx, my, color)
 
     def update_curve_endpoint(self, now, target_x, target_y, restart_transition=False):
         last = getattr(self, 'last_curve_time', now)
         dt = max(0.0, min(0.1, now - last))
         self.last_curve_time = now
         if not getattr(self, 'curve_initialized', False):
-            self.curve_end_x = target_x
-            self.curve_end_y = target_y
-            self.curve_from_x = target_x
-            self.curve_from_y = target_y
-            self.curve_to_x = target_x
-            self.curve_to_y = target_y
+            self.curve_end.set(target_x, target_y)
+            self.curve_from.set(target_x, target_y)
+            self.curve_to.set(target_x, target_y)
             self.curve_progress = 1.0
             self.curve_initialized = True
             return target_x, target_y, 0.0
-        cur_x = self.curve_end_x
-        cur_y = self.curve_end_y
-        to_x = self.curve_to_x
-        to_y = self.curve_to_y
+        cur_x, cur_y = self.curve_end.x, self.curve_end.y
+        to_x, to_y = self.curve_to.x, self.curve_to.y
         if abs(target_x - to_x) > 1e-4 or abs(target_y - to_y) > 1e-4:
             if restart_transition:
-                self.curve_from_x = cur_x
-                self.curve_from_y = cur_y
-                self.curve_to_x = target_x
-                self.curve_to_y = target_y
+                self.curve_from.set(cur_x, cur_y)
+                self.curve_to.set(target_x, target_y)
                 self.curve_progress = 0.0
             else:
-                self.curve_from_x = target_x
-                self.curve_from_y = target_y
-                self.curve_to_x = target_x
-                self.curve_to_y = target_y
+                self.curve_from.set(target_x, target_y)
+                self.curve_to.set(target_x, target_y)
                 self.curve_progress = 1.0
-                self.curve_end_x = target_x
-                self.curve_end_y = target_y
+                self.curve_end.set(target_x, target_y)
                 return target_x, target_y, 0.0
         progress = self.curve_progress
         if progress < 1.0:
             progress = min(1.0, progress + (dt / 0.25 if dt > 0.0 else 0.0))
-        from_x = self.curve_from_x
-        from_y = self.curve_from_y
-        to_x = self.curve_to_x
-        to_y = self.curve_to_y
+        from_x, from_y = self.curve_from.x, self.curve_from.y
+        to_x, to_y = self.curve_to.x, self.curve_to.y
         nx = from_x + (to_x - from_x) * progress
         ny = from_y + (to_y - from_y) * progress
-        self.curve_end_x = nx
-        self.curve_end_y = ny
+        self.curve_end.set(nx, ny)
         self.curve_progress = progress
         transition = 1.0 - progress
         return nx, ny, transition

@@ -1,3 +1,60 @@
+from bpy.types import Operator
+from .ring_segment_pie import RingSegmentPieOperator
+# Alternativer Operator für Ringsegment-Pie-Menü
+class PixelPainterRingSegmentPieOperator(Operator):
+    bl_idname = "wm.pixel_painter_ring_segment_pie"
+    bl_label = "Pixel Painter Ring Segment Pie"
+
+    def __init__(self):
+        self.menu = None
+        self.cx = 0
+        self.cy = 0
+        self.ring_r_inner = 70
+        self.ring_r_outer = 120
+        self.active_index = None
+        self.handler = None
+
+    def invoke(self, context, event):
+        self.cx = event.mouse_region_x
+        self.cy = event.mouse_region_y
+        segments = [
+            {"label": label, "color": (0.3 + 0.1*i, 0.3, 0.7-0.1*i, 0.95)}
+            for i, (id, label) in enumerate(_custom_pie_items)
+        ]
+        self.menu = RingSegmentPieOperator(self.cx, self.cy, self.ring_r_inner, self.ring_r_outer, segments)
+        args = (self, context)
+        self.handler = bpy.types.SpaceImageEditor.draw_handler_add(self.draw_callback, args, 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.finish(context)
+            return {'CANCELLED'}
+        if event.type == 'MOUSEMOVE':
+            mx = event.mouse_region_x
+            my = event.mouse_region_y
+            # Segment-Hover-Logik (optional)
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            # Auswahl-Logik (optional)
+            self.finish(context)
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+    def finish(self, context):
+        if self.handler:
+            bpy.types.SpaceImageEditor.draw_handler_remove(self.handler, 'WINDOW')
+            self.handler = None
+        context.area.tag_redraw()
+
+    def draw_callback(self, context):
+        if self.menu:
+            self.menu.draw()
+
+# Optional: Menüfunktion zum einfachen Aufruf
+def call_ring_segment_pie(self, context):
+    bpy.ops.wm.pixel_painter_ring_segment_pie('INVOKE_DEFAULT')
 import bpy
 import time
 import math

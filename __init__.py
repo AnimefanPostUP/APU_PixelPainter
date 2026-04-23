@@ -194,6 +194,12 @@ def register():
         bpy.utils.register_class(PixelPainterBlendPieOperator)
     except Exception as e:
         print(f"[PixelPainter][DEBUG] Fehler bei register_class(PixelPainterBlendPieOperator): {e}")
+    # RingSegment BlendPie
+    try:
+        from .ui.custompie_blending import PixelPainterBlendRingSegmentPieOperator
+        bpy.utils.register_class(PixelPainterBlendRingSegmentPieOperator)
+    except Exception as e:
+        print(f"[PixelPainter][DEBUG] Fehler bei register_class(PixelPainterBlendRingSegmentPieOperator): {e}")
     # Force delete pixel_painter_mode EnumProperty before re-registering
     try:
         del bpy.types.WindowManager.pixel_painter_mode
@@ -497,6 +503,11 @@ def unregister():
         pass
     try:
         bpy.utils.unregister_class(PixelPainterBlendPieOperator)
+    except Exception:
+        pass
+    try:
+        from .ui.custompie_blending import PixelPainterBlendRingSegmentPieOperator
+        bpy.utils.unregister_class(PixelPainterBlendRingSegmentPieOperator)
     except Exception:
         pass
     

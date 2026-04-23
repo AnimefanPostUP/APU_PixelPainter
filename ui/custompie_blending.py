@@ -1,3 +1,156 @@
+from bpy.types import Operator
+from .ring_segment_pie import RingSegmentPieOperator
+# GPU drawing imports
+import gpu
+from gpu_extras.batch import batch_for_shader
+# Gruppen-Definition für Blendmodes (mit Farben)
+_blend_groups = [
+    {
+        'name': 'Basic',
+        'modes': ['MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'],
+        'border_color': (0.7, 0.7, 1.0, 1.0)
+    },
+    {
+        'name': 'Contrast',
+        'modes': ['SCREEN', 'OVERLAY', 'SOFTLIGHT', 'HARDLIGHT'],
+        'border_color': (1.0, 0.8, 0.3, 1.0)
+    },
+    {
+        'name': 'Math',
+        'modes': ['SUB', 'DIFFERENCE', 'EXCLUSION', 'COLORDODGE', 'COLORBURN'],
+        'border_color': (0.8, 0.4, 0.4, 1.0)
+    },
+    {
+        'name': 'HSL/HSV',
+        'modes': ['HUE', 'SATURATION', 'VALUE', 'LUMINOSITY'],
+        'border_color': (0.4, 0.8, 0.4, 1.0)
+    },
+]
+
+# Operator für Ringsegment-Pie mit Gruppenabstand und Randfarben
+class PixelPainterBlendRingSegmentPieOperator(Operator):
+    bl_idname = "wm.pixel_painter_blend_ring_segment_pie"
+    bl_label = "Pixel Painter Blend Ring Segment Pie"
+
+    def __init__(self):
+        self.menu = None
+        self.cx = 0
+        self.cy = 0
+        self.ring_r_inner = 70
+        self.ring_r_outer = 120
+        self.active_index = None
+        self.handler = None
+
+    def invoke(self, context, event):
+        self.cx = event.mouse_region_x
+        self.cy = event.mouse_region_y
+        # Segment-Liste mit Gruppenabstand und Randfarben erzeugen
+        segments = []
+        border_colors = []
+        for group in _blend_groups:
+            for mode in group['modes']:
+                segments.append({
+                    'label': _blend_labels[mode],
+                    'color': (0.3, 0.3, 0.7, 0.95),
+                    'border_color': group['border_color'],
+                })
+            # Füge Dummy-Segment für Abstand hinzu (transparent, keine Linie)
+            segments.append({'label': '', 'color': (0,0,0,0), 'border_color': (0,0,0,0), 'is_gap': True})
+        if segments and segments[-1].get('is_gap'):
+            segments.pop()  # Letzten Abstand entfernen
+        self.menu = BlendRingSegmentPieMenu(self.cx, self.cy, self.ring_r_inner, self.ring_r_outer, segments)
+        args = (self, context)
+        self.handler = bpy.types.SpaceImageEditor.draw_handler_add(self.draw_callback, args, 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.finish(context)
+            return {'CANCELLED'}
+        if event.type == 'MOUSEMOVE':
+            mx = event.mouse_region_x
+            my = event.mouse_region_y
+            # Segment-Hover-Logik (optional)
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            # Auswahl-Logik (optional)
+            self.finish(context)
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+    def finish(self, context):
+        if self.handler:
+            bpy.types.SpaceImageEditor.draw_handler_remove(self.handler, 'WINDOW')
+            self.handler = None
+        context.area.tag_redraw()
+
+    def draw_callback(self, context, *args):
+        if self.menu:
+            self.menu.draw()
+
+# Erweiterte Menüklasse für Segment-Gruppen und Randfarben
+class BlendRingSegmentPieMenu(RingSegmentPieOperator):
+    def draw(self):
+        n = len(self.segments)
+        # Berechne effektive Segmente (inkl. Gaps)
+        angle_step = 2 * math.pi / n
+        for i, seg in enumerate(self.segments):
+            if seg.get('is_gap'):
+                continue  # Lücke lassen
+            angle_start = i * angle_step + 0.04  # kleiner Abstand links
+            angle_end = (i + 1) * angle_step - 0.04  # kleiner Abstand rechts
+            color = seg.get('color', (0.5, 0.5, 0.5, 1.0))
+            border_color = seg.get('border_color', (0.1, 0.1, 0.1, 1.0))
+            highlight = (i == self.active_index)
+            self.draw_ring_segment(angle_start, angle_end, color, highlight, border_color=border_color)
+            if 'label' in seg and seg['label']:
+                self.draw_label_in_segment(angle_start, angle_end, seg['label'])
+
+    def draw_ring_segment(self, angle_start, angle_end, color, highlight=False, steps=32, border_color=(0.1,0.1,0.1,1.0)):
+        cx, cy = self.cx, self.cy
+        inner_r = self.inner_radius
+        outer_r = self.outer_radius
+        inner_points = [
+            (cx + math.cos(a) * inner_r, cy + math.sin(a) * inner_r)
+            for a in self.linspace(angle_start, angle_end, steps)
+        ]
+        outer_points = [
+            (cx + math.cos(a) * outer_r, cy + math.sin(a) * outer_r)
+            for a in self.linspace(angle_end, angle_start, steps)
+        ]
+        verts = inner_points + outer_points
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        batch = batch_for_shader(shader, 'TRI_FAN', {'pos': verts})
+        shader.bind()
+        if highlight:
+            color = (min(color[0]+0.2,1.0), min(color[1]+0.2,1.0), min(color[2]+0.2,1.0), color[3])
+        shader.uniform_float('color', color)
+        batch.draw(shader)
+        # Border lines
+        self.draw_segment_borders(angle_start, angle_end, inner_r, outer_r, border_color)
+
+    def draw_segment_borders(self, angle_start, angle_end, inner_r, outer_r, border_color):
+        cx, cy = self.cx, self.cy
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        # Two radial lines
+        for angle in (angle_start, angle_end):
+            p1 = (cx + math.cos(angle) * inner_r, cy + math.sin(angle) * inner_r)
+            p2 = (cx + math.cos(angle) * outer_r, cy + math.sin(angle) * outer_r)
+            batch = batch_for_shader(shader, 'LINES', {'pos': [p1, p2]})
+            shader.bind()
+            shader.uniform_float('color', border_color)
+            batch.draw(shader)
+        # Two arcs (inner and outer)
+        for r in (inner_r, outer_r):
+            arc_points = [
+                (cx + math.cos(a) * r, cy + math.sin(a) * r)
+                for a in self.linspace(angle_start, angle_end, 32)
+            ]
+            batch = batch_for_shader(shader, 'LINE_STRIP', {'pos': arc_points})
+            shader.bind()
+            shader.uniform_float('color', border_color)
+            batch.draw(shader)
 import bpy
 from bpy.types import Operator
 import time
