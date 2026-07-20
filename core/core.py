@@ -300,6 +300,7 @@ def _register_draw_handler(space, context):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
         draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
+        draw_functions.draw_test_corner_label(ctx)
         draw_functions.draw_sub_mode_overlay(ctx, _state)
         draw_functions.draw_ctrl_pick_overlay(ctx, _state)
     draw_functions.register_draw_handler(_state, space, context, _callback)
