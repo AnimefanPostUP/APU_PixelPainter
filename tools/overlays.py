@@ -308,49 +308,32 @@ def _selection_screen_rect(v2d, width, height, box, state=None):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _draw_arrow_handle(cx, cy, handle_id, color):
-    size = 8.0
-    head = 3.5
-    if handle_id in {'N', 'S'}:
-        verts = [
-            (cx, cy - size), (cx, cy + size),
-            (cx, cy + size), (cx - head, cy + size - head),
-            (cx, cy + size), (cx + head, cy + size - head),
-            (cx, cy - size), (cx - head, cy - size + head),
-            (cx, cy - size), (cx + head, cy - size + head),
-        ]
-    elif handle_id in {'E', 'W'}:
-        verts = [
-            (cx - size, cy), (cx + size, cy),
-            (cx + size, cy), (cx + size - head, cy - head),
-            (cx + size, cy), (cx + size - head, cy + head),
-            (cx - size, cy), (cx - size + head, cy - head),
-            (cx - size, cy), (cx - size + head, cy + head),
-        ]
-    elif handle_id == 'MOVE':
-        verts = [
-            (cx - size, cy), (cx + size, cy),
-            (cx, cy - size), (cx, cy + size),
-            (cx + size, cy), (cx + size - head, cy - head),
-            (cx + size, cy), (cx + size - head, cy + head),
-            (cx - size, cy), (cx - size + head, cy - head),
-            (cx - size, cy), (cx - size + head, cy + head),
-            (cx, cy + size), (cx - head, cy + size - head),
-            (cx, cy + size), (cx + head, cy + size - head),
-            (cx, cy - size), (cx - head, cy - size + head),
-            (cx, cy - size), (cx + head, cy - size + head),
-        ]
-    else:
-        dx = -size if 'W' in handle_id else size
-        dy = size if 'N' in handle_id else -size
-        verts = [
-            (cx - dx, cy - dy), (cx + dx, cy + dy),
-            (cx + dx, cy + dy), (cx + dx - math.copysign(head, dx), cy + dy),
-            (cx + dx, cy + dy), (cx + dx, cy + dy - math.copysign(head, dy)),
-            (cx - dx, cy - dy), (cx - dx + math.copysign(head, dx), cy - dy),
-            (cx - dx, cy - dy), (cx - dx, cy - dy + math.copysign(head, dy)),
-        ]
-    _gpu_draw_lines(verts, color)
+def _draw_arrow_handle(cx, cy, handle_id, color, highlighted=False, active=False):
+    is_move = handle_id == 'MOVE'
+    radius = 9.5 if is_move else 8.0
+    outline_radius = radius + 1.8
+    inner_radius = max(2.5, radius * 0.38)
+
+    fill = (0.13, 0.15, 0.18, 0.72)
+    outline = color
+    inner = (1.0, 1.0, 1.0, 0.18)
+
+    if handle_id in {'N', 'S', 'E', 'W'}:
+        fill = (0.12, 0.14, 0.17, 0.70)
+    elif handle_id in {'NW', 'NE', 'SE', 'SW'}:
+        fill = (0.10, 0.12, 0.16, 0.74)
+
+    if highlighted:
+        fill = (fill[0] + 0.12, fill[1] + 0.12, fill[2] + 0.12, min(0.92, fill[3] + 0.12))
+        inner = (1.0, 1.0, 1.0, 0.32)
+
+    if active:
+        fill = (fill[0] + 0.10, fill[1] + 0.08, fill[2] + 0.04, min(0.96, fill[3] + 0.10))
+        inner = (1.0, 0.98, 0.92, 0.40)
+
+    _gpu_draw_filled_circle(cx, cy, radius, fill, segments=32)
+    _gpu_draw_circle_outline(cx, cy, outline_radius, outline, segments=36)
+    _gpu_draw_filled_circle(cx, cy, inner_radius, inner, segments=24)
 
 
 def _draw_text_centered(text, x, y, size=12, alpha=1.0):
@@ -462,28 +445,20 @@ def _selection_stencil_box_from_state(state):
 
 def _selection_button_layout(rect, state):
     left, bottom, right, top = rect
-    gap = 12
-    button_size = 28
+    gap = 10
+    button_size = 34
     copy_w = button_size
     paste_w = button_size
-    stencil_w = 38
+    stencil_w = button_size
     center_x = (left + right) * 0.5
-    row1_total = copy_w + (gap if state.get('selection_clipboard') is not None else 0) + (paste_w if state.get('selection_clipboard') is not None else 0)
+    row1_total = copy_w + gap + paste_w + gap + stencil_w
     row1_start = center_x - row1_total * 0.5
     y1 = bottom - 26
     y0 = y1 - button_size
 
-    paste_rect = None
-    if state.get('selection_clipboard') is not None:
-        paste_rect = (row1_start, y0, row1_start + paste_w, y1)
-        cursor_x = row1_start + paste_w + gap
-        copy_rect = (cursor_x, y0, cursor_x + copy_w, y1)
-    else:
-        copy_rect = (row1_start, y0, row1_start + copy_w, y1)
-
-    stencil_y1 = y0 - 8
-    stencil_y0 = stencil_y1 - button_h
-    stencil_rect = (center_x - stencil_w * 0.5, stencil_y0, center_x + stencil_w * 0.5, stencil_y1)
+    copy_rect = (row1_start, y0, row1_start + copy_w, y1)
+    paste_rect = (row1_start + copy_w + gap, y0, row1_start + copy_w + gap + paste_w, y1)
+    stencil_rect = (row1_start + copy_w + gap + paste_w + gap, y0, row1_start + row1_total, y1)
     return copy_rect, paste_rect, stencil_rect
 
 
@@ -636,11 +611,16 @@ def draw_selection_overlay(context, state):
         active = None
     for handle_id, (hx, hy) in handles.items():
         color = (0.84, 0.92, 1.0, 0.72)
+        highlighted = False
+        active_state = False
         if handle_id == hover:
             color = (1.0, 0.88, 0.22, 0.98)
+            highlighted = True
         if handle_id == active:
             color = (1.0, 0.56, 0.18, 1.0)
-        _draw_arrow_handle(hx, hy, handle_id, color)
+            highlighted = True
+            active_state = True
+        _draw_arrow_handle(hx, hy, handle_id, color, highlighted=highlighted, active=active_state)
 
     copy_rect, paste_rect, stencil_rect = _selection_button_layout(rect, state)
     state['selection_copy_button_bounds'] = copy_rect
@@ -657,8 +637,7 @@ def draw_selection_overlay(context, state):
     stencil_hover = mouse_x is not None and mouse_y is not None and (
         stencil_rect[0] <= mouse_x <= stencil_rect[2] and stencil_rect[1] <= mouse_y <= stencil_rect[3]
     )
-    _draw_selection_button(copy_rect, 'Copy', active=copy_hover or state.get('selection_clipboard') is not None)
-    if paste_rect is not None:
-        _draw_selection_button(paste_rect, 'Paste', active=paste_hover or (state.get('selection_pending_action') is not None))
+    _draw_selection_button(copy_rect, 'Copy', active=copy_hover)
+    _draw_selection_button(paste_rect, 'Paste', active=paste_hover or (state.get('selection_pending_action') is not None))
     _draw_selection_button(stencil_rect, 'Stencil', active=stencil_hover or state.get('selection_stencil_mode'))
     _draw_selection_cross_cursor(context, state)

@@ -162,6 +162,7 @@ _state = {
     'selection_mouse_region_y': None,
     'selection_stencil_mode': False,
     'selection_stencil_region': None,
+    'selection_stencil_restore_box': None,
 }
 
 # ---------------------------------------------------------------------------
@@ -323,6 +324,11 @@ def _undo_clear():
 def _register_draw_handler(space, context):
     def _callback(ctx):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
+        draw_functions.draw_pixel_cursor_outline(
+            ctx,
+            _state.get('current_cx'),
+            _state.get('current_cy'),
+        )
         draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
         overlays.draw_selection_overlay(ctx, _state)
@@ -441,6 +447,7 @@ def _selection_clear_like_rmb(keep_clipboard=True):
     _state['selection_move_source_box'] = None
     _state['selection_stencil_mode'] = False
     _state['selection_stencil_region'] = None
+    _state['selection_stencil_restore_box'] = None
     if not keep_clipboard:
         _state['selection_clipboard'] = None
 
@@ -455,6 +462,10 @@ def _selection_toggle_stencil_mode(context):
     if _state.get('selection_stencil_mode'):
         _state['selection_stencil_mode'] = False
         _state['selection_stencil_region'] = None
+        restore_box = _state.get('selection_stencil_restore_box')
+        if restore_box is not None:
+            _state['selection_box'] = restore_box
+        _state['selection_stencil_restore_box'] = None
         _state['selection_hover_handle'] = None
         _state['selection_active_handle'] = None
         if context.area:
@@ -476,6 +487,7 @@ def _selection_toggle_stencil_mode(context):
         return False
 
     _selection_clear_pending_preview()
+    _state['selection_stencil_restore_box'] = _state.get('selection_box')
     _state['selection_stencil_mode'] = True
     _state['selection_stencil_region'] = region.copy()
     _state['selection_hover_handle'] = None
@@ -794,7 +806,7 @@ class PixelPainterOperator(Operator):
 
     def _set_modal_cursor(self, context):
         mode = context.window_manager.pixel_painter_mode
-        desired = 'NONE' if mode == 'SELECT' or _state.get('sub_mode') in {'COLOR_PICK', 'STRENGTH'} else 'CROSSHAIR'
+        desired = 'CROSSHAIR'
         if getattr(self, '_cursor_mode', None) == desired and getattr(self, '_cursor_is_custom', False):
             return
         self._cursor_is_custom = False
@@ -862,6 +874,24 @@ class PixelPainterOperator(Operator):
             bottom = min(int(py), top)
         if 'N' in handle:
             top = max(int(py), bottom)
+        return left, bottom, right, top
+
+    @staticmethod
+    def _selection_resize_box_mirrored(box, handle, px, py):
+        left, bottom, right, top = box
+        center_x = (left + right) * 0.5
+        center_y = (bottom + top) * 0.5
+
+        if 'W' in handle or 'E' in handle:
+            half_width = abs(float(px) - center_x)
+            left = int(round(center_x - half_width))
+            right = int(round(center_x + half_width))
+
+        if 'S' in handle or 'N' in handle:
+            half_height = abs(float(py) - center_y)
+            bottom = int(round(center_y - half_height))
+            top = int(round(center_y + half_height))
+
         return left, bottom, right, top
 
     @staticmethod
@@ -983,7 +1013,14 @@ class PixelPainterOperator(Operator):
             dy = int(cy - start[1])
             _state['selection_box'] = (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
         elif drag_mode == 'RESIZE' and box is not None:
-            _state['selection_box'] = self._selection_resize_box(box, _state.get('selection_active_handle', ''), cx, cy)
+            handle = _state.get('selection_active_handle', '')
+            if self._selection_should_mirror_resize():
+                _state['selection_box'] = self._selection_resize_box_mirrored(box, handle, cx, cy)
+            else:
+                _state['selection_box'] = self._selection_resize_box(box, handle, cx, cy)
+
+    def _selection_should_mirror_resize(self):
+        return bool(getattr(self, '_selection_resize_shift_held', False))
 
     def _selection_begin_left_press(self, context):
         cx = _state.get('current_cx')
@@ -1244,6 +1281,7 @@ class PixelPainterOperator(Operator):
         _selection_clear_pending_preview()
         _state['selection_stencil_mode'] = False
         _state['selection_stencil_region'] = None
+        _state['selection_stencil_restore_box'] = None
         _sub_mode_controller.clear_processes()
         _core_runtime.clear_all_processes()
         self.button_down       = False
@@ -1388,6 +1426,7 @@ class PixelPainterOperator(Operator):
                 if _state.get('selection_stencil_mode'):
                     self._selection_update_stencil_box()
                 elif self.button_down:
+                    self._selection_resize_shift_held = bool(event.shift)
                     self._selection_update_drag()
                 self._selection_update_hover()
                 context.area.tag_redraw()
@@ -1498,6 +1537,11 @@ class PixelPainterOperator(Operator):
             if mode == 'SELECT':
                 _state['selection_mouse_region_x'] = event.mouse_region_x
                 _state['selection_mouse_region_y'] = event.mouse_region_y
+                if _state.get('selection_stencil_mode'):
+                    if _selection_toggle_stencil_mode(context):
+                        self.button_right_down = False
+                        context.area.tag_redraw()
+                        return {'RUNNING_MODAL'}
                 self._selection_clear(keep_clipboard=True)
                 self.button_right_down = True
                 context.area.tag_redraw()
@@ -1635,57 +1679,59 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        # Shift PRESS: temporarily switch to Smooth while held.
+        # Shift PRESS: temporarily switch to Smooth while held outside Selection mode.
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'PRESS':
-            if not _state['temp_shift_mode_active']:
-                _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
-                _state['temp_shift_mode_active'] = True
-            context.window_manager.pixel_painter_temp_smooth_force_global = True
-            context.window_manager.pixel_painter_mode = 'SMOOTH'
-            apply_active_tool_settings(context)
+            if mode != 'SELECT':
+                if not _state['temp_shift_mode_active']:
+                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                    _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_temp_smooth_force_global = True
+                context.window_manager.pixel_painter_mode = 'SMOOTH'
+                apply_active_tool_settings(context)
 
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
+                if self.button_down or self.button_right_down:
+                    if mode == 'LINE':
+                        space = context.space_data
+                        if space and space.image and _state['back_buffer'] is not None:
+                            space.image.pixels.foreach_set(_state['back_buffer'])
+                            space.image.update()
+                        _state['start_position'] = None
+                        _state['back_buffer']    = None
+                    _state['last_paint_cx'] = None
+                    _state['last_paint_cy'] = None
+                    _state['use_secondary'] = False
+                    self.button_down       = False
+                    self.button_right_down = False
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
         # Shift RELEASE: restore the mode that was active before the override.
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'RELEASE':
-            if event.shift:
-                return {'RUNNING_MODAL'}
+            if mode != 'SELECT':
+                if event.shift:
+                    return {'RUNNING_MODAL'}
 
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
+                if self.button_down or self.button_right_down:
+                    if mode == 'LINE':
+                        space = context.space_data
+                        if space and space.image and _state['back_buffer'] is not None:
+                            space.image.pixels.foreach_set(_state['back_buffer'])
+                            space.image.update()
+                        _state['start_position'] = None
+                        _state['back_buffer']    = None
+                    _state['last_paint_cx'] = None
+                    _state['last_paint_cy'] = None
+                    _state['use_secondary'] = False
+                    self.button_down       = False
+                    self.button_right_down = False
 
-            if _state['temp_shift_mode_active']:
-                restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
-                context.window_manager.pixel_painter_mode = restore_mode
-                _state['temp_shift_mode_active'] = False
-                _state['temp_shift_prev_mode'] = None
-            context.window_manager.pixel_painter_temp_smooth_force_global = False
-            apply_active_tool_settings(context)
+                if _state['temp_shift_mode_active']:
+                    restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
+                    context.window_manager.pixel_painter_mode = restore_mode
+                    _state['temp_shift_mode_active'] = False
+                    _state['temp_shift_prev_mode'] = None
+                context.window_manager.pixel_painter_temp_smooth_force_global = False
+                apply_active_tool_settings(context)
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
@@ -1774,7 +1820,7 @@ class PixelPainterOperator(Operator):
             _state['temp_alt_prev_mode'] = context.window_manager.pixel_painter_mode
             _state['temp_alt_mode_active'] = True
             context.window_manager.pixel_painter_mode = 'LINE'
-        if start_with_shift_override and not _state['temp_shift_mode_active']:
+        if start_with_shift_override and context.window_manager.pixel_painter_mode != 'SELECT' and not _state['temp_shift_mode_active']:
             _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
             _state['temp_shift_mode_active'] = True
             context.window_manager.pixel_painter_temp_smooth_force_global = True
