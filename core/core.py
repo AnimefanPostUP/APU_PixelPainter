@@ -324,11 +324,6 @@ def _undo_clear():
 def _register_draw_handler(space, context):
     def _callback(ctx):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
-        draw_functions.draw_pixel_cursor_outline(
-            ctx,
-            _state.get('current_cx'),
-            _state.get('current_cy'),
-        )
         draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
         overlays.draw_selection_overlay(ctx, _state)
@@ -407,6 +402,7 @@ def _selection_apply_pending(context):
     action = _state.get('selection_pending_action')
     region = _state.get('selection_pending_region')
     dest_box = _state.get('selection_box')
+    clipboard = _state.get('selection_clipboard')
     space = context.space_data
     if action is None or region is None or dest_box is None or not space or not space.image:
         return False
@@ -432,6 +428,11 @@ def _selection_apply_pending(context):
         return False
     _state['selection_box'] = new_box
     _selection_clear_pending_preview()
+    if action == 'PASTE' and clipboard is not None:
+        _state['selection_pending_source_box'] = new_box
+        _state['selection_pending_action'] = 'PASTE'
+        _state['selection_pending_region'] = clipboard.copy()
+        _selection_set_preview(clipboard)
     return True
 
 
@@ -506,10 +507,15 @@ def _selection_update_paste_preview_position(context, cx, cy):
     region = _state.get('selection_pending_region')
     if _state.get('selection_pending_action') != 'PASTE' or region is None:
         return False
-    if cx is None or cy is None:
+    anchor_center = _selection_box_center(_state.get('selection_pending_source_box'))
+    if anchor_center is None:
+        if cx is None or cy is None:
+            return False
+        anchor_center = (cx, cy)
+    centered = _selection_center_box_for_region(region, anchor_center[0], anchor_center[1])
+    if centered is None:
         return False
-    height, width = region.shape[:2]
-    _state['selection_box'] = (cx, cy, cx + width - 1, cy + height - 1)
+    _state['selection_box'] = centered
     if context.area:
         context.area.tag_redraw()
     return True
@@ -531,6 +537,13 @@ def _selection_center_box_for_region(region, cx, cy):
     left = int(round(cx - (region_w - 1) * 0.5))
     bottom = int(round(cy - (region_h - 1) * 0.5))
     return (left, bottom, left + region_w - 1, bottom + region_h - 1)
+
+
+def _selection_box_center(box):
+    if box is None:
+        return None
+    left, bottom, right, top = box
+    return ((left + right) * 0.5, (bottom + top) * 0.5)
 
 
 def _selection_apply_stencil(context):
@@ -657,7 +670,7 @@ class PixelPainterRedoOperator(Operator):
 
 class PixelPainterSelectionApplyOperator(Operator):
     bl_idname = "image.pixel_painter_selection_apply"
-    bl_label = "Paste Selection Preview"
+    bl_label = "Apply Selection Preview"
 
     def execute(self, context):
         if not _selection_apply_pending(context):
@@ -678,6 +691,16 @@ class PixelPainterSelectionCopyOperator(Operator):
         if selection_box is None or not space or not space.image:
             return {'CANCELLED'}
         _state['selection_clipboard'] = PixelPainterOperator._selection_extract_region(space.image, selection_box)
+        center = _selection_box_center(selection_box)
+        if _state['selection_clipboard'] is not None and center is not None:
+            centered = _selection_center_box_for_region(_state['selection_clipboard'], center[0], center[1])
+            if centered is not None:
+                _state['selection_pending_source_box'] = selection_box
+                _state['selection_box'] = centered
+                _state['selection_pending_action'] = 'PASTE'
+                _state['selection_pending_region'] = _state['selection_clipboard'].copy()
+                _selection_set_preview(_state['selection_clipboard'])
+                _state['selection_hover_handle'] = None
         if context.area:
             context.area.tag_redraw()
         return {'FINISHED'}
@@ -1041,17 +1064,16 @@ class PixelPainterOperator(Operator):
                 _state['selection_move_pixels'] = _state['selection_pending_region'].copy()
                 _state['selection_move_source_box'] = selection_box
             else:
-                space = context.space_data
-                if space and space.image:
-                    _state['selection_move_pixels'] = self._selection_extract_region(space.image, selection_box)
-                    _state['selection_move_source_box'] = selection_box
-                    _selection_set_preview(_state['selection_move_pixels'])
+                _selection_clear_pending_preview()
+                _state['selection_move_pixels'] = None
+                _state['selection_move_source_box'] = None
         elif interaction is not None and selection_box is not None:
             _state['selection_drag_mode'] = 'RESIZE'
             _state['selection_active_handle'] = interaction
             _state['selection_drag_start'] = (cx, cy)
             _state['selection_drag_origin_box'] = selection_box
         else:
+            _selection_clear_pending_preview()
             _state['selection_drag_mode'] = 'CREATE'
             _state['selection_active_handle'] = None
             _state['selection_drag_start'] = (cx, cy)
@@ -1095,15 +1117,42 @@ class PixelPainterOperator(Operator):
         context.area.tag_redraw()
         return {'RUNNING_MODAL'}
 
+    def _selection_copy_and_preview(self, context):
+        selection_box = _state.get('selection_box')
+        result = self._selection_copy(context)
+        clipboard = _state.get('selection_clipboard')
+        center = _selection_box_center(selection_box)
+        if clipboard is None or center is None:
+            return result
+        centered = _selection_center_box_for_region(clipboard, center[0], center[1])
+        if centered is None:
+            return result
+        _state['selection_pending_source_box'] = selection_box
+        _state['selection_box'] = centered
+        _state['selection_pending_action'] = 'PASTE'
+        _state['selection_pending_region'] = clipboard.copy()
+        _selection_set_preview(clipboard)
+        _state['selection_hover_handle'] = None
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
     def _selection_paste(self, context):
         clipboard = _state.get('selection_clipboard')
         cx = _state.get('current_cx')
         cy = _state.get('current_cy')
-        if clipboard is None or cx is None or cy is None:
+        source_box = _state.get('selection_box')
+        anchor_center = _selection_box_center(source_box)
+        if clipboard is None:
             return {'RUNNING_MODAL'}
-        height, width = clipboard.shape[:2]
-        _state['selection_pending_source_box'] = _state.get('selection_box')
-        _state['selection_box'] = (cx, cy, cx + width - 1, cy + height - 1)
+        if anchor_center is None:
+            if cx is None or cy is None:
+                return {'RUNNING_MODAL'}
+            anchor_center = (cx, cy)
+        centered = _selection_center_box_for_region(clipboard, anchor_center[0], anchor_center[1])
+        if centered is None:
+            return {'RUNNING_MODAL'}
+        _state['selection_pending_source_box'] = source_box
+        _state['selection_box'] = centered
         _state['selection_pending_action'] = 'PASTE'
         _state['selection_pending_region'] = clipboard.copy()
         _selection_set_preview(clipboard)
@@ -1450,7 +1499,7 @@ class PixelPainterOperator(Operator):
                 _state['selection_mouse_region_x'] = event.mouse_region_x
                 _state['selection_mouse_region_y'] = event.mouse_region_y
                 if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_copy_button_bounds')):
-                    return self._selection_copy(context)
+                    return self._selection_copy_and_preview(context)
                 if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_stencil_button_bounds')):
                     if not _selection_toggle_stencil_mode(context):
                         self.report({'WARNING'}, "No selection source available for stencil mode")

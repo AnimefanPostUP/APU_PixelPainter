@@ -638,6 +638,6 @@ def draw_selection_overlay(context, state):
         stencil_rect[0] <= mouse_x <= stencil_rect[2] and stencil_rect[1] <= mouse_y <= stencil_rect[3]
     )
     _draw_selection_button(copy_rect, 'Copy', active=copy_hover)
-    _draw_selection_button(paste_rect, 'Paste', active=paste_hover or (state.get('selection_pending_action') is not None))
+    _draw_selection_button(paste_rect, 'Apply', active=paste_hover or (state.get('selection_pending_action') is not None))
     _draw_selection_button(stencil_rect, 'Stencil', active=stencil_hover or state.get('selection_stencil_mode'))
-    _draw_selection_cross_cursor(context, state)
+    _draw_precision_pixel_guide(context, state.get('current_cx'), state.get('current_cy'))
