@@ -8,8 +8,8 @@
 <p>  Shift + 1-7 : Tool Selection (Quick) </p>
 
 <p>  In Selection Mode </p>
-<p>  Ctrl+C/V   Copy and Pasting </p>
-<p>  Shift   Mirrored Scaling of Selection Rectangle </p>
+<p>  Ctrl+C/V:   Copy and Pasting </p>
+<p>  Shift:   Mirrored Scaling of Selection Rectangle </p>
 
 
 In the Npanel theres Settings for Spacing!
