@@ -20,6 +20,7 @@ def _draw_tool_mode_buttons(layout, current_mode):
     left.operator("image.pixel_painter_set_mode", text="Circle (2)", depress=(current_mode == 'CIRCLE')).mode = 'CIRCLE'
     left.operator("image.pixel_painter_set_mode", text="Spray (3)", depress=(current_mode == 'SPRAY')).mode = 'SPRAY'
     left.operator("image.pixel_painter_set_mode", text="Smear (6)", depress=(current_mode == 'SMEAR')).mode = 'SMEAR'
+    left.operator("image.pixel_painter_set_mode", text="Select (8)", depress=(current_mode == 'SELECT')).mode = 'SELECT'
 
     right.operator("image.pixel_painter_set_mode", text="Square (1)", depress=(current_mode == 'SQUARE')).mode = 'SQUARE'
     right.operator("image.pixel_painter_set_mode", text="Smooth (5)", depress=(current_mode == 'SMOOTH')).mode = 'SMOOTH'
@@ -78,6 +79,10 @@ def _draw_shortcuts(layout):
     shortcuts = (
         ("LMB", "Paint with primary color"),
         ("RMB", "Paint with secondary color"),
+        ("Select: Drag LMB", "Create or move selection"),
+        ("Select: Edge/Corner Drag", "Resize selection box"),
+        ("Select: RMB", "Clear selection box"),
+        ("Select: Ctrl+C / Ctrl+V", "Copy and paste selection"),
         ("Hold Shift", "Smooth while held"),
         ("Hold Alt", "Line draw while held"),
         ("Hold Ctrl", "Pick image color"),
@@ -117,6 +122,26 @@ def draw_tool_settings(context, layout):
     row.prop(wm, "pixel_painter_active_alpha", text="Alpha", slider=True)
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
+
+    if mode == 'SELECT':
+        info = layout.box().column(align=True)
+        info.label(text="Selection Tool")
+        info.label(text="Drag LMB to create or move a box")
+        info.label(text="Drag sides or corners to resize")
+        info.label(text="Ctrl+C copies, Ctrl+V pastes at cursor")
+        if getattr(wm, "pixel_painter_selection_has_pending", False) and not getattr(wm, "pixel_painter_selection_stencil_mode", False):
+            row = info.row(align=True)
+            row.operator("image.pixel_painter_selection_copy", text="Copy", icon='COPYDOWN')
+            info.label(text="Copy the selection before pasting it elsewhere")
+        info.separator()
+        row = info.row(align=True)
+        row.operator(
+            "image.pixel_painter_selection_stencil_toggle",
+            text="Stencil Mode",
+            depress=getattr(wm, "pixel_painter_selection_stencil_mode", False),
+            icon='SNAP_FACE_CENTER',
+        )
+        info.label(text="Stencil mode stamps on LMB and follows the mouse")
 
     row = layout.row(align=True)
     if ups.use_unified_color:

@@ -161,6 +161,20 @@ def _set_active_alpha(self, value):
         pass
 
 
+def _get_selection_has_pending(self):
+    try:
+        return bool(core._state.get('selection_pending_action'))
+    except Exception:
+        return False
+
+
+def _get_selection_stencil_mode(self):
+    try:
+        return bool(core._state.get('selection_stencil_mode'))
+    except Exception:
+        return False
+
+
 def _get_active_modifier(self):
     try:
         ctx = bpy.context
@@ -242,11 +256,12 @@ def register():
             ('SMOOTH',  "Smooth",  "Blur pixels — Spread sets kernel size, Strength sets blend strength"),
             ('SMEAR',   "Smear",   "Drag pixels — Spread sets reach, Strength sets blend strength"),
             ('ERASER',  "Eraser",  "Erase alpha by strength"),
+            ('SELECT',  "Select",  "Select, move, resize, copy and paste pixel regions"),
         ],
         default='SQUARE',
         update=_update_mode,
     )
-    print("[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_mode with items SQUARE, CIRCLE, SPRAY, LINE, SMOOTH, SMEAR, ERASER")
+    print("[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_mode with items SQUARE, CIRCLE, SPRAY, LINE, SMOOTH, SMEAR, ERASER, SELECT")
 
     _falloff_items = [
         ('CONSTANT', "Constant", "Uniform strength across the brush"),
@@ -351,6 +366,16 @@ def register():
         get=_get_active_alpha,
         set=_set_active_alpha,
     )
+    bpy.types.WindowManager.pixel_painter_selection_has_pending = bpy.props.BoolProperty(
+        name="Selection Has Pending Preview",
+        options={'HIDDEN'},
+        get=_get_selection_has_pending,
+    )
+    bpy.types.WindowManager.pixel_painter_selection_stencil_mode = bpy.props.BoolProperty(
+        name="Selection Stencil Mode",
+        options={'HIDDEN'},
+        get=_get_selection_stencil_mode,
+    )
     
     # Per-tool settings: Size, Modifier, Strength, Alpha with global/per-tool toggles
     # Defaults:
@@ -359,13 +384,13 @@ def register():
     # - Modifier: SMOOTH, SMEAR use global; SQUARE, CIRCLE, SPRAY, LINE use local
     # - Alpha: SQUARE, CIRCLE use global; SPRAY, LINE, SMOOTH, SMEAR use local
     
-    _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': True}
-    _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': False}
-    _strength_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False}
-    _alpha_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False}
+    _size_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': True, 'SELECT': True}
+    _modifier_use_global = {'SQUARE': False, 'CIRCLE': False, 'SPRAY': False, 'LINE': False, 'SMOOTH': True, 'SMEAR': True, 'ERASER': False, 'SELECT': True}
+    _strength_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False, 'SELECT': True}
+    _alpha_use_global = {'SQUARE': True, 'CIRCLE': True, 'SPRAY': False, 'LINE': False, 'SMOOTH': False, 'SMEAR': False, 'ERASER': False, 'SELECT': True}
 
-    # Register per-tool properties for all tools, including ERASER
-    for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']:
+    # Register per-tool properties for all tools, including ERASER and SELECT
+    for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']:
         try:
             # Size settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size',
@@ -458,6 +483,10 @@ def register():
     bpy.utils.register_class(core.PixelPainterSetBlendOperator)
     bpy.utils.register_class(core.PixelPainterUndoOperator)
     bpy.utils.register_class(core.PixelPainterRedoOperator)
+    bpy.utils.register_class(core.PixelPainterSelectionCopyOperator)
+    bpy.utils.register_class(core.PixelPainterSelectionApplyOperator)
+    bpy.utils.register_class(core.PixelPainterSelectionCancelOperator)
+    bpy.utils.register_class(core.PixelPainterSelectionStencilToggleOperator)
     bpy.utils.register_class(core.PixelPainterResetToolSettingsOperator)
     bpy.utils.register_class(pie_menu.PixelPainterOpenBlendPieOperator)
     bpy.utils.register_class(pie_menu.PixelPainterCustomPieOperator)
@@ -505,6 +534,8 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_active_strength
     del bpy.types.WindowManager.pixel_painter_active_modifier
     del bpy.types.WindowManager.pixel_painter_active_alpha
+    del bpy.types.WindowManager.pixel_painter_selection_has_pending
+    del bpy.types.WindowManager.pixel_painter_selection_stencil_mode
     del bpy.types.WindowManager.pixel_painter_blend_favorites
     del bpy.types.WindowManager.pixel_painter_ui_show_settings
     del bpy.types.WindowManager.pixel_painter_ui_show_blend_mode
@@ -513,7 +544,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_grid_opacity
     
     # Delete per-tool settings
-    _tools = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']
+    _tools = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']
     for tool in _tools:
         if hasattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size'):
             delattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size')
@@ -548,6 +579,10 @@ def unregister():
     bpy.utils.unregister_class(core.PixelPainterOperator)
     bpy.utils.unregister_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.unregister_class(pie_menu.PixelPainterModePie)
+    bpy.utils.unregister_class(core.PixelPainterSelectionCancelOperator)
+    bpy.utils.unregister_class(core.PixelPainterSelectionApplyOperator)
+    bpy.utils.unregister_class(core.PixelPainterSelectionCopyOperator)
+    bpy.utils.unregister_class(core.PixelPainterSelectionStencilToggleOperator)
     bpy.utils.unregister_class(core.PixelPainterRedoOperator)
     bpy.utils.unregister_class(core.PixelPainterUndoOperator)
     bpy.utils.unregister_class(pie_menu.PixelPainterCustomPieOperator)

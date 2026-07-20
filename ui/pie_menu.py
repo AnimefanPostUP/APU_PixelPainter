@@ -172,6 +172,7 @@ _custom_pie_items = [
     ('SMEAR', 'Smear'),
     ('LINE', 'Line'),
     ('ERASER', 'Eraser'),
+    ('SELECT', 'Select'),
 ]
 
 _falloff_pie_items = [
@@ -191,6 +192,7 @@ _mode_icon_files = {
     'SMEAR': "Tool_Smear.png",
     'LINE': "Tool_Line.png",
     'ERASER': "Tool_Eraser.png",
+    'SELECT': "Tool_Select.png",
     'CONSTANT': "Falloff_Const.png",
     'LINEAR': "Falloff_Linea.png",
     'SMOOTH_FALLOFF': "Falloff_Smooth.png",
@@ -208,16 +210,11 @@ _falloff_pie_dirs = [
     (0.7, 0.7),
 ]
 
-# 7-point top half-circle (left to right, skipping bottom)
+# 8-point top arc (left to right).
 import math
 _mode_pie_dirs = [
-    (math.cos(math.pi), math.sin(math.pi)),           # left
-    (math.cos(5*math.pi/6), math.sin(5*math.pi/6)),  # upper-left
-    (math.cos(4*math.pi/6), math.sin(4*math.pi/6)),  # mid-upper-left
-    (math.cos(math.pi/2), math.sin(math.pi/2)),      # top
-    (math.cos(2*math.pi/6), math.sin(2*math.pi/6)),  # mid-upper-right
-    (math.cos(math.pi/6), math.sin(math.pi/6)),      # upper-right
-    (math.cos(0), math.sin(0)),                     # right
+    (math.cos(math.pi - i * (math.pi / 7.0)), math.sin(math.pi - i * (math.pi / 7.0)))
+    for i in range(8)
 ]
 
 
@@ -1133,7 +1130,7 @@ class PixelPainterCustomPieOperator(Operator):
 
         context.window_manager.modal_handler_add(self)
         context.area.tag_redraw()
-        # Shift+1 bis Shift+7 für Tool-Auswahl
+        # Shift+1 bis Shift+8 für Tool-Auswahl
         if event.value == 'PRESS' and event.shift:
             number_map = {
                 'ONE': 0,
@@ -1143,6 +1140,7 @@ class PixelPainterCustomPieOperator(Operator):
                 'FIVE': 4,
                 'SIX': 5,
                 'SEVEN': 6,
+                'EIGHT': 7,
             }
             idx = number_map.get(event.type)
             if idx is not None and idx < len(_custom_pie_items):

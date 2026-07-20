@@ -27,22 +27,22 @@ class PixelPainterResetToolSettingsOperator(Operator):
         wm.pixel_painter_temp_smooth_force_global = False
         wm.pixel_painter_grid_opacity = 0.0
         # Reset per-tool settings
-        for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER']:
+        for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']:
             setattr(wm, f'pixel_painter_{tool}_size', 1)
-            setattr(wm, f'pixel_painter_{tool}_use_global_size', tool in ['SQUARE', 'CIRCLE', 'SMOOTH', 'SMEAR', 'ERASER'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_size', tool in ['SQUARE', 'CIRCLE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT'])
             setattr(wm, f'pixel_painter_{tool}_modifier', 0.5)
-            setattr(wm, f'pixel_painter_{tool}_use_global_modifier', tool in ['SMOOTH', 'SMEAR'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_modifier', tool in ['SMOOTH', 'SMEAR', 'SELECT'])
             setattr(wm, f'pixel_painter_{tool}_strength', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_strength', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_strength', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
             setattr(wm, f'pixel_painter_{tool}_alpha', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_alpha', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_alpha', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
             # RMB
             setattr(wm, f'pixel_painter_{tool}_strength_rmb', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_strength_rmb', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_strength_rmb', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
             setattr(wm, f'pixel_painter_{tool}_modifier_rmb', 0.5)
-            setattr(wm, f'pixel_painter_{tool}_use_global_modifier_rmb', tool in ['SMOOTH', 'SMEAR'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_modifier_rmb', tool in ['SMOOTH', 'SMEAR', 'SELECT'])
             setattr(wm, f'pixel_painter_{tool}_alpha_rmb', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_alpha_rmb', tool in ['SQUARE', 'CIRCLE'])
+            setattr(wm, f'pixel_painter_{tool}_use_global_alpha_rmb', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
         self.report({'INFO'}, "Pixel Painter tool settings reset to defaults.")
         return {'FINISHED'}
 """Operator classes and module-level tool state."""
@@ -50,12 +50,14 @@ import colorsys
 import time
 
 import bpy
+import gpu
 import numpy as np
 from bpy.types import Operator
 
 from ..utils import math_utils
 from ..utils import blender_utils
 from ..tools import draw_functions
+from ..tools import overlays
 from .core_runtime import PixelPainterCoreRuntime
 from ..ui.menu_controllers import MenuControllerRegistry
 from ..utils.settings_service import PixelPainterSettingsService
@@ -137,6 +139,29 @@ _state = {
     'current_tool_id':     None,
     'previous_tool_id':    None,
     'last_observed_raw_radius': None,
+    'selection_box':       None,
+    'selection_hover_handle': None,
+    'selection_active_handle': None,
+    'selection_drag_mode': None,
+    'selection_drag_start': None,
+    'selection_drag_origin_box': None,
+    'selection_move_pixels': None,
+    'selection_move_source_box': None,
+    'selection_clipboard':  None,
+    'selection_pending_action': None,
+    'selection_pending_region': None,
+    'selection_pending_source_box': None,
+    'selection_preview_image_name': None,
+    'selection_preview_texture': None,
+    'selection_overlay_region': None,
+    'selection_apply_button_bounds': None,
+    'selection_cancel_button_bounds': None,
+    'selection_copy_button_bounds': None,
+    'selection_stencil_button_bounds': None,
+    'selection_mouse_region_x': None,
+    'selection_mouse_region_y': None,
+    'selection_stencil_mode': False,
+    'selection_stencil_region': None,
 }
 
 # ---------------------------------------------------------------------------
@@ -300,6 +325,7 @@ def _register_draw_handler(space, context):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
         draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
+        overlays.draw_selection_overlay(ctx, _state)
         draw_functions.draw_test_corner_label(ctx)
         draw_functions.draw_sub_mode_overlay(ctx, _state)
         draw_functions.draw_ctrl_pick_overlay(ctx, _state)
@@ -320,6 +346,211 @@ def _interpolation_steps(cx, cy):
     return steps[1:]  # skip start pixel — already painted in the previous call
 
 
+def _tag_image_editors_redraw():
+    try:
+        for screen in bpy.data.screens:
+            for area in screen.areas:
+                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
+                    area.tag_redraw()
+    except Exception:
+        pass
+
+
+def _selection_dispose_preview():
+    image_name = _state.get('selection_preview_image_name')
+    _state['selection_preview_texture'] = None
+    _state['selection_preview_image_name'] = None
+    _state['selection_overlay_region'] = None
+    if not image_name:
+        return
+    image = bpy.data.images.get(image_name)
+    if image is not None:
+        try:
+            bpy.data.images.remove(image)
+        except Exception:
+            pass
+
+
+def _selection_set_preview(region):
+    if region is None:
+        return
+    height, width = region.shape[:2]
+    if width <= 0 or height <= 0:
+        return
+    try:
+        _state['selection_preview_texture'] = None
+        _state['selection_preview_image_name'] = None
+        _state['selection_pending_region'] = region.copy()
+        _state['selection_overlay_region'] = None
+    except Exception:
+        _selection_dispose_preview()
+
+
+def _selection_clear_pending_preview():
+    _state['selection_pending_action'] = None
+    _state['selection_pending_region'] = None
+    _state['selection_pending_source_box'] = None
+    _state['selection_apply_button_bounds'] = None
+    _state['selection_cancel_button_bounds'] = None
+    _state['selection_copy_button_bounds'] = None
+    _state['selection_stencil_button_bounds'] = None
+    _selection_dispose_preview()
+
+
+def _selection_apply_pending(context):
+    action = _state.get('selection_pending_action')
+    region = _state.get('selection_pending_region')
+    dest_box = _state.get('selection_box')
+    space = context.space_data
+    if action is None or region is None or dest_box is None or not space or not space.image:
+        return False
+
+    blend = blender_utils.get_brush_blend_mode(context)
+    strength = float(getattr(context.window_manager, 'pixel_painter_active_strength', 1.0))
+
+    _undo_push(space.image)
+
+    new_box = PixelPainterOperator._selection_blit_region_static(
+        space.image,
+        region,
+        dest_box[0],
+        dest_box[1],
+        dest_box=dest_box,
+        blend=blend,
+        opacity=strength,
+    )
+
+    if new_box is None:
+        if _undo_stack:
+            _undo_stack.pop()
+        return False
+    _state['selection_box'] = new_box
+    _selection_clear_pending_preview()
+    return True
+
+
+def _selection_clear_like_rmb(keep_clipboard=True):
+    _selection_clear_pending_preview()
+    _state['selection_box'] = None
+    _state['selection_hover_handle'] = None
+    _state['selection_active_handle'] = None
+    _state['selection_drag_mode'] = None
+    _state['selection_drag_start'] = None
+    _state['selection_drag_origin_box'] = None
+    _state['selection_move_pixels'] = None
+    _state['selection_move_source_box'] = None
+    _state['selection_stencil_mode'] = False
+    _state['selection_stencil_region'] = None
+    if not keep_clipboard:
+        _state['selection_clipboard'] = None
+
+
+def _selection_cancel_pending(context):
+    _selection_clear_like_rmb(keep_clipboard=True)
+    if context.area:
+        context.area.tag_redraw()
+
+
+def _selection_toggle_stencil_mode(context):
+    if _state.get('selection_stencil_mode'):
+        _state['selection_stencil_mode'] = False
+        _state['selection_stencil_region'] = None
+        _state['selection_hover_handle'] = None
+        _state['selection_active_handle'] = None
+        if context.area:
+            context.area.tag_redraw()
+        return True
+
+    region = _state.get('selection_pending_region')
+    if region is None:
+        clipboard = _state.get('selection_clipboard')
+        if clipboard is not None:
+            region = clipboard.copy()
+        else:
+            selection_box = _state.get('selection_box')
+            space = context.space_data
+            if selection_box is not None and space and space.image:
+                region = PixelPainterOperator._selection_extract_region(space.image, selection_box)
+
+    if region is None:
+        return False
+
+    _selection_clear_pending_preview()
+    _state['selection_stencil_mode'] = True
+    _state['selection_stencil_region'] = region.copy()
+    _state['selection_hover_handle'] = None
+    _state['selection_active_handle'] = None
+    cx = _state.get('current_cx')
+    cy = _state.get('current_cy')
+    centered = _selection_center_box_for_region(_state['selection_stencil_region'], cx, cy)
+    if centered is not None:
+        _state['selection_box'] = centered
+    if context.area:
+        context.area.tag_redraw()
+    return True
+
+
+def _selection_update_paste_preview_position(context, cx, cy):
+    region = _state.get('selection_pending_region')
+    if _state.get('selection_pending_action') != 'PASTE' or region is None:
+        return False
+    if cx is None or cy is None:
+        return False
+    height, width = region.shape[:2]
+    _state['selection_box'] = (cx, cy, cx + width - 1, cy + height - 1)
+    if context.area:
+        context.area.tag_redraw()
+    return True
+
+
+def _selection_button_hit(px, py, bounds):
+    if bounds is None or px is None or py is None:
+        return False
+    x0, y0, x1, y1 = bounds
+    return x0 <= px <= x1 and y0 <= py <= y1
+
+
+def _selection_center_box_for_region(region, cx, cy):
+    if region is None or cx is None or cy is None:
+        return None
+    region_h, region_w = region.shape[:2]
+    if region_w <= 0 or region_h <= 0:
+        return None
+    left = int(round(cx - (region_w - 1) * 0.5))
+    bottom = int(round(cy - (region_h - 1) * 0.5))
+    return (left, bottom, left + region_w - 1, bottom + region_h - 1)
+
+
+def _selection_apply_stencil(context):
+    region = _state.get('selection_stencil_region')
+    dest_box = _selection_center_box_for_region(region, _state.get('current_cx'), _state.get('current_cy'))
+    space = context.space_data
+    if region is None or dest_box is None or not space or not space.image:
+        return False
+
+    _state['selection_box'] = dest_box
+
+    blend = blender_utils.get_brush_blend_mode(context)
+    strength = float(getattr(context.window_manager, 'pixel_painter_active_strength', 1.0))
+
+    _undo_push(space.image)
+    new_box = PixelPainterOperator._selection_blit_region_static(
+        space.image,
+        region,
+        dest_box[0],
+        dest_box[1],
+        dest_box=dest_box,
+        blend=blend,
+        opacity=strength,
+    )
+    if new_box is None:
+        if _undo_stack:
+            _undo_stack.pop()
+        return False
+    _state['selection_box'] = new_box
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Operators
 # ---------------------------------------------------------------------------
@@ -337,12 +568,13 @@ class PixelPainterSetModeOperator(Operator):
             ('SMOOTH',  "Smooth",  ""),
             ('SMEAR',   "Smear",   ""),
             ('ERASER',  "Eraser",  ""),
+            ('SELECT',  "Select",  ""),
         ]
     )
 
     def execute(self, context):
         context.window_manager.pixel_painter_mode = self.mode
-        if self.mode != 'LINE':
+        if self.mode not in {'LINE', 'SELECT'}:
             _state['last_shape'] = self.mode
         apply_active_tool_settings(context)
         return {'FINISHED'}
@@ -408,6 +640,54 @@ class PixelPainterRedoOperator(Operator):
     def execute(self, context):
         if not _redo_pop(context):
             self.report({'INFO'}, "Nothing to redo")
+        return {'FINISHED'}
+
+
+class PixelPainterSelectionApplyOperator(Operator):
+    bl_idname = "image.pixel_painter_selection_apply"
+    bl_label = "Paste Selection Preview"
+
+    def execute(self, context):
+        if not _selection_apply_pending(context):
+            self.report({'INFO'}, "No pending selection preview to apply")
+            return {'CANCELLED'}
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class PixelPainterSelectionCopyOperator(Operator):
+    bl_idname = "image.pixel_painter_selection_copy"
+    bl_label = "Copy Selection"
+
+    def execute(self, context):
+        selection_box = _state.get('selection_box')
+        space = context.space_data
+        if selection_box is None or not space or not space.image:
+            return {'CANCELLED'}
+        _state['selection_clipboard'] = PixelPainterOperator._selection_extract_region(space.image, selection_box)
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class PixelPainterSelectionCancelOperator(Operator):
+    bl_idname = "image.pixel_painter_selection_cancel"
+    bl_label = "Cancel Selection Preview"
+
+    def execute(self, context):
+        _selection_cancel_pending(context)
+        return {'FINISHED'}
+
+
+class PixelPainterSelectionStencilToggleOperator(Operator):
+    bl_idname = "image.pixel_painter_selection_stencil_toggle"
+    bl_label = "Toggle Selection Stencil Mode"
+
+    def execute(self, context):
+        if not _selection_toggle_stencil_mode(context):
+            self.report({'WARNING'}, "No selection source available for stencil mode")
+            return {'CANCELLED'}
         return {'FINISHED'}
 
 
@@ -513,7 +793,8 @@ class PixelPainterOperator(Operator):
         self._brush_overlay_restore = []
 
     def _set_modal_cursor(self, context):
-        desired = 'NONE' if _state.get('sub_mode') in {'COLOR_PICK', 'STRENGTH'} else 'CROSSHAIR'
+        mode = context.window_manager.pixel_painter_mode
+        desired = 'NONE' if mode == 'SELECT' or _state.get('sub_mode') in {'COLOR_PICK', 'STRENGTH'} else 'CROSSHAIR'
         if getattr(self, '_cursor_mode', None) == desired and getattr(self, '_cursor_is_custom', False):
             return
         self._cursor_is_custom = False
@@ -533,6 +814,272 @@ class PixelPainterOperator(Operator):
             pass
         self._cursor_is_custom = False
         self._cursor_mode = None
+
+    @staticmethod
+    def _selection_normalize_box(x0, y0, x1, y1):
+        return (min(int(x0), int(x1)), min(int(y0), int(y1)), max(int(x0), int(x1)), max(int(y0), int(y1)))
+
+    @staticmethod
+    def _selection_pick_handle(box, px, py, tolerance=1):
+        if not box or px is None or py is None:
+            return None
+        left, bottom, right, top = box
+        near_left = abs(px - left) <= tolerance
+        near_right = abs(px - right) <= tolerance
+        near_bottom = abs(py - bottom) <= tolerance
+        near_top = abs(py - top) <= tolerance
+        within_x = left <= px <= right
+        within_y = bottom <= py <= top
+
+        if near_left and near_top:
+            return 'NW'
+        if near_right and near_top:
+            return 'NE'
+        if near_right and near_bottom:
+            return 'SE'
+        if near_left and near_bottom:
+            return 'SW'
+        if near_top and within_x:
+            return 'N'
+        if near_right and within_y:
+            return 'E'
+        if near_bottom and within_x:
+            return 'S'
+        if near_left and within_y:
+            return 'W'
+        if within_x and within_y:
+            return 'MOVE'
+        return None
+
+    @staticmethod
+    def _selection_resize_box(box, handle, px, py):
+        left, bottom, right, top = box
+        if 'W' in handle:
+            left = min(int(px), right)
+        if 'E' in handle:
+            right = max(int(px), left)
+        if 'S' in handle:
+            bottom = min(int(py), top)
+        if 'N' in handle:
+            top = max(int(py), bottom)
+        return left, bottom, right, top
+
+    @staticmethod
+    def _selection_extract_region(img, box):
+        if img is None or box is None:
+            return None
+        width, height = img.size
+        left = max(0, min(width - 1, int(box[0])))
+        bottom = max(0, min(height - 1, int(box[1])))
+        right = max(0, min(width - 1, int(box[2])))
+        top = max(0, min(height - 1, int(box[3])))
+        if right < left or top < bottom:
+            return None
+        arr = np.array(img.pixels, dtype=np.float32).reshape(height, width, 4)
+        return arr[bottom:top + 1, left:right + 1, :].copy()
+
+    @staticmethod
+    def _selection_write_image(img, arr):
+        img.pixels.foreach_set(arr.ravel())
+        img.update()
+        _tag_image_editors_redraw()
+
+    @staticmethod
+    def _selection_blit_region_static(img, region, dest_left, dest_bottom, dest_box=None, clear_box=None, blend='MIX', opacity=1.0):
+        if img is None or region is None:
+            return None
+        width, height = img.size
+        region_h, region_w = region.shape[:2]
+        if region_w == 0 or region_h == 0:
+            return None
+
+        arr = np.array(img.pixels, dtype=np.float32).reshape(height, width, 4)
+        if clear_box is not None:
+            src_left = max(0, min(width - 1, int(clear_box[0])))
+            src_bottom = max(0, min(height - 1, int(clear_box[1])))
+            src_right = max(0, min(width - 1, int(clear_box[2])))
+            src_top = max(0, min(height - 1, int(clear_box[3])))
+            if src_right >= src_left and src_top >= src_bottom:
+                arr[src_bottom:src_top + 1, src_left:src_right + 1, :] = 0.0
+
+        dest_left = int(dest_left)
+        dest_bottom = int(dest_bottom)
+        if dest_box is None:
+            dest_right = dest_left + region_w - 1
+            dest_top = dest_bottom + region_h - 1
+        else:
+            dest_right = int(dest_box[2])
+            dest_top = int(dest_box[3])
+        clip_left = max(0, dest_left)
+        clip_bottom = max(0, dest_bottom)
+        clip_right = min(width - 1, dest_right)
+        clip_top = min(height - 1, dest_top)
+        if clip_right < clip_left or clip_top < clip_bottom:
+            return None
+
+        dest_width = max(1, dest_right - dest_left + 1)
+        dest_height = max(1, dest_top - dest_bottom + 1)
+        for y in range(clip_bottom, clip_top + 1):
+            dest_y = y - dest_bottom
+            src_y = int(round((dest_y / max(1, dest_height - 1)) * max(0, region_h - 1))) if dest_height > 1 else 0
+            src_y = max(0, min(region_h - 1, src_y))
+            for x in range(clip_left, clip_right + 1):
+                dest_x = x - dest_left
+                src_x = int(round((dest_x / max(1, dest_width - 1)) * max(0, region_w - 1))) if dest_width > 1 else 0
+                src_x = max(0, min(region_w - 1, src_x))
+                blended = draw_functions.blend_region_pixels(
+                    arr[y:y + 1, x:x + 1, :],
+                    region[src_y:src_y + 1, src_x:src_x + 1, :],
+                    blend,
+                    opacity,
+                )
+                arr[y, x, :] = blended[0, 0, :]
+        PixelPainterOperator._selection_write_image(img, arr)
+        return clip_left, clip_bottom, clip_right, clip_top
+
+    def _selection_blit_region(self, img, region, dest_left, dest_bottom, clear_box=None):
+        return self._selection_blit_region_static(img, region, dest_left, dest_bottom, clear_box=clear_box)
+
+    def _selection_clear(self, keep_clipboard=True):
+        _selection_clear_like_rmb(keep_clipboard=keep_clipboard)
+
+    def _selection_update_hover(self):
+        if _state['selection_drag_mode'] or _state.get('selection_stencil_mode'):
+            return
+        _state['selection_hover_handle'] = self._selection_pick_handle(
+            _state.get('selection_box'),
+            _state.get('current_cx'),
+            _state.get('current_cy'),
+        )
+
+    def _selection_update_stencil_box(self):
+        if not _state.get('selection_stencil_mode'):
+            return
+        region = _state.get('selection_stencil_region')
+        cx = _state.get('current_cx')
+        cy = _state.get('current_cy')
+        centered = _selection_center_box_for_region(region, cx, cy)
+        if centered is not None:
+            _state['selection_box'] = centered
+
+    def _selection_update_paste_preview(self, context):
+        if _state.get('selection_pending_action') != 'PASTE':
+            return
+        _selection_update_paste_preview_position(context, _state.get('current_cx'), _state.get('current_cy'))
+
+    def _selection_update_drag(self):
+        box = _state.get('selection_drag_origin_box')
+        start = _state.get('selection_drag_start')
+        cx = _state.get('current_cx')
+        cy = _state.get('current_cy')
+        drag_mode = _state.get('selection_drag_mode')
+        if start is None or cx is None or cy is None or drag_mode is None:
+            return
+
+        if drag_mode == 'CREATE':
+            _state['selection_box'] = self._selection_normalize_box(start[0], start[1], cx, cy)
+        elif drag_mode == 'MOVE' and box is not None:
+            dx = int(cx - start[0])
+            dy = int(cy - start[1])
+            _state['selection_box'] = (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
+        elif drag_mode == 'RESIZE' and box is not None:
+            _state['selection_box'] = self._selection_resize_box(box, _state.get('selection_active_handle', ''), cx, cy)
+
+    def _selection_begin_left_press(self, context):
+        cx = _state.get('current_cx')
+        cy = _state.get('current_cy')
+        if cx is None or cy is None:
+            return {'RUNNING_MODAL'}
+
+        selection_box = _state.get('selection_box')
+        interaction = self._selection_pick_handle(selection_box, cx, cy)
+        self.button_down = True
+
+        if interaction == 'MOVE' and selection_box is not None:
+            _state['selection_drag_mode'] = 'MOVE'
+            _state['selection_active_handle'] = 'MOVE'
+            _state['selection_drag_start'] = (cx, cy)
+            _state['selection_drag_origin_box'] = selection_box
+            if _state.get('selection_pending_action') is not None and _state.get('selection_pending_region') is not None:
+                _state['selection_move_pixels'] = _state['selection_pending_region'].copy()
+                _state['selection_move_source_box'] = selection_box
+            else:
+                space = context.space_data
+                if space and space.image:
+                    _state['selection_move_pixels'] = self._selection_extract_region(space.image, selection_box)
+                    _state['selection_move_source_box'] = selection_box
+                    _selection_set_preview(_state['selection_move_pixels'])
+        elif interaction is not None and selection_box is not None:
+            _state['selection_drag_mode'] = 'RESIZE'
+            _state['selection_active_handle'] = interaction
+            _state['selection_drag_start'] = (cx, cy)
+            _state['selection_drag_origin_box'] = selection_box
+        else:
+            _state['selection_drag_mode'] = 'CREATE'
+            _state['selection_active_handle'] = None
+            _state['selection_drag_start'] = (cx, cy)
+            _state['selection_drag_origin_box'] = None
+            _state['selection_box'] = (cx, cy, cx, cy)
+
+        self._selection_update_hover()
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _selection_finish_left_release(self, context):
+        drag_mode = _state.get('selection_drag_mode')
+        if drag_mode in {'MOVE', 'RESIZE', 'CREATE'} and _state.get('selection_pending_action') is None:
+            region = _state.get('selection_move_pixels')
+            source_box = _state.get('selection_move_source_box')
+            dest_box = _state.get('selection_box')
+            if drag_mode == 'MOVE' and region is not None and source_box is not None and dest_box is not None and dest_box != source_box:
+                _state['selection_pending_action'] = 'MOVE'
+                _state['selection_pending_region'] = region.copy()
+                _state['selection_pending_source_box'] = source_box
+                _selection_set_preview(region)
+            elif drag_mode == 'MOVE':
+                _selection_clear_pending_preview()
+        self.button_down = False
+        _state['selection_drag_mode'] = None
+        _state['selection_drag_start'] = None
+        _state['selection_drag_origin_box'] = None
+        _state['selection_move_pixels'] = None
+        _state['selection_move_source_box'] = None
+        _state['selection_active_handle'] = None
+        self._selection_update_hover()
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _selection_copy(self, context):
+        selection_box = _state.get('selection_box')
+        space = context.space_data
+        if selection_box is None or not space or not space.image:
+            return {'RUNNING_MODAL'}
+        _state['selection_clipboard'] = self._selection_extract_region(space.image, selection_box)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _selection_paste(self, context):
+        clipboard = _state.get('selection_clipboard')
+        cx = _state.get('current_cx')
+        cy = _state.get('current_cy')
+        if clipboard is None or cx is None or cy is None:
+            return {'RUNNING_MODAL'}
+        height, width = clipboard.shape[:2]
+        _state['selection_pending_source_box'] = _state.get('selection_box')
+        _state['selection_box'] = (cx, cy, cx + width - 1, cy + height - 1)
+        _state['selection_pending_action'] = 'PASTE'
+        _state['selection_pending_region'] = clipboard.copy()
+        _selection_set_preview(clipboard)
+        _state['selection_hover_handle'] = None
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    @staticmethod
+    def _selection_hit_button(px, py, bounds):
+        if bounds is None or px is None or py is None:
+            return False
+        x0, y0, x1, y1 = bounds
+        return x0 <= px <= x1 and y0 <= py <= y1
 
     # ---- drawing -------------------------------------------------------------
 
@@ -686,6 +1233,17 @@ class PixelPainterOperator(Operator):
         _state['current_tool_id']     = None
         _state['previous_tool_id']    = None
         _state['last_observed_raw_radius'] = None
+        _state['selection_box']       = None
+        _state['selection_hover_handle'] = None
+        _state['selection_active_handle'] = None
+        _state['selection_drag_mode'] = None
+        _state['selection_drag_start'] = None
+        _state['selection_drag_origin_box'] = None
+        _state['selection_move_pixels'] = None
+        _state['selection_move_source_box'] = None
+        _selection_clear_pending_preview()
+        _state['selection_stencil_mode'] = False
+        _state['selection_stencil_region'] = None
         _sub_mode_controller.clear_processes()
         _core_runtime.clear_all_processes()
         self.button_down       = False
@@ -793,6 +1351,8 @@ class PixelPainterOperator(Operator):
 
         # Mouse move: always update cursor; paint if either button is held
         if event.type == 'MOUSEMOVE':
+            _state['selection_mouse_region_x'] = event.mouse_region_x
+            _state['selection_mouse_region_y'] = event.mouse_region_y
             bounds = self.get_image_screen_bounds(context)
             if bounds:
                 xmin, ymin, xmax, ymax = bounds[:4]
@@ -824,6 +1384,15 @@ class PixelPainterOperator(Operator):
             else:
                 _state['current_cx'] = _state['current_cy'] = None
 
+            if mode == 'SELECT':
+                if _state.get('selection_stencil_mode'):
+                    self._selection_update_stencil_box()
+                elif self.button_down:
+                    self._selection_update_drag()
+                self._selection_update_hover()
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+
             if _state['ctrl_pick_active'] and not self.button_down and not self.button_right_down:
                 _state['ctrl_region_x'] = event.mouse_region_x
                 _state['ctrl_region_y'] = event.mouse_region_y
@@ -838,6 +1407,24 @@ class PixelPainterOperator(Operator):
 
         # Left mouse press: primary color stroke
         elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            if mode == 'SELECT':
+                _state['selection_mouse_region_x'] = event.mouse_region_x
+                _state['selection_mouse_region_y'] = event.mouse_region_y
+                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_copy_button_bounds')):
+                    return self._selection_copy(context)
+                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_stencil_button_bounds')):
+                    if not _selection_toggle_stencil_mode(context):
+                        self.report({'WARNING'}, "No selection source available for stencil mode")
+                        return {'CANCELLED'}
+                    return {'RUNNING_MODAL'}
+                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_apply_button_bounds')):
+                    _selection_apply_pending(context)
+                    return {'RUNNING_MODAL'}
+                if _state.get('selection_stencil_mode'):
+                    _selection_apply_stencil(context)
+                    context.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
+                return self._selection_begin_left_press(context)
             active_mode = mode
             if event.shift and not event.ctrl and not event.alt:
                 if not _state['temp_shift_mode_active']:
@@ -887,6 +1474,8 @@ class PixelPainterOperator(Operator):
 
         # Left mouse release
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if mode == 'SELECT':
+                return self._selection_finish_left_release(context)
             if self.button_down:
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
@@ -906,6 +1495,13 @@ class PixelPainterOperator(Operator):
 
         # Right mouse press: secondary color stroke
         elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
+            if mode == 'SELECT':
+                _state['selection_mouse_region_x'] = event.mouse_region_x
+                _state['selection_mouse_region_y'] = event.mouse_region_y
+                self._selection_clear(keep_clipboard=True)
+                self.button_right_down = True
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
             active_mode = mode
             if event.shift and not event.ctrl and not event.alt:
                 if not _state['temp_shift_mode_active']:
@@ -950,6 +1546,10 @@ class PixelPainterOperator(Operator):
 
         # Right mouse release
         elif event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            if mode == 'SELECT':
+                self.button_right_down = False
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
             if self.button_right_down:
                 if mode == 'LINE':
                     if _state['start_position'] is not None:
@@ -967,8 +1567,16 @@ class PixelPainterOperator(Operator):
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
+        elif mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'C':
+            return self._selection_copy(context)
+
+        elif mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'V':
+            return self._selection_paste(context)
+
         # Ctrl PRESS: activate the eyedropper while held.
         elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'PRESS':
+            if mode == 'SELECT':
+                return {'RUNNING_MODAL'}
             if self.button_down or self.button_right_down:
                 if mode == 'LINE':
                     space = context.space_data
@@ -994,6 +1602,8 @@ class PixelPainterOperator(Operator):
 
         # Ctrl RELEASE: clear the eyedropper overlay.
         elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'RELEASE':
+            if mode == 'SELECT':
+                return {'RUNNING_MODAL'}
             if event.ctrl:
                 return {'RUNNING_MODAL'}
 
@@ -1107,8 +1717,8 @@ class PixelPainterOperator(Operator):
             return {'RUNNING_MODAL'}
 
 
-        # Shift+1 bis Shift+7: Toolwechsel nur für Nummerntasten (kein Pie, kein Submode)
-        elif event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode() and event.type in {'ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN'}:
+        # Shift+1 bis Shift+8: Toolwechsel nur für Nummerntasten (kein Pie, kein Submode)
+        elif event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode() and event.type in {'ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT'}:
             number_map = {
                 'ONE': 'CIRCLE',
                 'TWO': 'SQUARE',
@@ -1117,6 +1727,7 @@ class PixelPainterOperator(Operator):
                 'FIVE': 'SMEAR',
                 'SIX': 'LINE',
                 'SEVEN': 'ERASER',
+                'EIGHT': 'SELECT',
             }
             tool_id = number_map.get(event.type)
             if tool_id is not None:
@@ -1198,10 +1809,17 @@ class PixelPainterOperator(Operator):
         _state['ctrl_region_x']      = event.mouse_region_x
         _state['ctrl_region_y']      = event.mouse_region_y
 
+        if context.window_manager.pixel_painter_mode == 'SELECT':
+            _state['selection_drag_mode'] = None
+            _state['selection_drag_start'] = None
+            _state['selection_drag_origin_box'] = None
+            _state['selection_move_pixels'] = None
+            _state['selection_move_source_box'] = None
+
         # Push undo for the FIRST stroke — the press that triggered invoke is
         # not re-delivered to the modal, so the modal PRESS handler won't fire.
         space = context.space_data
-        if space and space.image and (self.button_down or self.button_right_down):
+        if context.window_manager.pixel_painter_mode != 'SELECT' and space and space.image and (self.button_down or self.button_right_down):
             _undo_push(space.image)
 
         # Paint the initial pixel under the cursor on press.
@@ -1209,7 +1827,12 @@ class PixelPainterOperator(Operator):
         result = self.get_hovered_pixel(context, event)
         if result:
             _state['current_cx'], _state['current_cy'] = result[0], result[1]
-            if start_with_picker:
+            if mode == 'SELECT':
+                if is_rmb:
+                    self._selection_clear(keep_clipboard=True)
+                else:
+                    self._selection_begin_left_press(context)
+            elif start_with_picker:
                 _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
                     context, _state['current_cx'], _state['current_cy'])
                 picked = _state['ctrl_hovered_color']

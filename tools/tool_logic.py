@@ -44,6 +44,15 @@ class BrushTool(ToolBase):
     """Base class for brush-like tools that paint pixels."""
 
 
+class SelectionTool(ToolBase):
+    """Selection mode does not paint through the brush dispatch path."""
+
+    tool_id = 'SELECT'
+
+    def on_draw(self, env: DrawEnvironment):
+        return
+
+
 class LineBrushTool(BrushTool):
     """Draw straight lines using the previous non-line shape as the tip."""
 
@@ -351,6 +360,7 @@ class ToolRegistry:
 
     def __init__(self):
         self._tools: Dict[str, ToolBase] = {
+            'SELECT': SelectionTool(),
             'LINE': LineBrushTool(),
             'SPRAY': SprayBrushTool(),
             'CIRCLE': CircleBrushTool(),
