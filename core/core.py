@@ -56,7 +56,9 @@ from bpy.types import Operator
 
 from ..utils import math_utils
 from ..utils import blender_utils
+from ..tools import draw_blending
 from ..tools import draw_functions
+from ..tools import draw_gridoverlay
 from ..tools import overlays
 from ..tools import overlays_selectmode
 from .core_runtime import PixelPainterCoreRuntime
@@ -325,7 +327,7 @@ def _undo_clear():
 def _register_draw_handler(space, context):
     def _callback(ctx):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
-        draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
+        draw_gridoverlay.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
         overlays_selectmode.draw_selection_overlay(ctx, _state)
         draw_functions.draw_test_corner_label(ctx)
@@ -992,7 +994,7 @@ class PixelPainterOperator(Operator):
                 dest_x = x - dest_left
                 src_x = int(round((dest_x / max(1, dest_width - 1)) * max(0, region_w - 1))) if dest_width > 1 else 0
                 src_x = max(0, min(region_w - 1, src_x))
-                blended = draw_functions.blend_region_pixels(
+                blended = draw_blending.blend_region_pixels(
                     arr[y:y + 1, x:x + 1, :],
                     region[src_y:src_y + 1, src_x:src_x + 1, :],
                     blend,

@@ -25,6 +25,10 @@ from .utils import generic_utils
 from .utils import math_utils
 from .utils import blender_utils
 from .tools import draw_functions
+from .tools import draw_blending
+from .tools import draw_gridoverlay
+from .tools import draw_menu_colorpick
+from .tools import draw_tool_smooth
 from .tools import overlays
 from .tools import overlays_selectmode
 from .core import variables
@@ -219,6 +223,10 @@ def register():
     importlib.reload(math_utils)
     importlib.reload(blender_utils)
     importlib.reload(draw_functions)
+    importlib.reload(draw_blending)
+    importlib.reload(draw_gridoverlay)
+    importlib.reload(draw_menu_colorpick)
+    importlib.reload(draw_tool_smooth)
     importlib.reload(overlays)
     importlib.reload(overlays_selectmode)
     importlib.reload(variables)

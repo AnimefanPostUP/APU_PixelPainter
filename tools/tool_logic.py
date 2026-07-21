@@ -6,6 +6,7 @@ from typing import Callable, Dict
 import numpy as np
 
 from . import draw_functions
+from . import draw_tool_smooth
 from ..utils import math_utils
 
 
@@ -248,7 +249,7 @@ class SmoothTool(ToolBase):
         all_pixels = set()
         for (sx, sy) in env.interpolation_steps():
             all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
-        draw_functions.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
+        draw_tool_smooth.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
         if all_pixels:
             draw_functions.set_pixels_alpha(env.img, all_pixels, env.alpha_opacity, opacity=env.opacity)
         env.state['last_paint_cx'] = env.cursor_x
@@ -273,7 +274,7 @@ class SmearTool(ToolBase):
             ddx = sx - ox
             ddy = sy - oy
             smear_reach = modifier * max(1, env.radius)
-            draw_functions.smear_pixels_in_image(
+            draw_tool_smooth.smear_pixels_in_image(
                 env.img,
                 list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')),
                 ddx,

@@ -3,15 +3,14 @@ import gpu_extras.batch
 import numpy as np
 
 from ..tools import draw_functions
+from ..tools import draw_blending
 from ..utils import blender_utils
 from .overlays import (
-    _draw_arrow_handle,
     _draw_text_centered,
     _gpu_draw_circle_outline,
     _gpu_draw_fill,
     _gpu_draw_filled_circle,
     _gpu_draw_lines,
-    _selection_screen_rect,
 )
 
 
@@ -92,7 +91,7 @@ def _selection_preview_composite_region(context, box, source_region):
     dst_slice = arr[clip_bottom:clip_top + 1, clip_left:clip_right + 1, :]
     src_slice = source_region[src_y0:src_y1, src_x0:src_x1, :]
     scaled_src_slice = preview[src_y0:src_y1, src_x0:src_x1, :]
-    blended = draw_functions.blend_region_pixels(dst_slice, scaled_src_slice, blend, strength)
+    blended = draw_blending.blend_region_pixels(dst_slice, scaled_src_slice, blend, strength)
     preview[src_y0:src_y1, src_x0:src_x1, :] = blended
     return preview
 
@@ -311,3 +310,47 @@ def draw_selection_overlay(context, state):
     _draw_selection_button(paste_rect, 'Apply', active=paste_hover or (state.get('selection_pending_action') is not None))
     _draw_selection_button(stencil_rect, 'Stencil', active=stencil_hover or state.get('selection_stencil_mode'))
     _draw_precision_pixel_guide(context, state.get('current_cx'), state.get('current_cy'))
+
+
+def _selection_screen_rect(v2d, width, height, box, state=None):
+    left, bottom, right, top = box
+    corners = [
+        (left / width, bottom / height),
+        ((right + 1) / width, bottom / height),
+        ((right + 1) / width, (top + 1) / height),
+        (left / width, (top + 1) / height),
+    ]
+    points = [v2d.view_to_region(u, v) for u, v in corners]
+    if any(px is None or py is None for px, py in points):
+        return None
+    xs = [round(px) for px, _ in points]
+    ys = [round(py) for _, py in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _draw_arrow_handle(cx, cy, handle_id, color, highlighted=False, active=False):
+    is_move = handle_id == 'MOVE'
+    radius = 9.5 if is_move else 8.0
+    outline_radius = radius + 1.8
+    inner_radius = max(2.5, radius * 0.38)
+
+    fill = (0.13, 0.15, 0.18, 0.72)
+    outline = color
+    inner = (1.0, 1.0, 1.0, 0.18)
+
+    if handle_id in {'N', 'S', 'E', 'W'}:
+        fill = (0.12, 0.14, 0.17, 0.70)
+    elif handle_id in {'NW', 'NE', 'SE', 'SW'}:
+        fill = (0.10, 0.12, 0.16, 0.74)
+
+    if highlighted:
+        fill = (fill[0] + 0.12, fill[1] + 0.12, fill[2] + 0.12, min(0.92, fill[3] + 0.12))
+        inner = (1.0, 1.0, 1.0, 0.32)
+
+    if active:
+        fill = (fill[0] + 0.10, fill[1] + 0.08, fill[2] + 0.04, min(0.96, fill[3] + 0.10))
+        inner = (1.0, 0.98, 0.92, 0.40)
+
+    _gpu_draw_filled_circle(cx, cy, radius, fill, segments=32)
+    _gpu_draw_circle_outline(cx, cy, outline_radius, outline, segments=36)
+    _gpu_draw_filled_circle(cx, cy, inner_radius, inner, segments=24)
