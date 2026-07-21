@@ -1,3 +1,6 @@
+A Drawing Addon for Blender 4.2,
+specialized on drawing low Resolution, Pixel Art style Textures within Blender with several Helpfull Tools, Brushes, Custom Colorpicker/Selctors, Copy Pasting Tools etc.
+
 <p>  Control: Colorpicker  </p>
 <p>  Alt:       Linedrawer </p>
 <p>  Shift:     Smoothing (LMB) | Eraser (RMB) </p>
