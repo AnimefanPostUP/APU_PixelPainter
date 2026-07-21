@@ -58,6 +58,7 @@ from ..utils import math_utils
 from ..utils import blender_utils
 from ..tools import draw_functions
 from ..tools import overlays
+from ..tools import overlays_selectmode
 from .core_runtime import PixelPainterCoreRuntime
 from ..ui.menu_controllers import MenuControllerRegistry
 from ..utils.settings_service import PixelPainterSettingsService
@@ -326,7 +327,7 @@ def _register_draw_handler(space, context):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
         draw_functions.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
-        overlays.draw_selection_overlay(ctx, _state)
+        overlays_selectmode.draw_selection_overlay(ctx, _state)
         draw_functions.draw_test_corner_label(ctx)
         draw_functions.draw_sub_mode_overlay(ctx, _state)
         draw_functions.draw_ctrl_pick_overlay(ctx, _state)

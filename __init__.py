@@ -26,6 +26,7 @@ from .utils import math_utils
 from .utils import blender_utils
 from .tools import draw_functions
 from .tools import overlays
+from .tools import overlays_selectmode
 from .core import variables
 from .utils import settings_service
 from .core import core_runtime
@@ -219,6 +220,7 @@ def register():
     importlib.reload(blender_utils)
     importlib.reload(draw_functions)
     importlib.reload(overlays)
+    importlib.reload(overlays_selectmode)
     importlib.reload(variables)
     importlib.reload(settings_service)
     importlib.reload(core_runtime)
