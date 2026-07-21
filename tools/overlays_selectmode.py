@@ -7,6 +7,7 @@ from ..tools import draw_blending
 from ..utils import blender_utils
 from .overlays import (
     _draw_text_centered,
+    _draw_precision_pixel_guide,
     _gpu_draw_circle_outline,
     _gpu_draw_fill,
     _gpu_draw_filled_circle,

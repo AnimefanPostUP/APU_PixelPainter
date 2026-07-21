@@ -48,6 +48,7 @@ class PixelPainterResetToolSettingsOperator(Operator):
 """Operator classes and module-level tool state."""
 import colorsys
 import time
+from dataclasses import dataclass
 
 import bpy
 import gpu
@@ -67,6 +68,7 @@ from ..utils.settings_service import PixelPainterSettingsService
 from ..tools.tool_logic import DrawEnvironment, ToolRegistry
 from .variables import build_default_variable_store
 from .submodes.controller import SubModeController
+from .submodes import selector
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +189,15 @@ _menu_registry = MenuControllerRegistry()
 _settings = PixelPainterSettingsService()
 _sub_mode_controller = SubModeController(_state, _core_runtime, _settings)
 _variable_store = build_default_variable_store()
+
+
+@dataclass
+class ModalEventContext:
+    area: object
+    region: object
+    v2d: object
+    mode: str
+    cursor_in_image: bool
 
 
 def _is_shift_smooth_global(context):
@@ -360,100 +371,26 @@ def _tag_image_editors_redraw():
         pass
 
 
-def _selection_dispose_preview():
-    image_name = _state.get('selection_preview_image_name')
-    _state['selection_preview_texture'] = None
-    _state['selection_preview_image_name'] = None
-    _state['selection_overlay_region'] = None
-    if not image_name:
-        return
-    image = bpy.data.images.get(image_name)
-    if image is not None:
-        try:
-            bpy.data.images.remove(image)
-        except Exception:
-            pass
-
-
 def _selection_set_preview(region):
-    if region is None:
-        return
-    height, width = region.shape[:2]
-    if width <= 0 or height <= 0:
-        return
-    try:
-        _state['selection_preview_texture'] = None
-        _state['selection_preview_image_name'] = None
-        _state['selection_pending_region'] = region.copy()
-        _state['selection_overlay_region'] = None
-    except Exception:
-        _selection_dispose_preview()
+    selector._selection_set_preview(_state, region)
 
 
 def _selection_clear_pending_preview():
-    _state['selection_pending_action'] = None
-    _state['selection_pending_region'] = None
-    _state['selection_pending_source_box'] = None
-    _state['selection_apply_button_bounds'] = None
-    _state['selection_cancel_button_bounds'] = None
-    _state['selection_copy_button_bounds'] = None
-    _state['selection_stencil_button_bounds'] = None
-    _selection_dispose_preview()
+    selector._selection_clear_pending_preview(_state)
 
 
 def _selection_apply_pending(context):
-    action = _state.get('selection_pending_action')
-    region = _state.get('selection_pending_region')
-    dest_box = _state.get('selection_box')
-    clipboard = _state.get('selection_clipboard')
-    space = context.space_data
-    if action is None or region is None or dest_box is None or not space or not space.image:
-        return False
-
-    blend = blender_utils.get_brush_blend_mode(context)
-    strength = float(getattr(context.window_manager, 'pixel_painter_active_strength', 1.0))
-
-    _undo_push(space.image)
-
-    new_box = PixelPainterOperator._selection_blit_region_static(
-        space.image,
-        region,
-        dest_box[0],
-        dest_box[1],
-        dest_box=dest_box,
-        blend=blend,
-        opacity=strength,
+    return selector._selection_apply_pending(
+        context,
+        _state,
+        _undo_push,
+        _undo_stack,
+        PixelPainterOperator._selection_blit_region_static,
     )
-
-    if new_box is None:
-        if _undo_stack:
-            _undo_stack.pop()
-        return False
-    _state['selection_box'] = new_box
-    _selection_clear_pending_preview()
-    if action == 'PASTE' and clipboard is not None:
-        _state['selection_pending_source_box'] = new_box
-        _state['selection_pending_action'] = 'PASTE'
-        _state['selection_pending_region'] = clipboard.copy()
-        _selection_set_preview(clipboard)
-    return True
 
 
 def _selection_clear_like_rmb(keep_clipboard=True):
-    _selection_clear_pending_preview()
-    _state['selection_box'] = None
-    _state['selection_hover_handle'] = None
-    _state['selection_active_handle'] = None
-    _state['selection_drag_mode'] = None
-    _state['selection_drag_start'] = None
-    _state['selection_drag_origin_box'] = None
-    _state['selection_move_pixels'] = None
-    _state['selection_move_source_box'] = None
-    _state['selection_stencil_mode'] = False
-    _state['selection_stencil_region'] = None
-    _state['selection_stencil_restore_box'] = None
-    if not keep_clipboard:
-        _state['selection_clipboard'] = None
+    selector._selection_clear_like_rmb(_state, keep_clipboard=keep_clipboard)
 
 
 def _selection_cancel_pending(context):
@@ -463,131 +400,41 @@ def _selection_cancel_pending(context):
 
 
 def _selection_toggle_stencil_mode(context):
-    if _state.get('selection_stencil_mode'):
-        _state['selection_stencil_mode'] = False
-        _state['selection_stencil_region'] = None
-        restore_box = _state.get('selection_stencil_restore_box')
-        if restore_box is not None:
-            _state['selection_box'] = restore_box
-        _state['selection_stencil_restore_box'] = None
-        _state['selection_hover_handle'] = None
-        _state['selection_active_handle'] = None
-        if context.area:
-            context.area.tag_redraw()
-        return True
-
-    region = _state.get('selection_pending_region')
-    if region is None:
-        clipboard = _state.get('selection_clipboard')
-        if clipboard is not None:
-            region = clipboard.copy()
-        else:
-            selection_box = _state.get('selection_box')
-            space = context.space_data
-            if selection_box is not None and space and space.image:
-                region = PixelPainterOperator._selection_extract_region(space.image, selection_box)
-
-    if region is None:
-        return False
-
-    _selection_clear_pending_preview()
-    _state['selection_stencil_restore_box'] = _state.get('selection_box')
-    _state['selection_stencil_mode'] = True
-    _state['selection_stencil_region'] = region.copy()
-    _state['selection_hover_handle'] = None
-    _state['selection_active_handle'] = None
-    cx = _state.get('current_cx')
-    cy = _state.get('current_cy')
-    centered = _selection_center_box_like_box(_state['selection_stencil_restore_box'], cx, cy)
-    if centered is not None:
-        _state['selection_box'] = centered
-    if context.area:
-        context.area.tag_redraw()
-    return True
+    return selector._selection_toggle_stencil_mode(
+        context,
+        _state,
+        PixelPainterOperator._selection_extract_region,
+    )
 
 
 def _selection_update_paste_preview_position(context, cx, cy):
-    region = _state.get('selection_pending_region')
-    if _state.get('selection_pending_action') != 'PASTE' or region is None:
-        return False
-    anchor_center = _selection_box_center(_state.get('selection_pending_source_box'))
-    if anchor_center is None:
-        if cx is None or cy is None:
-            return False
-        anchor_center = (cx, cy)
-    centered = _selection_center_box_for_region(region, anchor_center[0], anchor_center[1])
-    if centered is None:
-        return False
-    _state['selection_box'] = centered
-    if context.area:
-        context.area.tag_redraw()
-    return True
+    return selector._selection_update_paste_preview_position(context, _state, cx, cy)
 
 
 def _selection_button_hit(px, py, bounds):
-    if bounds is None or px is None or py is None:
-        return False
-    x0, y0, x1, y1 = bounds
-    return x0 <= px <= x1 and y0 <= py <= y1
+    return selector._selection_button_hit(px, py, bounds)
 
 
 def _selection_center_box_for_region(region, cx, cy):
-    if region is None or cx is None or cy is None:
-        return None
-    region_h, region_w = region.shape[:2]
-    if region_w <= 0 or region_h <= 0:
-        return None
-    left = int(round(cx - (region_w - 1) * 0.5))
-    bottom = int(round(cy - (region_h - 1) * 0.5))
-    return (left, bottom, left + region_w - 1, bottom + region_h - 1)
+    return selector._selection_center_box_for_region(region, cx, cy)
 
 
 def _selection_center_box_like_box(box, cx, cy):
-    if box is None or cx is None or cy is None:
-        return None
-    left, bottom, right, top = box
-    width = max(1, int(right) - int(left) + 1)
-    height = max(1, int(top) - int(bottom) + 1)
-    centered_left = int(round(cx - (width - 1) * 0.5))
-    centered_bottom = int(round(cy - (height - 1) * 0.5))
-    return (centered_left, centered_bottom, centered_left + width - 1, centered_bottom + height - 1)
+    return selector._selection_center_box_like_box(box, cx, cy)
 
 
 def _selection_box_center(box):
-    if box is None:
-        return None
-    left, bottom, right, top = box
-    return ((left + right) * 0.5, (bottom + top) * 0.5)
+    return selector._selection_box_center(box)
 
 
 def _selection_apply_stencil(context):
-    region = _state.get('selection_stencil_region')
-    dest_box = _state.get('selection_box')
-    space = context.space_data
-    if region is None or dest_box is None or not space or not space.image:
-        return False
-
-    _state['selection_box'] = dest_box
-
-    blend = blender_utils.get_brush_blend_mode(context)
-    strength = float(getattr(context.window_manager, 'pixel_painter_active_strength', 1.0))
-
-    _undo_push(space.image)
-    new_box = PixelPainterOperator._selection_blit_region_static(
-        space.image,
-        region,
-        dest_box[0],
-        dest_box[1],
-        dest_box=dest_box,
-        blend=blend,
-        opacity=strength,
+    return selector._selection_apply_stencil(
+        context,
+        _state,
+        _undo_push,
+        _undo_stack,
+        PixelPainterOperator._selection_blit_region_static,
     )
-    if new_box is None:
-        if _undo_stack:
-            _undo_stack.pop()
-        return False
-    _state['selection_box'] = new_box
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1349,6 +1196,442 @@ class PixelPainterOperator(Operator):
         self.button_down       = False
         self.button_right_down = False
 
+    def _cancel_temp_shift_override_for_shortcut(self, context):
+        """Exit temporary Shift->SMOOTH override before opening E/W shortcuts."""
+        if not _state['temp_shift_mode_active']:
+            return
+        restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
+        context.window_manager.pixel_painter_mode = restore_mode
+        _state['temp_shift_mode_active'] = False
+        _state['temp_shift_prev_mode'] = None
+        context.window_manager.pixel_painter_temp_smooth_force_global = False
+        apply_active_tool_settings(context)
+
+    def _cancel_active_stroke(self, context, mode):
+        if self.button_down or self.button_right_down:
+            if mode == 'LINE':
+                space = context.space_data
+                if space and space.image and _state['back_buffer'] is not None:
+                    space.image.pixels.foreach_set(_state['back_buffer'])
+                    space.image.update()
+                _state['start_position'] = None
+                _state['back_buffer'] = None
+            _state['last_paint_cx'] = None
+            _state['last_paint_cy'] = None
+            _state['use_secondary'] = False
+            self.button_down = False
+            self.button_right_down = False
+
+    def _build_modal_event_context(self, context, event):
+        area = context.area
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+        v2d = region.view2d if region else None
+        mode = context.window_manager.pixel_painter_mode
+        bounds = self.get_image_screen_bounds(context)
+        cursor_in_image = (
+            _state['current_cx'] is not None or (
+                bounds is not None and
+                bounds[0] <= event.mouse_region_x <= bounds[2] and
+                bounds[1] <= event.mouse_region_y <= bounds[3]
+            )
+        )
+        return ModalEventContext(
+            area=area,
+            region=region,
+            v2d=v2d,
+            mode=mode,
+            cursor_in_image=cursor_in_image,
+        )
+
+    def _handle_cursor_outside_window(self, context, event, modal_ctx):
+        win_w = context.window.width
+        win_h = context.window.height
+        cursor_outside = not (0 <= event.mouse_x < win_w and 0 <= event.mouse_y < win_h)
+        if not cursor_outside:
+            return None
+
+        self._cancel_active_stroke(context, modal_ctx.mode)
+        _state['current_cx'] = None
+        _state['current_cy'] = None
+        _state['ctrl_pick_active'] = False
+        _state['ctrl_hovered_color'] = None
+        context.area.tag_redraw()
+        return {'PASS_THROUGH'}
+
+    def _handle_escape_and_submode(self, context, event):
+        if event.type == 'ESC':
+            if _sub_mode_controller.has_active_mode():
+                _sub_mode_controller.cancel_active_mode(context)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            self._cleanup()
+            return {'CANCELLED'}
+
+        if _sub_mode_controller.handle_active_event(context, event):
+            return {'RUNNING_MODAL'}
+
+        return None
+
+    def _handle_mousemove_event(self, context, event, modal_ctx):
+        if event.type != 'MOUSEMOVE':
+            return None
+
+        _state['selection_mouse_region_x'] = event.mouse_region_x
+        _state['selection_mouse_region_y'] = event.mouse_region_y
+        bounds = self.get_image_screen_bounds(context)
+        if bounds:
+            xmin, ymin, xmax, ymax = bounds[:4]
+            if not (xmin <= event.mouse_region_x <= xmax and ymin <= event.mouse_region_y <= ymax):
+                self._cancel_active_stroke(context, modal_ctx.mode)
+                _state['current_cx'] = None
+                _state['current_cy'] = None
+                _state['ctrl_pick_active'] = False
+                _state['ctrl_hovered_color'] = None
+                context.area.tag_redraw()
+                return {'PASS_THROUGH'}
+
+        result = self.get_hovered_pixel(context, event)
+        if result:
+            _state['current_cx'], _state['current_cy'] = result[0], result[1]
+        else:
+            _state['current_cx'] = _state['current_cy'] = None
+
+        if modal_ctx.mode == 'SELECT':
+            if _state.get('selection_stencil_mode'):
+                self._selection_update_stencil_box()
+            elif self.button_down:
+                self._selection_resize_shift_held = bool(event.shift)
+                self._selection_update_drag()
+            self._selection_update_hover()
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        if _state['ctrl_pick_active'] and not self.button_down and not self.button_right_down:
+            _state['ctrl_region_x'] = event.mouse_region_x
+            _state['ctrl_region_y'] = event.mouse_region_y
+            cx, cy = _state['current_cx'], _state['current_cy']
+            _state['ctrl_hovered_color'] = (
+                _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
+
+        if (self.button_down or self.button_right_down) and modal_ctx.v2d:
+            self.draw_pixels(context)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _handle_left_mouse_press_event(self, context, event, modal_ctx):
+        if event.type != 'LEFTMOUSE' or event.value != 'PRESS':
+            return None
+
+        if modal_ctx.mode == 'SELECT':
+            _state['selection_mouse_region_x'] = event.mouse_region_x
+            _state['selection_mouse_region_y'] = event.mouse_region_y
+            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_copy_button_bounds')):
+                return self._selection_copy_and_preview(context)
+            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_stencil_button_bounds')):
+                if not _selection_toggle_stencil_mode(context):
+                    self.report({'WARNING'}, "No selection source available for stencil mode")
+                    return {'CANCELLED'}
+                return {'RUNNING_MODAL'}
+            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_apply_button_bounds')):
+                _selection_apply_pending(context)
+                return {'RUNNING_MODAL'}
+            if _state.get('selection_stencil_mode'):
+                _selection_apply_stencil(context)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            return self._selection_begin_left_press(context)
+
+        active_mode = modal_ctx.mode
+        if event.shift and not event.ctrl and not event.alt:
+            if not _state['temp_shift_mode_active']:
+                _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                _state['temp_shift_mode_active'] = True
+            context.window_manager.pixel_painter_temp_smooth_force_global = True
+            context.window_manager.pixel_painter_mode = 'SMOOTH'
+            apply_active_tool_settings(context)
+            active_mode = 'SMOOTH'
+
+        if event.ctrl or _state['ctrl_pick_active']:
+            if _state['ctrl_hovered_color'] is None:
+                result = self.get_hovered_pixel(context, event)
+                if result:
+                    _state['current_cx'], _state['current_cy'] = result[0], result[1]
+                    _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
+                        context, _state['current_cx'], _state['current_cy'])
+            picked = _state['ctrl_hovered_color']
+            if picked is None:
+                return {'RUNNING_MODAL'}
+            _settings.set_brush_rgb(context, *picked)
+            h, s, v = colorsys.rgb_to_hsv(*picked)
+            _state['sub_color_h'] = h
+            _state['sub_color_s'] = s
+            _state['sub_color_v'] = v
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        self.button_down = True
+        _state['use_secondary'] = False
+        _state['last_paint_cx'] = None
+        _state['last_paint_cy'] = None
+        space = context.space_data
+        if space and space.image:
+            _undo_push(space.image)
+        result = self.get_hovered_pixel(context, event)
+        if result:
+            _state['current_cx'], _state['current_cy'] = result[0], result[1]
+            context.area.tag_redraw()
+        if active_mode == 'LINE':
+            if space and space.image and _state['current_cx'] is not None:
+                _state['back_buffer'] = np.array(space.image.pixels, dtype=np.float32)
+                _state['start_position'] = (_state['current_cx'], _state['current_cy'])
+        elif modal_ctx.v2d:
+            self.draw_pixels(context)
+        return {'RUNNING_MODAL'}
+
+    def _handle_left_mouse_release_event(self, context, event, modal_ctx):
+        if event.type != 'LEFTMOUSE' or event.value != 'RELEASE':
+            return None
+
+        if modal_ctx.mode == 'SELECT':
+            return self._selection_finish_left_release(context)
+        if self.button_down and modal_ctx.mode == 'LINE':
+            if _state['start_position'] is not None:
+                self.draw_pixels(context)
+            # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
+            if _state['temp_alt_mode_active'] and not event.alt:
+                context.window_manager.pixel_painter_mode = _state['last_shape']
+            _state['start_position'] = None
+            _state['back_buffer'] = None
+        _state['last_paint_cx'] = None
+        _state['last_paint_cy'] = None
+        _state['use_secondary'] = False
+        self.button_down = False
+        _state['outline_immediate'] = False
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _handle_right_mouse_press_event(self, context, event, modal_ctx):
+        if event.type != 'RIGHTMOUSE' or event.value != 'PRESS':
+            return None
+
+        if modal_ctx.mode == 'SELECT':
+            _state['selection_mouse_region_x'] = event.mouse_region_x
+            _state['selection_mouse_region_y'] = event.mouse_region_y
+            if _state.get('selection_stencil_mode'):
+                if _selection_toggle_stencil_mode(context):
+                    self.button_right_down = False
+                    context.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
+            self._selection_clear(keep_clipboard=True)
+            self.button_right_down = True
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        active_mode = modal_ctx.mode
+        if event.shift and not event.ctrl and not event.alt:
+            if not _state['temp_shift_mode_active']:
+                _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                _state['temp_shift_mode_active'] = True
+            context.window_manager.pixel_painter_mode = 'ERASER'
+            apply_active_tool_settings(context)
+            active_mode = 'ERASER'
+
+        if event.ctrl or _state['ctrl_pick_active']:
+            if _state['ctrl_hovered_color'] is None:
+                result = self.get_hovered_pixel(context, event)
+                if result:
+                    _state['current_cx'], _state['current_cy'] = result[0], result[1]
+                    _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
+                        context, _state['current_cx'], _state['current_cy'])
+            picked = _state['ctrl_hovered_color']
+            if picked is None:
+                return {'RUNNING_MODAL'}
+            _settings.set_brush_secondary_rgb(context, *picked)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        self.button_right_down = True
+        _state['use_secondary'] = True
+        _state['last_paint_cx'] = None
+        _state['last_paint_cy'] = None
+        space = context.space_data
+        if space and space.image:
+            _undo_push(space.image)
+        result = self.get_hovered_pixel(context, event)
+        if result:
+            _state['current_cx'], _state['current_cy'] = result[0], result[1]
+            context.area.tag_redraw()
+        if active_mode == 'LINE':
+            if space and space.image and _state['current_cx'] is not None:
+                _state['back_buffer'] = np.array(space.image.pixels, dtype=np.float32)
+                _state['start_position'] = (_state['current_cx'], _state['current_cy'])
+        elif modal_ctx.v2d:
+            self.draw_pixels(context)
+        return {'RUNNING_MODAL'}
+
+    def _handle_right_mouse_release_event(self, context, event, modal_ctx):
+        if event.type != 'RIGHTMOUSE' or event.value != 'RELEASE':
+            return None
+
+        if modal_ctx.mode == 'SELECT':
+            self.button_right_down = False
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if self.button_right_down and modal_ctx.mode == 'LINE':
+            if _state['start_position'] is not None:
+                self.draw_pixels(context)
+            # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
+            if _state['temp_alt_mode_active'] and not event.alt:
+                context.window_manager.pixel_painter_mode = _state['last_shape']
+            _state['start_position'] = None
+            _state['back_buffer'] = None
+        _state['last_paint_cx'] = None
+        _state['last_paint_cy'] = None
+        _state['use_secondary'] = False
+        self.button_right_down = False
+        _state['outline_immediate'] = False
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _handle_select_copy_paste_shortcuts(self, context, event, modal_ctx):
+        if modal_ctx.mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'C':
+            return self._selection_copy(context)
+        if modal_ctx.mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'V':
+            return self._selection_paste(context)
+        return None
+
+    def _handle_ctrl_modifier_event(self, context, event, modal_ctx):
+        if event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'PRESS':
+            if modal_ctx.mode == 'SELECT':
+                return {'RUNNING_MODAL'}
+            self._cancel_active_stroke(context, modal_ctx.mode)
+
+            cx, cy = _state['current_cx'], _state['current_cy']
+            _state['ctrl_pick_active'] = True
+            _state['ctrl_region_x'] = event.mouse_region_x
+            _state['ctrl_region_y'] = event.mouse_region_y
+            _state['ctrl_hovered_color'] = (
+                _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'RELEASE':
+            if modal_ctx.mode == 'SELECT':
+                return {'RUNNING_MODAL'}
+            if event.ctrl:
+                return {'RUNNING_MODAL'}
+
+            _state['ctrl_pick_active'] = False
+            _state['ctrl_hovered_color'] = None
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        return None
+
+    def _handle_alt_modifier_event(self, context, event, modal_ctx):
+        if event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'PRESS':
+            if not _state['temp_alt_mode_active']:
+                _state['temp_alt_prev_mode'] = context.window_manager.pixel_painter_mode
+                _state['temp_alt_mode_active'] = True
+            context.window_manager.pixel_painter_mode = 'LINE'
+
+            self._cancel_active_stroke(context, modal_ctx.mode)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'RELEASE':
+            if event.alt:
+                return {'RUNNING_MODAL'}
+
+            self._cancel_active_stroke(context, modal_ctx.mode)
+
+            if _state['temp_alt_mode_active']:
+                restore_mode = _state['temp_alt_prev_mode'] or 'SQUARE'
+                context.window_manager.pixel_painter_mode = restore_mode
+                _state['temp_alt_mode_active'] = False
+                _state['temp_alt_prev_mode'] = None
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        return None
+
+    def _handle_shift_modifier_event(self, context, event, modal_ctx):
+        if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'PRESS':
+            if modal_ctx.mode != 'SELECT':
+                if not _state['temp_shift_mode_active']:
+                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
+                    _state['temp_shift_mode_active'] = True
+                context.window_manager.pixel_painter_temp_smooth_force_global = True
+                context.window_manager.pixel_painter_mode = 'SMOOTH'
+                apply_active_tool_settings(context)
+                self._cancel_active_stroke(context, modal_ctx.mode)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'RELEASE':
+            if modal_ctx.mode != 'SELECT':
+                if event.shift:
+                    return {'RUNNING_MODAL'}
+
+                self._cancel_active_stroke(context, modal_ctx.mode)
+
+                if _state['temp_shift_mode_active']:
+                    restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
+                    context.window_manager.pixel_painter_mode = restore_mode
+                    _state['temp_shift_mode_active'] = False
+                    _state['temp_shift_prev_mode'] = None
+                context.window_manager.pixel_painter_temp_smooth_force_global = False
+                apply_active_tool_settings(context)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+
+        return None
+
+    def _handle_shift_number_shortcuts(self, context, event):
+        if not (event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode()):
+            return None
+        if event.type not in {'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT'}:
+            return None
+
+        number_map = {
+            'ONE': 'CIRCLE',
+            'TWO': 'SQUARE',
+            'THREE': 'SPRAY',
+            'FOUR': 'SMOOTH',
+            'FIVE': 'SMEAR',
+            'SIX': 'LINE',
+            'SEVEN': 'ERASER',
+            'EIGHT': 'SELECT',
+        }
+        tool_id = number_map.get(event.type)
+        if tool_id is None:
+            return None
+        context.window_manager.pixel_painter_mode = tool_id
+        apply_active_tool_settings(context)
+        context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _handle_e_w_shortcuts(self, context, event):
+        if event.type == 'E' and event.value == 'PRESS' and event.shift:
+            self._cancel_temp_shift_override_for_shortcut(context)
+            if _sub_mode_controller.enter_strength_mode(context, event):
+                context.area.tag_redraw()
+            return None
+
+        if event.type == 'E' and event.value == 'PRESS' and not event.shift:
+            self._cancel_temp_shift_override_for_shortcut(context)
+            if _sub_mode_controller.active_mode_name() == 'COLOR_PICK':
+                return {'PASS_THROUGH'}
+            if _sub_mode_controller.enter_color_pick_mode(context, event):
+                context.area.tag_redraw()
+            return None
+
+        if event.type == 'W' and event.value == 'PRESS':
+            self._cancel_temp_shift_override_for_shortcut(context)
+            return {'PASS_THROUGH'}
+
+        return None
+
     def modal(self, context, event):
         # Guard: exit if we've left the Image Editor
         if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
@@ -1378,490 +1661,63 @@ class PixelPainterOperator(Operator):
                 context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        area   = context.area
-        region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-        v2d    = region.view2d if region else None
-        mode   = context.window_manager.pixel_painter_mode
+        modal_ctx = self._build_modal_event_context(context, event)
 
-        def _cancel_temp_shift_override_for_shortcut():
-            """Exit temporary Shift->SMOOTH override before opening E/W shortcuts."""
-            if not _state['temp_shift_mode_active']:
-                return
-            restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
-            context.window_manager.pixel_painter_mode = restore_mode
-            _state['temp_shift_mode_active'] = False
-            _state['temp_shift_prev_mode'] = None
-            context.window_manager.pixel_painter_temp_smooth_force_global = False
-            apply_active_tool_settings(context)
+        result = self._handle_cursor_outside_window(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-        # If the cursor has left the OS window, cancel any active stroke and
-        # ignore all input until it returns.
-        win_w = context.window.width
-        win_h = context.window.height
-        cursor_outside = not (0 <= event.mouse_x < win_w and 0 <= event.mouse_y < win_h)
-        if cursor_outside:
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
-            _state['current_cx']          = None
-            _state['current_cy']          = None
-            _state['ctrl_pick_active']    = False
-            _state['ctrl_hovered_color']  = None
-            context.area.tag_redraw()
-            return {'PASS_THROUGH'}
-
-        # Whether the cursor is currently over the image — used to gate key
-        # commands so they only fire when the cursor is inside the image.
-        # Reuse the same bounds logic that hides the brush outline.
-        # Sub-modes are exempt: they grab mouse movement across the whole window.
-        _bounds = self.get_image_screen_bounds(context)
-        cursor_in_image = (
-            _state['current_cx'] is not None or (
-                _bounds is not None and
-                _bounds[0] <= event.mouse_region_x <= _bounds[2] and
-                _bounds[1] <= event.mouse_region_y <= _bounds[3]
-            )
-        )
-
-        # ESC: stop the modal (or exit sub-mode first)
-        if event.type == 'ESC':
-            if _sub_mode_controller.has_active_mode():
-                _sub_mode_controller.cancel_active_mode(context)
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
-            self._cleanup()
-            return {'CANCELLED'}
-
-        if _sub_mode_controller.handle_active_event(context, event):
-            return {'RUNNING_MODAL'}
+        result = self._handle_escape_and_submode(context, event)
+        if result is not None:
+            return result
 
         # Block all non-movement commands when the cursor is outside the image.
-        if event.type != 'MOUSEMOVE' and not cursor_in_image:
+        if event.type != 'MOUSEMOVE' and not modal_ctx.cursor_in_image:
             return {'PASS_THROUGH'}
 
-        # Mouse move: always update cursor; paint if either button is held
-        if event.type == 'MOUSEMOVE':
-            _state['selection_mouse_region_x'] = event.mouse_region_x
-            _state['selection_mouse_region_y'] = event.mouse_region_y
-            bounds = self.get_image_screen_bounds(context)
-            if bounds:
-                xmin, ymin, xmax, ymax = bounds[:4]
-                if not (xmin <= event.mouse_region_x <= xmax and
-                        ymin <= event.mouse_region_y <= ymax):
-                    if self.button_down or self.button_right_down:
-                        if mode == 'LINE':
-                            space = context.space_data
-                            if space and space.image and _state['back_buffer'] is not None:
-                                space.image.pixels.foreach_set(_state['back_buffer'])
-                                space.image.update()
-                            _state['start_position'] = None
-                            _state['back_buffer']    = None
-                        _state['last_paint_cx'] = None
-                        _state['last_paint_cy'] = None
-                        _state['use_secondary'] = False
-                        self.button_down        = False
-                        self.button_right_down  = False
-                    _state['current_cx']          = None
-                    _state['current_cy']           = None
-                    _state['ctrl_pick_active']    = False
-                    _state['ctrl_hovered_color']  = None
-                    context.area.tag_redraw()
-                    return {'PASS_THROUGH'}
+        result = self._handle_mousemove_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            result = self.get_hovered_pixel(context, event)
-            if result:
-                _state['current_cx'], _state['current_cy'] = result[0], result[1]
-            else:
-                _state['current_cx'] = _state['current_cy'] = None
+        result = self._handle_left_mouse_press_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            if mode == 'SELECT':
-                if _state.get('selection_stencil_mode'):
-                    self._selection_update_stencil_box()
-                elif self.button_down:
-                    self._selection_resize_shift_held = bool(event.shift)
-                    self._selection_update_drag()
-                self._selection_update_hover()
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
+        result = self._handle_left_mouse_release_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            if _state['ctrl_pick_active'] and not self.button_down and not self.button_right_down:
-                _state['ctrl_region_x'] = event.mouse_region_x
-                _state['ctrl_region_y'] = event.mouse_region_y
-                cx, cy = _state['current_cx'], _state['current_cy']
-                _state['ctrl_hovered_color'] = (
-                    _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
+        result = self._handle_right_mouse_press_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            if (self.button_down or self.button_right_down) and v2d:
-                self.draw_pixels(context)
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
+        result = self._handle_right_mouse_release_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-        # Left mouse press: primary color stroke
-        elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
-            if mode == 'SELECT':
-                _state['selection_mouse_region_x'] = event.mouse_region_x
-                _state['selection_mouse_region_y'] = event.mouse_region_y
-                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_copy_button_bounds')):
-                    return self._selection_copy_and_preview(context)
-                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_stencil_button_bounds')):
-                    if not _selection_toggle_stencil_mode(context):
-                        self.report({'WARNING'}, "No selection source available for stencil mode")
-                        return {'CANCELLED'}
-                    return {'RUNNING_MODAL'}
-                if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_apply_button_bounds')):
-                    _selection_apply_pending(context)
-                    return {'RUNNING_MODAL'}
-                if _state.get('selection_stencil_mode'):
-                    _selection_apply_stencil(context)
-                    context.area.tag_redraw()
-                    return {'RUNNING_MODAL'}
-                return self._selection_begin_left_press(context)
-            active_mode = mode
-            if event.shift and not event.ctrl and not event.alt:
-                if not _state['temp_shift_mode_active']:
-                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
-                    _state['temp_shift_mode_active'] = True
-                context.window_manager.pixel_painter_temp_smooth_force_global = True
-                context.window_manager.pixel_painter_mode = 'SMOOTH'
-                apply_active_tool_settings(context)
-                active_mode = 'SMOOTH'
+        result = self._handle_select_copy_paste_shortcuts(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            if event.ctrl or _state['ctrl_pick_active']:
-                if _state['ctrl_hovered_color'] is None:
-                    result = self.get_hovered_pixel(context, event)
-                    if result:
-                        _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                        _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
-                            context, _state['current_cx'], _state['current_cy'])
-                picked = _state['ctrl_hovered_color']
-                if picked is None:
-                    return {'RUNNING_MODAL'}
-                _settings.set_brush_rgb(context, *picked)
-                h, s, v = colorsys.rgb_to_hsv(*picked)
-                _state['sub_color_h'] = h
-                _state['sub_color_s'] = s
-                _state['sub_color_v'] = v
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
+        result = self._handle_ctrl_modifier_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-            self.button_down         = True
-            _state['use_secondary']  = False
-            _state['last_paint_cx']  = None
-            _state['last_paint_cy']  = None
-            space = context.space_data
-            if space and space.image:
-                _undo_push(space.image)
-            result = self.get_hovered_pixel(context, event)
-            if result:
-                _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                context.area.tag_redraw()
-            if active_mode == 'LINE':
-                if space and space.image and _state['current_cx'] is not None:
-                    _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)
-                    _state['start_position'] = (_state['current_cx'], _state['current_cy'])
-            elif v2d:
-                self.draw_pixels(context)
-            return {'RUNNING_MODAL'}
+        result = self._handle_alt_modifier_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-        # Left mouse release
-        elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            if mode == 'SELECT':
-                return self._selection_finish_left_release(context)
-            if self.button_down:
-                if mode == 'LINE':
-                    if _state['start_position'] is not None:
-                        self.draw_pixels(context)
-                    # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
-                    if _state['temp_alt_mode_active'] and not event.alt:
-                        context.window_manager.pixel_painter_mode = _state['last_shape']
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-            _state['last_paint_cx'] = None
-            _state['last_paint_cy'] = None
-            _state['use_secondary'] = False
-            self.button_down = False
-            _state['outline_immediate'] = False
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
+        result = self._handle_shift_modifier_event(context, event, modal_ctx)
+        if result is not None:
+            return result
 
-        # Right mouse press: secondary color stroke
-        elif event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-            if mode == 'SELECT':
-                _state['selection_mouse_region_x'] = event.mouse_region_x
-                _state['selection_mouse_region_y'] = event.mouse_region_y
-                if _state.get('selection_stencil_mode'):
-                    if _selection_toggle_stencil_mode(context):
-                        self.button_right_down = False
-                        context.area.tag_redraw()
-                        return {'RUNNING_MODAL'}
-                self._selection_clear(keep_clipboard=True)
-                self.button_right_down = True
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
-            active_mode = mode
-            if event.shift and not event.ctrl and not event.alt:
-                if not _state['temp_shift_mode_active']:
-                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
-                    _state['temp_shift_mode_active'] = True
-                context.window_manager.pixel_painter_mode = 'ERASER'
-                apply_active_tool_settings(context)
-                active_mode = 'ERASER'
+        result = self._handle_shift_number_shortcuts(context, event)
+        if result is not None:
+            return result
 
-            if event.ctrl or _state['ctrl_pick_active']:
-                if _state['ctrl_hovered_color'] is None:
-                    result = self.get_hovered_pixel(context, event)
-                    if result:
-                        _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                        _state['ctrl_hovered_color'] = _settings.get_image_pixel_color(
-                            context, _state['current_cx'], _state['current_cy'])
-                picked = _state['ctrl_hovered_color']
-                if picked is None:
-                    return {'RUNNING_MODAL'}
-                _settings.set_brush_secondary_rgb(context, *picked)
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
-
-            self.button_right_down   = True
-            _state['use_secondary']  = True
-            _state['last_paint_cx']  = None
-            _state['last_paint_cy']  = None
-            space = context.space_data
-            if space and space.image:
-                _undo_push(space.image)
-            result = self.get_hovered_pixel(context, event)
-            if result:
-                _state['current_cx'], _state['current_cy'] = result[0], result[1]
-                context.area.tag_redraw()
-            if active_mode == 'LINE':
-                if space and space.image and _state['current_cx'] is not None:
-                    _state['back_buffer']    = np.array(space.image.pixels, dtype=np.float32)
-                    _state['start_position'] = (_state['current_cx'], _state['current_cy'])
-            elif v2d:
-                self.draw_pixels(context)
-            return {'RUNNING_MODAL'}
-
-        # Right mouse release
-        elif event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
-            if mode == 'SELECT':
-                self.button_right_down = False
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
-            if self.button_right_down:
-                if mode == 'LINE':
-                    if _state['start_position'] is not None:
-                        self.draw_pixels(context)
-                    # Only switch back to previous tool if Line was activated via Alt and ALT is no longer pressed
-                    if _state['temp_alt_mode_active'] and not event.alt:
-                        context.window_manager.pixel_painter_mode = _state['last_shape']
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-            _state['last_paint_cx'] = None
-            _state['last_paint_cy'] = None
-            _state['use_secondary'] = False
-            self.button_right_down = False
-            _state['outline_immediate'] = False
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        elif mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'C':
-            return self._selection_copy(context)
-
-        elif mode == 'SELECT' and event.value == 'PRESS' and event.ctrl and event.type == 'V':
-            return self._selection_paste(context)
-
-        # Ctrl PRESS: activate the eyedropper while held.
-        elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'PRESS':
-            if mode == 'SELECT':
-                return {'RUNNING_MODAL'}
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
-
-            cx, cy = _state['current_cx'], _state['current_cy']
-            _state['ctrl_pick_active']   = True
-            _state['ctrl_region_x']      = event.mouse_region_x
-            _state['ctrl_region_y']      = event.mouse_region_y
-            _state['ctrl_hovered_color'] = (
-                _settings.get_image_pixel_color(context, cx, cy) if cx is not None else None)
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        # Ctrl RELEASE: clear the eyedropper overlay.
-        elif event.type in {'LEFT_CTRL', 'RIGHT_CTRL'} and event.value == 'RELEASE':
-            if mode == 'SELECT':
-                return {'RUNNING_MODAL'}
-            if event.ctrl:
-                return {'RUNNING_MODAL'}
-
-            _state['ctrl_pick_active']   = False
-            _state['ctrl_hovered_color'] = None
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        # Alt PRESS: temporarily switch to Line while held.
-        elif event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'PRESS':
-            if not _state['temp_alt_mode_active']:
-                _state['temp_alt_prev_mode'] = context.window_manager.pixel_painter_mode
-                _state['temp_alt_mode_active'] = True
-            context.window_manager.pixel_painter_mode = 'LINE'
-
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        # Shift PRESS: temporarily switch to Smooth while held outside Selection mode.
-        elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'PRESS':
-            if mode != 'SELECT':
-                if not _state['temp_shift_mode_active']:
-                    _state['temp_shift_prev_mode'] = context.window_manager.pixel_painter_mode
-                    _state['temp_shift_mode_active'] = True
-                context.window_manager.pixel_painter_temp_smooth_force_global = True
-                context.window_manager.pixel_painter_mode = 'SMOOTH'
-                apply_active_tool_settings(context)
-
-                if self.button_down or self.button_right_down:
-                    if mode == 'LINE':
-                        space = context.space_data
-                        if space and space.image and _state['back_buffer'] is not None:
-                            space.image.pixels.foreach_set(_state['back_buffer'])
-                            space.image.update()
-                        _state['start_position'] = None
-                        _state['back_buffer']    = None
-                    _state['last_paint_cx'] = None
-                    _state['last_paint_cy'] = None
-                    _state['use_secondary'] = False
-                    self.button_down       = False
-                    self.button_right_down = False
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        # Shift RELEASE: restore the mode that was active before the override.
-        elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value == 'RELEASE':
-            if mode != 'SELECT':
-                if event.shift:
-                    return {'RUNNING_MODAL'}
-
-                if self.button_down or self.button_right_down:
-                    if mode == 'LINE':
-                        space = context.space_data
-                        if space and space.image and _state['back_buffer'] is not None:
-                            space.image.pixels.foreach_set(_state['back_buffer'])
-                            space.image.update()
-                        _state['start_position'] = None
-                        _state['back_buffer']    = None
-                    _state['last_paint_cx'] = None
-                    _state['last_paint_cy'] = None
-                    _state['use_secondary'] = False
-                    self.button_down       = False
-                    self.button_right_down = False
-
-                if _state['temp_shift_mode_active']:
-                    restore_mode = _state['temp_shift_prev_mode'] or 'SQUARE'
-                    context.window_manager.pixel_painter_mode = restore_mode
-                    _state['temp_shift_mode_active'] = False
-                    _state['temp_shift_prev_mode'] = None
-                context.window_manager.pixel_painter_temp_smooth_force_global = False
-                apply_active_tool_settings(context)
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-        # Alt RELEASE: restore the mode that was active before the override.
-        elif event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'RELEASE':
-            if event.alt:
-                return {'RUNNING_MODAL'}
-
-            if self.button_down or self.button_right_down:
-                if mode == 'LINE':
-                    space = context.space_data
-                    if space and space.image and _state['back_buffer'] is not None:
-                        space.image.pixels.foreach_set(_state['back_buffer'])
-                        space.image.update()
-                    _state['start_position'] = None
-                    _state['back_buffer']    = None
-                _state['last_paint_cx'] = None
-                _state['last_paint_cy'] = None
-                _state['use_secondary'] = False
-                self.button_down       = False
-                self.button_right_down = False
-
-            if _state['temp_alt_mode_active']:
-                restore_mode = _state['temp_alt_prev_mode'] or 'SQUARE'
-                context.window_manager.pixel_painter_mode = restore_mode
-                _state['temp_alt_mode_active'] = False
-                _state['temp_alt_prev_mode'] = None
-            context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
-
-
-        # Shift+1 bis Shift+8: Toolwechsel nur für Nummerntasten (kein Pie, kein Submode)
-        elif event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode() and event.type in {'ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT'}:
-            number_map = {
-                'ONE': 'CIRCLE',
-                'TWO': 'SQUARE',
-                'THREE': 'SPRAY',
-                'FOUR': 'SMOOTH',
-                'FIVE': 'SMEAR',
-                'SIX': 'LINE',
-                'SEVEN': 'ERASER',
-                'EIGHT': 'SELECT',
-            }
-            tool_id = number_map.get(event.type)
-            if tool_id is not None:
-                context.window_manager.pixel_painter_mode = tool_id
-                apply_active_tool_settings(context)
-                context.area.tag_redraw()
-                return {'RUNNING_MODAL'}
-
-        # Shift+E: enter strength picker sub-mode
-        elif event.type == 'E' and event.value == 'PRESS' and event.shift:
-            _cancel_temp_shift_override_for_shortcut()
-            if _sub_mode_controller.enter_strength_mode(context, event):
-                context.area.tag_redraw()
-
-        # E key: enter color picker sub-mode
-        elif event.type == 'E' and event.value == 'PRESS' and not event.shift:
-            _cancel_temp_shift_override_for_shortcut()
-            if _sub_mode_controller.active_mode_name() == 'COLOR_PICK':
-                return {'PASS_THROUGH'}
-            if _sub_mode_controller.enter_color_pick_mode(context, event):
-                context.area.tag_redraw()
-
-        # W key: open pie menu; ensure temporary smooth override is cleared first.
-        elif event.type == 'W' and event.value == 'PRESS':
-            _cancel_temp_shift_override_for_shortcut()
-            return {'PASS_THROUGH'}
+        result = self._handle_e_w_shortcuts(context, event)
+        if result is not None:
+            return result
 
         return {'PASS_THROUGH'}
 
