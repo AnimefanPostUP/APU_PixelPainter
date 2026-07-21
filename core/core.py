@@ -495,7 +495,7 @@ def _selection_toggle_stencil_mode(context):
     _state['selection_active_handle'] = None
     cx = _state.get('current_cx')
     cy = _state.get('current_cy')
-    centered = _selection_center_box_for_region(_state['selection_stencil_region'], cx, cy)
+    centered = _selection_center_box_like_box(_state['selection_stencil_restore_box'], cx, cy)
     if centered is not None:
         _state['selection_box'] = centered
     if context.area:
@@ -539,6 +539,17 @@ def _selection_center_box_for_region(region, cx, cy):
     return (left, bottom, left + region_w - 1, bottom + region_h - 1)
 
 
+def _selection_center_box_like_box(box, cx, cy):
+    if box is None or cx is None or cy is None:
+        return None
+    left, bottom, right, top = box
+    width = max(1, int(right) - int(left) + 1)
+    height = max(1, int(top) - int(bottom) + 1)
+    centered_left = int(round(cx - (width - 1) * 0.5))
+    centered_bottom = int(round(cy - (height - 1) * 0.5))
+    return (centered_left, centered_bottom, centered_left + width - 1, centered_bottom + height - 1)
+
+
 def _selection_box_center(box):
     if box is None:
         return None
@@ -548,7 +559,7 @@ def _selection_box_center(box):
 
 def _selection_apply_stencil(context):
     region = _state.get('selection_stencil_region')
-    dest_box = _selection_center_box_for_region(region, _state.get('current_cx'), _state.get('current_cy'))
+    dest_box = _state.get('selection_box')
     space = context.space_data
     if region is None or dest_box is None or not space or not space.image:
         return False
@@ -1008,10 +1019,9 @@ class PixelPainterOperator(Operator):
     def _selection_update_stencil_box(self):
         if not _state.get('selection_stencil_mode'):
             return
-        region = _state.get('selection_stencil_region')
         cx = _state.get('current_cx')
         cy = _state.get('current_cy')
-        centered = _selection_center_box_for_region(region, cx, cy)
+        centered = _selection_center_box_like_box(_state.get('selection_box'), cx, cy)
         if centered is not None:
             _state['selection_box'] = centered
 

@@ -528,7 +528,7 @@ def draw_selection_overlay(context, state):
     if state.get('sub_mode') or state.get('ctrl_pick_active'):
         return
 
-    box = _selection_stencil_box_from_state(state) if state.get('selection_stencil_mode') else state.get('selection_box')
+    box = state.get('selection_box')
     if not box:
         state['selection_apply_button_bounds'] = None
         state['selection_copy_button_bounds'] = None
