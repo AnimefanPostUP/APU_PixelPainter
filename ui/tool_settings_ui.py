@@ -120,6 +120,7 @@ def draw_tool_settings(context, layout):
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_strength", text="Strength", slider=True)
     row.prop(wm, "pixel_painter_active_alpha", text="Alpha", slider=True)
+    row.prop(wm, "pixel_painter_protect_transparent", text="Protect Transparent", toggle=True)
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
 

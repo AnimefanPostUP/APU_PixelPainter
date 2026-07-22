@@ -22,6 +22,7 @@ class DrawEnvironment:
     blend: str
     opacity: float
     alpha_opacity: float
+    protect_transparent: bool
     radius: int
     spacing: str
     wm: object
@@ -39,6 +40,21 @@ class ToolBase:
     def on_draw(self, env: DrawEnvironment):
         """Draw one tool step into the active image."""
         raise NotImplementedError()
+
+
+def _filter_visible_alpha_pixels(img, pixels, alpha_threshold=1e-6):
+    """Return only pixels whose destination alpha is above threshold."""
+    if not pixels:
+        return []
+    w, h = img.size
+    arr = np.array(img.pixels, dtype=np.float32)
+    visible = []
+    for (px, py) in pixels:
+        if 0 <= px < w and 0 <= py < h:
+            idx = (py * w + px) * 4
+            if arr[idx + 3] > alpha_threshold:
+                visible.append((px, py))
+    return visible
 
 
 class BrushTool(ToolBase):
@@ -90,6 +106,7 @@ class LineBrushTool(BrushTool):
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
+                    protect_transparent=env.protect_transparent,
                 )
             return
 
@@ -104,6 +121,7 @@ class LineBrushTool(BrushTool):
             blend=env.blend,
             opacity=env.opacity,
             alpha_opacity=env.alpha_opacity,
+            protect_transparent=env.protect_transparent,
         )
 
 
@@ -145,6 +163,7 @@ class SprayBrushTool(BrushTool):
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(swm.values()),
+                    protect_transparent=env.protect_transparent,
                 )
         else:
             pixel_weight_map = {}
@@ -169,6 +188,7 @@ class SprayBrushTool(BrushTool):
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
+                    protect_transparent=env.protect_transparent,
                 )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
@@ -209,6 +229,7 @@ class CircleBrushTool(BrushTool):
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(swm.values()),
+                    protect_transparent=env.protect_transparent,
                 )
         else:
             pixel_weight_map = {}
@@ -232,6 +253,7 @@ class CircleBrushTool(BrushTool):
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
                     pixel_weights=list(pixel_weight_map.values()),
+                    protect_transparent=env.protect_transparent,
                 )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
@@ -249,9 +271,17 @@ class SmoothTool(ToolBase):
         all_pixels = set()
         for (sx, sy) in env.interpolation_steps():
             all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
+        if env.protect_transparent:
+            all_pixels = set(_filter_visible_alpha_pixels(env.img, all_pixels))
         draw_tool_smooth.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
         if all_pixels:
-            draw_functions.set_pixels_alpha(env.img, all_pixels, env.alpha_opacity, opacity=env.opacity)
+            draw_functions.set_pixels_alpha(
+                env.img,
+                all_pixels,
+                env.alpha_opacity,
+                opacity=env.opacity,
+                protect_transparent=env.protect_transparent,
+            )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
 
@@ -274,9 +304,14 @@ class SmearTool(ToolBase):
             ddx = sx - ox
             ddy = sy - oy
             smear_reach = modifier * max(1, env.radius)
+            smear_pixels = list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE'))
+            if env.protect_transparent:
+                smear_pixels = _filter_visible_alpha_pixels(env.img, smear_pixels)
+            if not smear_pixels:
+                continue
             draw_tool_smooth.smear_pixels_in_image(
                 env.img,
-                list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')),
+                smear_pixels,
                 ddx,
                 ddy,
                 smear_reach,
@@ -284,9 +319,10 @@ class SmearTool(ToolBase):
             )
             draw_functions.set_pixels_alpha(
                 env.img,
-                list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')),
+                smear_pixels,
                 env.alpha_opacity,
                 opacity=env.opacity,
+                protect_transparent=env.protect_transparent,
             )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y
@@ -312,6 +348,7 @@ class SquareBrushTool(BrushTool):
                         blend=env.blend,
                         opacity=env.opacity,
                         alpha_opacity=env.alpha_opacity,
+                        protect_transparent=env.protect_transparent,
                     )
                     painted |= step_pixels
         else:
@@ -326,6 +363,7 @@ class SquareBrushTool(BrushTool):
                     blend=env.blend,
                     opacity=env.opacity,
                     alpha_opacity=env.alpha_opacity,
+                    protect_transparent=env.protect_transparent,
                 )
         env.state['last_paint_cx'] = env.cursor_x
         env.state['last_paint_cy'] = env.cursor_y

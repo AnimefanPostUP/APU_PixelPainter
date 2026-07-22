@@ -14,7 +14,8 @@ from . import draw_blending
 
 
 def write_pixels_to_image(img, pixels, color, base_buffer=None,
-                          blend='MIX', opacity=1.0, alpha_opacity=1.0, pixel_weights=None):
+                          blend='MIX', opacity=1.0, alpha_opacity=1.0, pixel_weights=None,
+                          protect_transparent=False):
     """Paint a set of (px, py) coordinates onto img.
 
     Parameters
@@ -47,8 +48,17 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     if not flat_indices:
         return
 
-    flat_idx = np.array(flat_indices,  dtype=np.int32)
-    src      = np.array([color[0], color[1], color[2]], dtype=np.float32)
+    flat_idx = np.array(flat_indices, dtype=np.int32)
+    weights = np.array(weight_values, dtype=np.float32)
+
+    if protect_transparent:
+        alpha_mask = arr[flat_idx + 3] > 1e-6
+        if not np.any(alpha_mask):
+            return
+        flat_idx = flat_idx[alpha_mask]
+        weights = weights[alpha_mask]
+
+    src = np.array([color[0], color[1], color[2]], dtype=np.float32)
 
     # Destination RGB as [N, 3]
     dst = np.stack([arr[flat_idx], arr[flat_idx + 1], arr[flat_idx + 2]], axis=1)
@@ -56,7 +66,7 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
 
 
     # Farbmischung: Stärke * Falloff (weight) pro Pixel
-    per_pixel_opacity = opacity * np.array(weight_values, dtype=np.float32)
+    per_pixel_opacity = opacity * weights
     per_pixel_opacity = np.clip(per_pixel_opacity, 0.0, 1.0)
     out = np.clip(draw_blending._apply_blend(dst, src, blend, per_pixel_opacity[:, None]), 0.0, 1.0)
 
@@ -85,7 +95,7 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
         pass
 
 
-def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0):
+def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparent=False):
     """Blend image alpha toward target alpha for the given pixel coordinates."""
     w, h = img.size
     arr = np.array(img.pixels, dtype=np.float32)
@@ -95,6 +105,8 @@ def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0):
     for (px, py) in pixels:
         if 0 <= px < w and 0 <= py < h:
             idx = (py * w + px) * 4
+            if protect_transparent and arr[idx + 3] <= 1e-6:
+                continue
             curr = arr[idx + 3]
             arr[idx + 3] = curr + (alpha - curr) * mix
 

@@ -25,6 +25,7 @@ class PixelPainterResetToolSettingsOperator(Operator):
         wm.pixel_painter_global_modifier_rmb = 0.5
         wm.pixel_painter_global_alpha_rmb = 1.0
         wm.pixel_painter_temp_smooth_force_global = False
+        wm.pixel_painter_protect_transparent = False
         wm.pixel_painter_grid_opacity = 0.0
         # Reset per-tool settings
         for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']:
@@ -1074,6 +1075,7 @@ class PixelPainterOperator(Operator):
             blend=blend,
             opacity=strength,
             alpha_opacity=alpha_opacity,
+            protect_transparent=getattr(wm, 'pixel_painter_protect_transparent', False),
             radius=radius,
             spacing=spacing,
             wm=wm,

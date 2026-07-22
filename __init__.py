@@ -376,6 +376,11 @@ def register():
         get=_get_active_alpha,
         set=_set_active_alpha,
     )
+    bpy.types.WindowManager.pixel_painter_protect_transparent = bpy.props.BoolProperty(
+        name="Protect Transparent",
+        description="Prevent painting on fully transparent pixels (alpha = 0)",
+        default=False,
+    )
     bpy.types.WindowManager.pixel_painter_selection_has_pending = bpy.props.BoolProperty(
         name="Selection Has Pending Preview",
         options={'HIDDEN'},
@@ -544,6 +549,7 @@ def unregister():
     del bpy.types.WindowManager.pixel_painter_active_strength
     del bpy.types.WindowManager.pixel_painter_active_modifier
     del bpy.types.WindowManager.pixel_painter_active_alpha
+    del bpy.types.WindowManager.pixel_painter_protect_transparent
     del bpy.types.WindowManager.pixel_painter_selection_has_pending
     del bpy.types.WindowManager.pixel_painter_selection_stencil_mode
     del bpy.types.WindowManager.pixel_painter_blend_favorites
