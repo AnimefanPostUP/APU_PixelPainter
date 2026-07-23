@@ -259,8 +259,22 @@ def _tool_icon_value(mode_name):
     if mode_name == 'SMOOTH':
         mode_name = 'SMOOTH'
     if _preview_collection is None:
+        try:
+            register_icons()
+        except Exception:
+            return 0
+    if _preview_collection is None:
         return 0
     icon = _preview_collection.get(mode_name)
+    if icon is None:
+        # Rebuild once when previews were invalidated by a reload/context change.
+        try:
+            register_icons()
+        except Exception:
+            return 0
+        if _preview_collection is None:
+            return 0
+        icon = _preview_collection.get(mode_name)
     return icon.icon_id if icon else 0
 
 
@@ -611,7 +625,7 @@ def _draw_text_centered(text, x, y, size=14, alpha=1.0):
     blf.draw(font_id, text)
 
 
-def _get_mode_gpu_texture(mode):
+def _get_mode_gpu_texture(mode, refresh=False):
     filename = _mode_icon_files.get(mode)
     if not filename:
         return None
@@ -620,6 +634,8 @@ def _get_mode_gpu_texture(mode):
         return None
 
     cache = _custom_pie_state.setdefault('gpu_textures', {})
+    if refresh:
+        cache.pop(mode, None)
     if mode in cache:
         return cache[mode]
 
@@ -641,20 +657,27 @@ def _draw_mode_icon(mode, cx, cy, size, alpha=1.0):
         return False
     x = cx - size * 0.5
     y = cy - size * 0.5
-    try:
-        gpu.state.blend_set('ALPHA_PREMULT')
-        # Prefer a white tint so monochrome source icons stay visible on dark UI.
-        # Fallback keeps compatibility with draw_texture_2d versions without
-        # the color argument.
+    for attempt in range(2):
         try:
-            draw_texture_2d(tex, (x, y), size, size, color=(1.0, 1.0, 1.0, alpha))
-        except TypeError:
-            draw_texture_2d(tex, (x, y), size, size)
-        gpu.state.blend_set('ALPHA')
-        return True
-    except Exception:
-        gpu.state.blend_set('ALPHA')
-        return False
+            gpu.state.blend_set('ALPHA_PREMULT')
+            # Prefer a white tint so monochrome source icons stay visible on dark UI.
+            # Fallback keeps compatibility with draw_texture_2d versions without
+            # the color argument.
+            try:
+                draw_texture_2d(tex, (x, y), size, size, color=(1.0, 1.0, 1.0, alpha))
+            except TypeError:
+                draw_texture_2d(tex, (x, y), size, size)
+            gpu.state.blend_set('ALPHA')
+            return True
+        except Exception:
+            gpu.state.blend_set('ALPHA')
+            if attempt == 0:
+                tex = _get_mode_gpu_texture(mode, refresh=True)
+                if tex is None:
+                    return False
+                continue
+            return False
+    return False
 
 
 def _draw_bubble_text_only(label, cx, cy, scale=1.0, alpha=1.0):
