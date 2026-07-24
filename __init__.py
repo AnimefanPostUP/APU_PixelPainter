@@ -33,6 +33,7 @@ from .tools import overlays
 from .tools import overlays_selectmode
 from .core import variables
 from .utils import settings_service
+from .utils import persistence_settings
 from .core import core_runtime
 from .core.submodes import base as submode_base
 from .core.submodes import helpers as submode_helpers
@@ -83,10 +84,12 @@ def _apply_curve_preset_from_falloff(context, falloff_value):
 
 def _update_circle_falloff(self, context):
     _apply_curve_preset_from_falloff(context, self.pixel_painter_circle_falloff)
+    persistence_settings.on_property_update(self, context)
 
 
 def _update_spray_falloff(self, context):
     _apply_curve_preset_from_falloff(context, self.pixel_painter_spray_falloff)
+    persistence_settings.on_property_update(self, context)
 
 
 def _update_mode(self, context):
@@ -95,6 +98,11 @@ def _update_mode(self, context):
         core.apply_active_tool_settings(context)
     except Exception:
         pass
+    persistence_settings.on_property_update(self, context)
+
+
+def _persist_setting_update(self, context):
+    persistence_settings.on_property_update(self, context)
 
 
 def _get_active_size(self):
@@ -231,6 +239,7 @@ def register():
     importlib.reload(overlays_selectmode)
     importlib.reload(variables)
     importlib.reload(settings_service)
+    importlib.reload(persistence_settings)
     importlib.reload(core_runtime)
     importlib.reload(submode_base)
     importlib.reload(submode_helpers)
@@ -254,6 +263,7 @@ def register():
 
     bpy.types.WindowManager.pixel_painter_radius = bpy.props.IntProperty(
         name="Radius", description="Brush radius in pixels", min=0, max=64, default=1,
+        update=_persist_setting_update,
     )
     print("[PixelPainter][DEBUG] Registered IntProperty: pixel_painter_radius")
     bpy.types.WindowManager.pixel_painter_mode = bpy.props.EnumProperty(
@@ -295,6 +305,7 @@ def register():
         name="Spray Density",
         description="Fraction of the circle area painted per frame (0 = sparse, 1 = full fill)",
         min=0.01, max=1.0, default=0.1, subtype='FACTOR',
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_spacing = bpy.props.EnumProperty(
         name="Spacing",
@@ -304,37 +315,45 @@ def register():
             ('PIXEL', "Pixel", "Paint only when the cursor moves to a new pixel — no repeated stamps"),
         ],
         default='FREE',
+        update=_persist_setting_update,
     )
     print("[PixelPainter][DEBUG] Registered EnumProperty: pixel_painter_spacing with items FREE, PIXEL")
     bpy.types.WindowManager.pixel_painter_modifier = bpy.props.FloatProperty(
         name="Modifier",
         description="Generic modifier value (currently used as Spread)",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR',
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_global_modifier = bpy.props.FloatProperty(
         name="Global Modifier",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_global_strength = bpy.props.FloatProperty(
         name="Global Strength",
         min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_global_alpha = bpy.props.FloatProperty(
         name="Global Alpha",
         min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     # RMB global settings
     bpy.types.WindowManager.pixel_painter_global_strength_rmb = bpy.props.FloatProperty(
         name="Global Strength RMB",
         min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_global_modifier_rmb = bpy.props.FloatProperty(
         name="Global Modifier RMB",
         min=0.0, max=1.0, default=0.5, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_global_alpha_rmb = bpy.props.FloatProperty(
         name="Global Alpha RMB",
         min=0.0, max=1.0, default=1.0, subtype='FACTOR', options={'HIDDEN'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_temp_smooth_force_global = bpy.props.BoolProperty(
         name="Temp Smooth Force Global",
@@ -380,6 +399,7 @@ def register():
         name="Protect Transparent",
         description="Prevent painting on fully transparent pixels (alpha = 0)",
         default=False,
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_selection_has_pending = bpy.props.BoolProperty(
         name="Selection Has Pending Preview",
@@ -409,41 +429,41 @@ def register():
         try:
             # Size settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_size',
-                    bpy.props.IntProperty(name=f"{tool} Size", min=0, max=64, default=1))
+                    bpy.props.IntProperty(name=f"{tool} Size", min=0, max=64, default=1, update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_size',
-                    bpy.props.BoolProperty(name=f"{tool} Use Global Size", default=_size_use_global.get(tool, True)))
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Size", default=_size_use_global.get(tool, True), update=_persist_setting_update))
 
             # Modifier settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier',
-                    bpy.props.FloatProperty(name=f"{tool} Modifier", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+                    bpy.props.FloatProperty(name=f"{tool} Modifier", min=0.0, max=1.0, default=0.5, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier',
-                    bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True)))
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Modifier", default=_modifier_use_global.get(tool, True), update=_persist_setting_update))
 
             # Strength settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength',
-                    bpy.props.FloatProperty(name=f"{tool} Strength", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+                    bpy.props.FloatProperty(name=f"{tool} Strength", min=0.0, max=1.0, default=1.0, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength',
-                    bpy.props.BoolProperty(name=f"{tool} Use Global Strength", default=_strength_use_global.get(tool, True)))
+                    bpy.props.BoolProperty(name=f"{tool} Use Global Strength", default=_strength_use_global.get(tool, True), update=_persist_setting_update))
 
             # Alpha settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha',
-                bpy.props.FloatProperty(name=f"{tool} Alpha", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+                bpy.props.FloatProperty(name=f"{tool} Alpha", min=0.0, max=1.0, default=1.0, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha", default=_alpha_use_global.get(tool, True)))
+                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha", default=_alpha_use_global.get(tool, True), update=_persist_setting_update))
 
             # RMB per-tool settings
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_strength_rmb',
-                bpy.props.FloatProperty(name=f"{tool} Strength RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+                bpy.props.FloatProperty(name=f"{tool} Strength RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_strength_rmb',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Strength RMB", default=_strength_use_global.get(tool, True)))
+                bpy.props.BoolProperty(name=f"{tool} Use Global Strength RMB", default=_strength_use_global.get(tool, True), update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_modifier_rmb',
-                bpy.props.FloatProperty(name=f"{tool} Modifier RMB", min=0.0, max=1.0, default=0.5, subtype='FACTOR'))
+                bpy.props.FloatProperty(name=f"{tool} Modifier RMB", min=0.0, max=1.0, default=0.5, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_modifier_rmb',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Modifier RMB", default=_modifier_use_global.get(tool, True)))
+                bpy.props.BoolProperty(name=f"{tool} Use Global Modifier RMB", default=_modifier_use_global.get(tool, True), update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_alpha_rmb',
-                bpy.props.FloatProperty(name=f"{tool} Alpha RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR'))
+                bpy.props.FloatProperty(name=f"{tool} Alpha RMB", min=0.0, max=1.0, default=1.0, subtype='FACTOR', update=_persist_setting_update))
             setattr(bpy.types.WindowManager, f'pixel_painter_{tool}_use_global_alpha_rmb',
-                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha RMB", default=_alpha_use_global.get(tool, True)))
+                bpy.props.BoolProperty(name=f"{tool} Use Global Alpha RMB", default=_alpha_use_global.get(tool, True), update=_persist_setting_update))
             print(f"[PixelPainter][DEBUG] Registered per-tool properties for {tool}")
         except Exception as e:
             print(f"[PixelPainter] Failed to register properties for tool {tool}: {e}")
@@ -475,23 +495,29 @@ def register():
         items=_blend_items,
         options={'ENUM_FLAG'},
         default={'MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'},
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_ui_show_settings = bpy.props.BoolProperty(
         name="Show Settings", default=True,
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_ui_show_blend_mode = bpy.props.BoolProperty(
         name="Show Blend Mode", default=False,
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_ui_show_shortcuts = bpy.props.BoolProperty(
         name="Show Shortcuts", default=True,
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_ui_show_tool_settings = bpy.props.BoolProperty(
         name="Show Tool Settings", default=False,
+        update=_persist_setting_update,
     )
     bpy.types.WindowManager.pixel_painter_grid_opacity = bpy.props.FloatProperty(
         name="Grid Opacity",
         description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
         min=0.0, max=1.0, default=0.0, subtype='FACTOR',
+        update=_persist_setting_update,
     )
 
     bpy.utils.register_class(core.PixelPainterSetModeOperator)
@@ -509,18 +535,44 @@ def register():
     bpy.utils.register_class(pie_menu.PixelPainterBlendPie)
     bpy.utils.register_class(core.PixelPainterOperator)
     bpy.utils.register_tool(user_interface.PixelPainterTool)
+
+    wm = getattr(bpy.context, 'window_manager', None)
     try:
-        svc = settings_service.PixelPainterSettingsService()
-        bpy.context.window_manager.pixel_painter_global_strength = svc.get_brush_strength(bpy.context)
+        persistence_settings.ensure_settings_file_exists(wm)
     except Exception:
         pass
     try:
-        core.apply_active_tool_settings(bpy.context)
+        persistence_settings.load_window_manager_settings(wm)
+    except Exception:
+        pass
+    try:
+        persistence_settings.register_startup_load()
+    except Exception:
+        pass
+
+    try:
+        svc = settings_service.PixelPainterSettingsService()
+        if wm is not None:
+            svc.set_brush_strength(bpy.context, getattr(wm, 'pixel_painter_global_strength', 1.0))
+    except Exception:
+        pass
+    try:
+        if wm is not None:
+            core.apply_active_tool_settings(bpy.context)
     except Exception:
         pass
 
 
 def unregister():
+    try:
+        persistence_settings.save_window_manager_settings(getattr(bpy.context, 'window_manager', None))
+    except Exception:
+        pass
+    try:
+        persistence_settings.unregister_startup_load()
+    except Exception:
+        pass
+
     paint_selected_faces_uv.unregister()
     # Remove the persistent GPU draw handler and clear the undo stack.
     draw_functions.remove_draw_handler(core._state)

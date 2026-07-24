@@ -1,6 +1,16 @@
 """Brush and tool-setting access helpers for Pixel Painter."""
 
 
+def _persist_window_manager_settings(context):
+    """Best-effort JSON persistence flush after runtime setting writes."""
+    try:
+        from . import persistence_settings
+        wm = getattr(context, 'window_manager', None)
+        persistence_settings.save_window_manager_settings(wm)
+    except Exception:
+        pass
+
+
 class PixelPainterSettingsService:
     """Read/write brush and modal setting values outside core operator logic."""
 
@@ -72,6 +82,7 @@ class PixelPainterSettingsService:
             wm.pixel_painter_modifier = v
             if hasattr(wm, 'pixel_painter_global_modifier'):
                 wm.pixel_painter_global_modifier = v
+            _persist_window_manager_settings(context)
         except Exception:
             pass
 
@@ -179,6 +190,7 @@ class PixelPainterSettingsService:
                 wm.pixel_painter_radius = value
             else:
                 setattr(wm, f'pixel_painter_{tool_mode}_size', value)
+            _persist_window_manager_settings(context)
         except Exception:
             pass
 
@@ -224,6 +236,7 @@ class PixelPainterSettingsService:
                     wm.pixel_painter_modifier = value
             else:
                 setattr(wm, f'pixel_painter_{tool_mode}_modifier{suffix}', value)
+            _persist_window_manager_settings(context)
         except Exception:
             pass
 
@@ -264,6 +277,7 @@ class PixelPainterSettingsService:
                     self.set_brush_strength(context, value)
             else:
                 setattr(wm, f'pixel_painter_{tool_mode}_strength{suffix}', value)
+            _persist_window_manager_settings(context)
         except Exception:
             pass
 
@@ -299,6 +313,7 @@ class PixelPainterSettingsService:
                     setattr(wm, global_key, value)
             else:
                 setattr(wm, f'pixel_painter_{tool_mode}_alpha{suffix}', value)
+            _persist_window_manager_settings(context)
         except Exception:
             pass
 
