@@ -79,7 +79,7 @@ class ColorPickSubMode(SubModeHandler):
         if event.shift:
             self.helpers.warp_cursor_to_color_pick_hv(
                 self.state, context, self.state['sub_color_h'], self.state['sub_color_v'])
-        self.helpers.wrap_cursor_at_window_edge(self.state, context, event)
+        #self.helpers.wrap_cursor_at_window_edge(self.state, context, event) #mouse cursor loop
         self.state['sub_fake_cursor_x'] = self.state.get('sub_last_x')
         self.state['sub_fake_cursor_y'] = self.state.get('sub_last_y')
         context.area.tag_redraw()

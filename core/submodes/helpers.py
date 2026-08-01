@@ -60,10 +60,10 @@ def warp_cursor_to_color_pick_hv(state, context, h, v):
     except Exception:
         pass
 
-    try:
-        context.window.cursor_warp(target_sx, target_sy)
-    except Exception:
-        pass
+    # try:
+    #     context.window.cursor_warp(target_sx, target_sy)
+    # except Exception:
+    #     pass
 
     state['sub_last_x'] = target_rx
     state['sub_last_y'] = target_ry

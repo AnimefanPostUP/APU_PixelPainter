@@ -251,24 +251,24 @@ def _warp_cursor_to_color_pick_hv(context, h, v):
     target_rx = int(round(rx + dx))
     target_ry = int(round(ry + dy))
 
-    # Keep warps inside window bounds.
-    try:
-        max_x = max(0, int(context.window.width) - 1)
-        max_y = max(0, int(context.window.height) - 1)
-        clamped_sx = max(0, min(max_x, target_sx))
-        clamped_sy = max(0, min(max_y, target_sy))
-        # Apply the same clamp delta to region-space tracking.
-        target_rx += (clamped_sx - target_sx)
-        target_ry += (clamped_sy - target_sy)
-        target_sx = clamped_sx
-        target_sy = clamped_sy
-    except Exception:
-        pass
+    # # Keep warps inside window bounds.
+    # try:
+    #     max_x = max(0, int(context.window.width) - 1)
+    #     max_y = max(0, int(context.window.height) - 1)
+    #     clamped_sx = max(0, min(max_x, target_sx))
+    #     clamped_sy = max(0, min(max_y, target_sy))
+    #     # Apply the same clamp delta to region-space tracking.
+    #     target_rx += (clamped_sx - target_sx)
+    #     target_ry += (clamped_sy - target_sy)
+    #     target_sx = clamped_sx
+    #     target_sy = clamped_sy
+    # except Exception:
+    #     pass
 
-    try:
-        context.window.cursor_warp(target_sx, target_sy)
-    except Exception:
-        pass
+    # try:
+    #     context.window.cursor_warp(target_sx, target_sy)
+    # except Exception:
+    #     pass
 
     _state['sub_last_x'] = target_rx
     _state['sub_last_y'] = target_ry
@@ -280,8 +280,12 @@ def _wrap_cursor_at_window_edge(context, event):
     """If the cursor is within the wrap margin of any window edge, loop it to the
     opposite side.  Updates sub_last_x/y so the next delta stays correct.
     The margin is 10% of the image's current on-screen width."""
+    
+    #return #disabled for now
     win_w  = context.window.width
     win_h  = context.window.height
+    
+    
 
     # Derive margin from 10% of the image's current screen width.
     margin = 12  # fallback in pixels
@@ -842,7 +846,7 @@ class PixelPainterOperator(Operator):
                     _settings.set_brush_rgb(context, *rgb)
                 if event.shift:
                     _warp_cursor_to_color_pick_hv(context, _state['sub_color_h'], _state['sub_color_v'])
-                _wrap_cursor_at_window_edge(context, event)
+                #wrap_cursor_at_window_edge(context, event) # Cursor Loop
                 context.area.tag_redraw()
             elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'} and event.value in {'PRESS', 'RELEASE'}:
                 # Keep color stable when switching precision mode by remapping
