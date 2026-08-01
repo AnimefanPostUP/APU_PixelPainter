@@ -1635,93 +1635,97 @@ class PixelPainterOperator(Operator):
         return None
 
     def modal(self, context, event):
-        # Guard: exit if we've left the Image Editor
-        if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
-            self._cleanup()
-            return {'CANCELLED'}
+        try:
+            # Guard: exit if we've left the Image Editor
+            if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
+                self._cleanup()
+                return {'CANCELLED'}
 
-        # Blender may reset modal cursor after certain transient tools
-        # (e.g. brush size with F). Re-apply ours while this operator runs.
-        self._set_modal_cursor(context)
+            # Blender may reset modal cursor after certain transient tools
+            # (e.g. brush size with F). Re-apply ours while this operator runs.
+            self._set_modal_cursor(context)
 
-        # Guard: stop if the user switched to a different tool
-        from bl_ui.space_toolsystem_common import ToolSelectPanelHelper
-        tool = ToolSelectPanelHelper.tool_active_from_context(context)
-        if not tool or tool.idname != "image.pixel_painter_tool":
-            self._cleanup()
-            return {'CANCELLED'}
+            # Guard: stop if the user switched to a different tool
+            from bl_ui.space_toolsystem_common import ToolSelectPanelHelper
+            tool = ToolSelectPanelHelper.tool_active_from_context(context)
+            if not tool or tool.idname != "image.pixel_painter_tool":
+                self._cleanup()
+                return {'CANCELLED'}
 
-        _state['outline_immediate'] = self.button_down or self.button_right_down
+            _state['outline_immediate'] = self.button_down or self.button_right_down
 
-        # Sync external brush size changes (e.g. F-key) and apply tool settings on EVERY event
-        # so the outline updates in real-time during F-key resizing.
-        _sync_external_brush_size_into_tool_setting(context)
-        apply_active_tool_settings(context)
+            # Sync external brush size changes (e.g. F-key) and apply tool settings on EVERY event
+            # so the outline updates in real-time during F-key resizing.
+            _sync_external_brush_size_into_tool_setting(context)
+            apply_active_tool_settings(context)
 
-        if event.type == 'TIMER':
-            if context.area:
-                context.area.tag_redraw()
-            return {'RUNNING_MODAL'}
+            if event.type == 'TIMER':
+                if context.area:
+                    context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
 
-        modal_ctx = self._build_modal_event_context(context, event)
+            modal_ctx = self._build_modal_event_context(context, event)
 
-        result = self._handle_cursor_outside_window(context, event, modal_ctx)
-        if result is not None:
-            return result
+            result = self._handle_cursor_outside_window(context, event, modal_ctx)
+            if result is not None:
+                return result
 
-        result = self._handle_escape_and_submode(context, event)
-        if result is not None:
-            return result
+            result = self._handle_escape_and_submode(context, event)
+            if result is not None:
+                return result
 
-        # Block all non-movement commands when the cursor is outside the image.
-        if event.type != 'MOUSEMOVE' and not modal_ctx.cursor_in_image:
+            # Block all non-movement commands when the cursor is outside the image.
+            if event.type != 'MOUSEMOVE' and not modal_ctx.cursor_in_image:
+                return {'PASS_THROUGH'}
+
+            result = self._handle_mousemove_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_left_mouse_press_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_left_mouse_release_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_right_mouse_press_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_right_mouse_release_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_select_copy_paste_shortcuts(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_ctrl_modifier_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_alt_modifier_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_shift_modifier_event(context, event, modal_ctx)
+            if result is not None:
+                return result
+
+            result = self._handle_shift_number_shortcuts(context, event)
+            if result is not None:
+                return result
+
+            result = self._handle_e_w_shortcuts(context, event)
+            if result is not None:
+                return result
+
             return {'PASS_THROUGH'}
-
-        result = self._handle_mousemove_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_left_mouse_press_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_left_mouse_release_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_right_mouse_press_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_right_mouse_release_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_select_copy_paste_shortcuts(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_ctrl_modifier_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_alt_modifier_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_shift_modifier_event(context, event, modal_ctx)
-        if result is not None:
-            return result
-
-        result = self._handle_shift_number_shortcuts(context, event)
-        if result is not None:
-            return result
-
-        result = self._handle_e_w_shortcuts(context, event)
-        if result is not None:
-            return result
-
-        return {'PASS_THROUGH'}
+        except Exception:
+            self._cleanup()
+            return {'CANCELLED'}
 
     def invoke(self, context, event):  # event required by Blender operator API
         if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':

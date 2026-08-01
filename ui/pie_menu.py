@@ -322,6 +322,7 @@ def _add_blend_item(layout, label, blend, favorites):
 def _queue_open_blend_pie():
     def _open_blend_pie():
         try:
+            force_cleanup()
             bpy.ops.wm.call_menu_pie(name="PIXELPAINTER_MT_blend_pie")
         except Exception:
             pass
@@ -1270,11 +1271,13 @@ class PixelPainterOpenBlendPieOperator(Operator):
 
     def execute(self, context):
         del context
+        force_cleanup()
         _queue_open_blend_pie()
         return {'FINISHED'}
 
     def invoke(self, context, event):
         del context, event
+        force_cleanup()
         _queue_open_blend_pie()
         return {'FINISHED'}
 
