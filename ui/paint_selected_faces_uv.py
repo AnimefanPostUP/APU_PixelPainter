@@ -5,6 +5,8 @@ from bpy.types import Operator
 from bpy.props import StringProperty
 from mathutils import Vector
 
+from ..core import core
+
 
 # bmesh will be injected by the main addon
 bmesh = None
@@ -52,6 +54,7 @@ class APU_OT_PaintSelectedFacesUV(Operator):
         if image is None:
             self.report({'WARNING'}, "No image found in UV/Image Editor.")
             return {'CANCELLED'}
+        core._undo_push(image)
         # Get color from addon, fallback to brush color
         color = None
         if hasattr(context.scene, 'apu_pixel_painter_lmb_color'):
