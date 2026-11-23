@@ -75,6 +75,7 @@ _MODULES = (
     # core
     'core.variables',
     'core.core_runtime',
+    'core.history',
     'core.submodes.base',
     'core.submodes.helpers',
     'core.submodes.opacity',
@@ -118,6 +119,7 @@ def _cleanup_runtime():
         core = _module('core.core')
         _module('tools.draw_functions').remove_draw_handler(core._state)
         core._undo_clear()
+        _module('core.history').unregister()
         core._state['running'] = False
         core._state['current_cx'] = None
         core._state['current_cy'] = None
@@ -143,6 +145,7 @@ def register():
     faces_uv.register()
 
     _module('properties').register()
+    _module('core.history').register()
     _module('ui.icons').register()
     for cls in _classes():
         bpy.utils.register_class(cls)
@@ -189,6 +192,7 @@ def unregister():
             pass
     _module('ui.icons').unregister()
     _module('properties').unregister()
+    _module('core.history').unregister()
     _module('ui.paint_selected_faces_uv').unregister()
 
 

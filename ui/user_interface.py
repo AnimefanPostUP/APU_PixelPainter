@@ -18,8 +18,6 @@ class PixelPainterTool(WorkSpaceTool):
     bl_keymap = (
         ("image.pixel_painter_operator", {"type": 'LEFTMOUSE',  "value": 'PRESS'}, None),
         ("image.pixel_painter_operator", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
-        ("image.pixel_painter_undo",     {"type": 'Z', "value": 'PRESS', "ctrl": True}, None),
-        ("image.pixel_painter_redo",     {"type": 'Z', "value": 'PRESS', "ctrl": True, "shift": True}, None),
         ("image.pixel_painter_open_blend_pie", {"type": 'W', "value": 'PRESS', "shift": True}, None),
         ("image.pixel_painter_custom_pie", {"type": 'W', "value": 'PRESS', "shift": False}, None),
     )

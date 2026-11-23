@@ -34,6 +34,8 @@ class APU_OT_PaintSelectedFacesUV(Operator):
     bl_idname = "apu.paint_selected_faces_uv"
     bl_label = "Paint Selected Faces (UV)"
     bl_description = "Paint all selected faces in the LMB color using UVs"
+    # Runs in mesh Edit Mode, where Blender's undo uses edit-mesh steps; let the
+    # UNDO flag create the step and only record the pixel history here.
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -158,6 +160,7 @@ class APU_OT_PaintSelectedFacesUV(Operator):
         print(f"Iterated {iterated_pixels} pixels in bounding boxes, painted {painted_pixels}.")
         image.pixels = pixels.flatten()
         image.update()
+        core.history.commit(image, "Paint Selected Faces", push=False)
         bm_copy.free()
         self.report({'INFO'}, f"Painted {painted_pixels} pixels on {len(faces_to_paint)} selected faces. Texture: {texture_name}, Color: {color}")
         return {'FINISHED'}

@@ -15,6 +15,7 @@ from ..tools import draw_functions
 from ..tools import draw_gridoverlay
 from ..tools import overlays
 from ..tools import overlays_selectmode
+from . import history
 from .core_runtime import PixelPainterCoreRuntime
 from ..utils.settings_service import PixelPainterSettingsService
 from ..tools import blend_modes
@@ -120,18 +121,8 @@ _state = {
     'selection_stencil_restore_box': None,
 }
 
-# ---------------------------------------------------------------------------
-# Module-level undo stack for image pixels.
-#
-# Blender's built-in undo (bl_options UNDO / ed.undo_push) does NOT capture
-# raw image.pixels — that lives in a separate C-level paint undo system with
-# no Python API.  We maintain our own stack here at module level so it
-# survives tool switches and operator instance teardown.
-# ---------------------------------------------------------------------------
-
-_undo_stack = []
-_redo_stack = []
-_MAX_UNDO   = 100
+# Pixel undo lives in core/history.py and is integrated with Blender's global
+# undo, so strokes stay undoable after switching to another tool.
 
 _core_runtime = PixelPainterCoreRuntime()
 _settings = PixelPainterSettingsService()
@@ -202,74 +193,17 @@ def _sync_runtime_tool_info(context):
 
 
 def _undo_push(img):
-    """Snapshot the current pixel state of *img* before a stroke begins.
-    Clears the redo stack — a new action invalidates any undone history."""
-    if len(_undo_stack) >= _MAX_UNDO:
-        _undo_stack.pop(0)
-    _undo_stack.append((img.name, np.array(img.pixels, dtype=np.float32)))
-    _redo_stack.clear()
+    """Mark *img* as about to be modified (see core/history.py)."""
+    history.begin(img)
 
 
-def _undo_pop(context):
-    """Restore the previous pixel state, pushing current state onto redo stack."""
-    if not _undo_stack:
-        return False
-    space = context.space_data
-    if not space or not space.image:
-        return False
-    img = space.image
-    name, pixels = _undo_stack[-1]
-    if img.name != name:
-        _undo_stack.clear()
-        _redo_stack.clear()
-        return False
-    # Save current state to redo stack before overwriting
-    _redo_stack.append((img.name, np.array(img.pixels, dtype=np.float32)))
-    _undo_stack.pop()
-    img.pixels.foreach_set(pixels)
-    img.update()
-    # Force refresh of all 3D Viewports and Image Editors
-    try:
-        for screen in bpy.data.screens:
-            for area in screen.areas:
-                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
-                    area.tag_redraw()
-    except Exception:
-        pass
-    return True
-
-
-def _redo_pop(context):
-    """Re-apply a previously undone pixel state."""
-    if not _redo_stack:
-        return False
-    space = context.space_data
-    if not space or not space.image:
-        return False
-    img = space.image
-    name, pixels = _redo_stack[-1]
-    if img.name != name:
-        _redo_stack.clear()
-        return False
-    # Save current state to undo stack so the user can undo the redo
-    _undo_stack.append((img.name, np.array(img.pixels, dtype=np.float32)))
-    _redo_stack.pop()
-    img.pixels.foreach_set(pixels)
-    img.update()
-    # Force refresh of all 3D Viewports and Image Editors
-    try:
-        for screen in bpy.data.screens:
-            for area in screen.areas:
-                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
-                    area.tag_redraw()
-    except Exception:
-        pass
-    return True
+def _undo_commit(img, message="Pixel Paint"):
+    """Record the changes made to *img* since _undo_push as one Blender undo step."""
+    return history.commit(img, message)
 
 
 def _undo_clear():
-    _undo_stack.clear()
-    _redo_stack.clear()
+    history.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -325,13 +259,15 @@ def _selection_clear_pending_preview():
 
 
 def _selection_apply_pending(context):
-    return selector._selection_apply_pending(
+    applied = selector._selection_apply_pending(
         context,
         _state,
         _undo_push,
-        _undo_stack,
+        [],
         PixelPainterOperator._selection_blit_region_static,
     )
+    _undo_commit(getattr(context.space_data, 'image', None), "Pixel Painter Paste")
+    return applied
 
 
 def _selection_clear_like_rmb(keep_clipboard=True):
@@ -369,13 +305,15 @@ def _selection_box_center(box):
 
 
 def _selection_apply_stencil(context):
-    return selector._selection_apply_stencil(
+    applied = selector._selection_apply_stencil(
         context,
         _state,
         _undo_push,
-        _undo_stack,
+        [],
         PixelPainterOperator._selection_blit_region_static,
     )
+    _undo_commit(getattr(context.space_data, 'image', None), "Pixel Painter Stencil")
+    return applied
 
 
 # ---------------------------------------------------------------------------
@@ -430,28 +368,6 @@ class PixelPainterSetBlendOperator(Operator):
         except Exception:
             self.report({'WARNING'}, "Could not set blend mode")
             return {'CANCELLED'}
-
-
-class PixelPainterUndoOperator(Operator):
-    """Undo the last Pixel Painter stroke."""
-    bl_idname = "image.pixel_painter_undo"
-    bl_label  = "Pixel Painter Undo"
-
-    def execute(self, context):
-        if not _undo_pop(context):
-            self.report({'INFO'}, "Nothing to undo")
-        return {'FINISHED'}
-
-
-class PixelPainterRedoOperator(Operator):
-    """Redo the last undone Pixel Painter stroke."""
-    bl_idname = "image.pixel_painter_redo"
-    bl_label  = "Pixel Painter Redo"
-
-    def execute(self, context):
-        if not _redo_pop(context):
-            self.report({'INFO'}, "Nothing to redo")
-        return {'FINISHED'}
 
 
 class PixelPainterSelectionApplyOperator(Operator):
@@ -1020,6 +936,7 @@ class PixelPainterOperator(Operator):
     # ---- lifecycle -----------------------------------------------------------
 
     def _cleanup(self):
+        history.commit_all()  # tool switched / modal ended mid-stroke
         if _state['temp_alt_mode_active'] and _state['temp_alt_prev_mode'] is not None:
             try:
                 bpy.context.window_manager.pixel_painter_mode = _state['temp_alt_prev_mode']
@@ -1144,6 +1061,7 @@ class PixelPainterOperator(Operator):
             _state['use_secondary'] = False
             self.button_down = False
             self.button_right_down = False
+        history.commit_all()  # keep whatever an interrupted stroke painted undoable
 
     def _build_modal_event_context(self, context, event):
         area = context.area
@@ -1319,6 +1237,7 @@ class PixelPainterOperator(Operator):
                 context.window_manager.pixel_painter_mode = _state['last_shape']
             _state['start_position'] = None
             _state['back_buffer'] = None
+        history.commit_all()  # one Blender undo step per stroke
         _state['last_paint_cx'] = None
         _state['last_paint_cy'] = None
         _state['use_secondary'] = False
@@ -1400,6 +1319,7 @@ class PixelPainterOperator(Operator):
                 context.window_manager.pixel_painter_mode = _state['last_shape']
             _state['start_position'] = None
             _state['back_buffer'] = None
+        history.commit_all()  # one Blender undo step per stroke
         _state['last_paint_cx'] = None
         _state['last_paint_cy'] = None
         _state['use_secondary'] = False
@@ -1728,8 +1648,6 @@ class PixelPainterOperator(Operator):
 classes = (
     PixelPainterSetModeOperator,
     PixelPainterSetBlendOperator,
-    PixelPainterUndoOperator,
-    PixelPainterRedoOperator,
     PixelPainterSelectionCopyOperator,
     PixelPainterSelectionApplyOperator,
     PixelPainterSelectionCancelOperator,

@@ -93,6 +93,23 @@ click = press + release on the same widget; radial items also accept
 drag-release; Enter/Space confirm; holding the opening key and releasing it
 confirms; ESC/RMB cancel; actions run after the close animation.
 
+## Undo
+
+Pixel changes go through Blender's own undo (`core/history.py`), so Ctrl+Z
+works with any tool active. Anything that writes pixels must bracket the
+change:
+
+```python
+from ..core import history
+history.begin(img)         # before modifying img.pixels
+...                        # modify
+history.commit(img, "My Edit")   # records + pushes one Blender undo step
+```
+
+`commit` stamps the image with an ID property and pushes a global undo step;
+undo/redo handlers restore the matching pixels. Operators with their own
+`UNDO` flag call `commit(img, push=False)` instead.
+
 ## Tests
 
 ```
