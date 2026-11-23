@@ -49,15 +49,20 @@ def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=No
     _tag_redraw_all_image_views()
 
 
-def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity):
-    """Smear pixels by sampling color from upstream along (dx, dy)."""
+def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity, pixel_weights=None):
+    """Smear pixels by sampling color from upstream along (dx, dy).
+
+    ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel, e.g. a brush falloff.
+    """
     w, h = img.size
     arr = np.array(img.pixels, dtype=np.float32)
     arr_4ch = arr.reshape(h, w, 4)
     result = arr_4ch.copy()
+    if pixel_weights is None:
+        pixel_weights = [1.0] * len(pixels)
 
-    for (px, py) in pixels:
-        if not (0 <= px < w and 0 <= py < h):
+    for (px, py), weight in zip(pixels, pixel_weights):
+        if not (0 <= px < w and 0 <= py < h) or weight <= 0.0:
             continue
         src_x = int(round(px - dx * smear_reach))
         src_y = int(round(py - dy * smear_reach))
@@ -65,7 +70,7 @@ def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity):
         src_y = max(0, min(h - 1, src_y))
         src_color = arr_4ch[src_y, src_x, :3]
         orig = arr_4ch[py, px, :3]
-        result[py, px, :3] = orig + (src_color - orig) * opacity
+        result[py, px, :3] = orig + (src_color - orig) * (opacity * weight)
 
     img.pixels.foreach_set(result.ravel())
     img.update()

@@ -69,10 +69,12 @@ class SmearTool(StrokeTool):
     icon = "Tool_Smear.png"
     outline_color = (1.0, 0.3, 0.7, 0.9)
     defaults = SettingDefaults(size=True, modifier=True, strength=False, alpha=False)
+    falloff_property = 'pixel_painter_smear_falloff'
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):
         modifier = env.wm.pixel_painter_modifier
+        falloff, curve_sampler = env.falloff(self.falloff_property)
         steps = list(env.interpolation_steps())
         prev_x = env.state['last_paint_cx']
         prev_y = env.state['last_paint_cy']
@@ -80,14 +82,20 @@ class SmearTool(StrokeTool):
         for i, (sx, sy) in enumerate(steps):
             ox = (prev_x if prev_x is not None else sx) if i == 0 else steps[i - 1][0]
             oy = (prev_y if prev_y is not None else sy) if i == 0 else steps[i - 1][1]
-            smear_pixels = list(math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE'))
+            px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
+                sx, sy, env.radius, falloff, curve_sampler=curve_sampler)
+            weights = dict(zip(px_list, pw_list))
             if env.protect_transparent:
-                smear_pixels = _filter_visible_alpha_pixels(env.img, smear_pixels)
-            if not smear_pixels:
+                visible = set(_filter_visible_alpha_pixels(env.img, px_list))
+                weights = {px: w for px, w in weights.items() if px in visible}
+            if not weights:
                 continue
+            smear_pixels = list(weights)
+            pixel_weights = [weights[px] for px in smear_pixels]
             draw_tool_smooth.smear_pixels_in_image(
-                env.img, smear_pixels, sx - ox, sy - oy, smear_reach, env.opacity)
+                env.img, smear_pixels, sx - ox, sy - oy, smear_reach, env.opacity,
+                pixel_weights=pixel_weights)
             draw_functions.set_pixels_alpha(
-                env.img, smear_pixels, env.alpha_opacity,
-                opacity=env.opacity, protect_transparent=env.protect_transparent)
+                env.img, smear_pixels, env.alpha_opacity, opacity=env.opacity,
+                protect_transparent=env.protect_transparent, pixel_weights=pixel_weights)
         env.mark_painted()
