@@ -68,6 +68,18 @@ class StrengthTool(ToolFrame):
     captures_input = True
     triggers = (Shortcut('E', shift=True, ctrl=False, alt=False),)
 
+    state_defaults = {
+        **helpers.SUB_MODE_STATE,
+        'sub_strength_virtual_x': None,
+        'sub_strength_virtual_y': None,
+        'sub_strength_hover_target': 'STRENGTH',
+        'sub_edit_button':    'LMB',  # which button's settings STRENGTH edits
+        'sub_orig_strength':  None,
+        'sub_orig_alpha':     None,
+        'sub_orig_modifier':  None,
+        'sub_total_delta':    0.0,
+    }
+
     def on_register(self):
         # Shift is usually still held from Shift+E, so follow its state on any event.
         self.precision = self.add_subtool(HoldTool('SHIFT', activate_on_any_event=True))

@@ -10,6 +10,13 @@ class EyedropperTool(HoldTool):
     modifier = 'CTRL'
     exclusive = True  # no painting while Ctrl is held
 
+    state_defaults = {
+        'ctrl_pick_active':   False,
+        'ctrl_hovered_color': None,
+        'ctrl_region_x':      None,
+        'ctrl_region_y':      None,
+    }
+
     def on_register(self):
         self.bind(Shortcut('MOUSEMOVE', None), self._update_hover)
         self.bind(Shortcut('LEFTMOUSE'), lambda ctx, ev: self._pick(ctx, ev, secondary=False))

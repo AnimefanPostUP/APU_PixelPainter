@@ -32,6 +32,9 @@ Writing a tool
     class MyTool(ToolFrame):
         tool_id = 'MY_TOOL'
 
+        # shared-state keys this tool owns (declared when it is registered)
+        state_defaults = {'my_tool_anchor': None}
+
         def on_register(self):
             # a plain function binding (a FunctionTool subtool)
             self.bind(Shortcut('C', ctrl=True), self.copy)
@@ -183,6 +186,10 @@ class ToolFrame:
     consume_trigger: bool = True    # consume the event that activated this subtool
     triggers: Sequence[Shortcut] = ()  # shortcuts that activate this tool as a subtool
 
+    # ---- shared state owned by this tool (declared when registered) -----------
+    state_defaults: Dict[str, object] = {}     # key -> default in the shared state
+    persistent_state: Sequence[str] = ()       # keys that survive the end of a session
+
     def __init__(self):
         self.parent: Optional['ToolFrame'] = None
         self.host: Optional['ToolFrame'] = None  # tool that drives this one as a stand-in
@@ -202,6 +209,7 @@ class ToolFrame:
         self.parent = parent
         if not self._registered:
             self._registered = True
+            manager.declare_state(self.state_defaults, self.persistent_state)
             self.on_register()
         for sub in self.subtools:
             sub.setup(manager, self)
@@ -416,7 +424,10 @@ class ToolManager:
     ``ctx.set_mode(tool_id)``.
     """
 
-    def __init__(self):
+    def __init__(self, declare_state: Optional[Callable] = None):
+        # ``declare_state(defaults, persistent)`` registers each tool's
+        # ``state_defaults`` with the host's shared state (see core.state).
+        self._declare_state = declare_state
         self._tools: List[ToolFrame] = []
         self._by_id: Dict[str, ToolFrame] = {}
         self.base_tool: Optional[ToolFrame] = None
@@ -424,6 +435,10 @@ class ToolManager:
         self.running = False
 
     # ---- registration --------------------------------------------------------
+
+    def declare_state(self, defaults, persistent=()) -> None:
+        if self._declare_state is not None and (defaults or persistent):
+            self._declare_state(defaults, persistent)
 
     def register(self, tool: ToolFrame) -> ToolFrame:
         tool.setup(self)

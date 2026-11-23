@@ -8,9 +8,22 @@ import gpu
 import numpy as np
 import gpu_extras.batch
 
+from ..core.state import declare as declare_state
 from ..tools import draw_functions
 from ..utils import blender_utils
 from ..utils import math_utils
+
+
+# Brush outline position tween.
+declare_state({
+    'outline_display_cx': None,
+    'outline_display_cy': None,
+    'outline_from_cx':    None,
+    'outline_from_cy':    None,
+    'outline_to_cx':      None,
+    'outline_to_cy':      None,
+    'outline_anim_start': 0.0,
+})
 
 
 def _gpu_draw_lines(vertices, color):

@@ -8,9 +8,18 @@ import gpu
 import gpu_extras.batch
 import numpy as np
 
+from ..core.state import declare as declare_state
 from ..utils import math_utils
 from ..utils import blender_utils
 from . import draw_blending
+
+
+# Draw handler handles: survive a session end, removed explicitly.
+declare_state({
+    'draw_handler':      None,  # POST_PIXEL handler
+    'draw_handler_view': None,  # POST_VIEW handler (3D Viewport surface outline)
+    'draw_space':        None,
+}, persistent=('draw_handler', 'draw_handler_view', 'draw_space'))
 
 
 def write_pixels_to_image(img, pixels, color, base_buffer=None,

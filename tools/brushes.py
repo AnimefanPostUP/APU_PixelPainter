@@ -127,6 +127,13 @@ class LineBrushTool(BrushTool):
     usable_as_line_tip = False
     respects_pixel_spacing = False
 
+    state_defaults = {
+        **BrushTool.state_defaults,
+        'start_position': None,  # (cx, cy) where the line started
+        'back_buffer':    None,  # pixel snapshot for clean line preview
+        'line_start_hit': None,  # (tri, local) where an Edge-mode line started
+    }
+
     @staticmethod
     def tip_tool(state):
         from .catalog import TOOLS  # late import: the catalog imports this module

@@ -24,8 +24,27 @@ from . import history, view3d
 from ..tools import overlays_view3d
 from .context import ToolContext, is_shift_smooth_global
 from .framework import InputEvent, ToolManager
-from .state import SETTINGS, STATE, reset_session
+from .state import SETTINGS, STATE, declare as declare_state, reset_session
 from .variables import build_default_variable_store
+
+
+# Session state owned by the core (tools declare their own keys, see
+# ToolFrame.state_defaults).
+declare_state({
+    'running':        False,  # True while the persistent modal is active
+    'current_cx':     None,   # image pixel under the cursor
+    'current_cy':     None,
+    'mouse_region':   None,   # (x, y) mouse in WINDOW-region coords (last cursor update)
+    'session_token':  None,   # token of the modal instance that owns the session
+    'session_area':   None,   # area.as_pointer() of the editor the session runs in
+    'outline_timer':  None,
+    'last_observed_raw_radius': None,
+    'view3d_uv_tile': (0, 0), # UDIM-less UV tile (floor(u), floor(v)) under the 3D cursor
+    'view3d_hit_tri': None,   # loop-triangle under the 3D cursor (seed for Edge mode)
+    'view3d_hit_local': None, # object-space surface point under the 3D cursor
+    'view3d_texel_px': None,  # screen pixels per texel on the hovered face (brush size mapping)
+    'view3d_written_size': None,  # Blender brush size last written by the 3D size sync
+}, persistent=('outline_timer',))
 
 
 # Kept under the old names for modules that reach into the core
@@ -48,7 +67,7 @@ def _supported_space(context):
     return space.type == 'VIEW_3D' and context.mode == 'PAINT_TEXTURE'
 
 
-MANAGER = ToolManager()
+MANAGER = ToolManager(declare_state=declare_state)
 MANAGER.register_all(TOOLS)
 MANAGER.register_all(global_tools())
 

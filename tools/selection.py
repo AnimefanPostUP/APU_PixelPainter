@@ -21,6 +21,29 @@ class SelectionTool(ToolBase):
     usable_as_line_tip = False
     shows_brush_outline = False
 
+    state_defaults = {
+        'selection_box':               None,
+        'selection_hover_handle':      None,
+        'selection_active_handle':     None,
+        'selection_drag_mode':         None,
+        'selection_drag_start':        None,
+        'selection_drag_origin_box':   None,
+        'selection_move_pixels':       None,
+        'selection_move_source_box':   None,
+        'selection_clipboard':         None,
+        'selection_pending_action':    None,
+        'selection_pending_region':    None,
+        'selection_pending_source_box': None,
+        'selection_preview_image_name': None,
+        'selection_preview_texture':   None,
+        'selection_overlay_region':    None,
+        'selection_stencil_mode':      False,
+        'selection_stencil_region':    None,
+        'selection_stencil_restore_box': None,
+    }
+    persistent_state = ('selection_clipboard', 'selection_preview_image_name',
+                        'selection_preview_texture')
+
     def __init__(self):
         super().__init__()
         self.actions = SelectionActions(STATE)  # on-canvas Copy / Apply / Stencil buttons

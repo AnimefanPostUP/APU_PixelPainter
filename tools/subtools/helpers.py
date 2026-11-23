@@ -4,6 +4,20 @@
 COLOR_PICK_H_DIV = 500.0
 COLOR_PICK_V_DIV = 300.0
 
+# State shared by the modal sub-modes (color pick / strength); each sub-mode
+# merges this into its own ``state_defaults``.
+SUB_MODE_STATE = {
+    'sub_mode':           None,  # 'STRENGTH' | 'COLOR_PICK' | None
+    'sub_last_x':         None,
+    'sub_last_y':         None,
+    'sub_fake_cursor_x':  None,
+    'sub_fake_cursor_y':  None,
+    'sub_start_screen_x': None,
+    'sub_start_screen_y': None,
+    'sub_start_region_x': None,
+    'sub_start_region_y': None,
+}
+
 
 def set_sub_start_to_event(state, event):
     """Store sub-mode start at the cursor position when sub-mode was opened."""

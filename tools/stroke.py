@@ -18,6 +18,19 @@ class StrokeTool(ToolBase):
     that need special stroke handling (see ``LineBrushTool``).
     """
 
+    state_defaults = {
+        'last_shape':         'SQUARE',  # tip shape used by LINE
+        'last_paint_cx':      None,
+        'last_paint_cy':      None,
+        'last_paint_mouse':   None,  # region mouse at the last paint (3D: screen-space interpolation)
+        'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
+        'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
+        'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
+        'use_secondary':      False,  # True while painting with the secondary color (RMB)
+        'outline_immediate':  False,  # outline follows the cursor without tweening
+    }
+    persistent_state = ('last_shape',)
+
     def __init__(self):
         super().__init__()
         self._buttons = set()

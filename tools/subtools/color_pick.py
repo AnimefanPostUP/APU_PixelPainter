@@ -19,6 +19,20 @@ class ColorPickTool(ToolFrame):
     captures_input = True
     triggers = (Shortcut('E', shift=False, ctrl=False, alt=False),)
 
+    state_defaults = {
+        **helpers.SUB_MODE_STATE,
+        'sub_orig_color':     None,
+        'sub_orig_color_secondary': None,
+        'sub_color_target':   'PRIMARY',
+        'sub_color_h':        None,
+        'sub_color_s':        None,
+        'sub_color_v':        None,
+        'sub_color_start_h':  None,
+        'sub_color_start_v':  None,
+        'sub_color_total_dx': 0.0,
+        'sub_color_total_dy': 0.0,
+    }
+
     def on_register(self):
         # Hold Shift = precision movement. A subtool backed by two methods of this object.
         self.precision = self.add_subtool(HoldTool(
