@@ -121,6 +121,9 @@ def _static_properties():
         'circle_falloff': bpy.props.EnumProperty(
             name="Circle Falloff", items=falloff.enum_items(), default='CONSTANT',
             update=_falloff_updater('pixel_painter_circle_falloff')),
+        'smooth_falloff': bpy.props.EnumProperty(
+            name="Smooth Falloff", items=falloff.enum_items(), default='CONSTANT',
+            update=_falloff_updater('pixel_painter_smooth_falloff')),
         'spray_falloff': bpy.props.EnumProperty(
             name="Spray Falloff", items=falloff.enum_items(), default='LINEAR',
             update=_falloff_updater('pixel_painter_spray_falloff')),
@@ -267,6 +270,7 @@ def reset_tool_settings(wm):
     wm.pixel_painter_mode = TOOLS.default_id
     wm.pixel_painter_circle_falloff = 'CONSTANT'
     wm.pixel_painter_spray_falloff = 'LINEAR'
+    wm.pixel_painter_smooth_falloff = 'CONSTANT'
     wm.pixel_painter_spray_strength = 0.1
     wm.pixel_painter_spacing = 'FREE'
     wm.pixel_painter_modifier = 0.5

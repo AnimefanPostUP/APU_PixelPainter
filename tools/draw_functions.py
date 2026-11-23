@@ -95,20 +95,26 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
         pass
 
 
-def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparent=False):
-    """Blend image alpha toward target alpha for the given pixel coordinates."""
+def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparent=False, pixel_weights=None):
+    """Blend image alpha toward target alpha for the given pixel coordinates.
+
+    ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel.
+    """
     w, h = img.size
     arr = np.array(img.pixels, dtype=np.float32)
     alpha = float(max(0.0, min(1.0, alpha_opacity)))
     mix = float(max(0.0, min(1.0, opacity)))
 
-    for (px, py) in pixels:
+    if pixel_weights is None:
+        pixel_weights = [1.0] * len(pixels)
+
+    for (px, py), weight in zip(pixels, pixel_weights):
         if 0 <= px < w and 0 <= py < h:
             idx = (py * w + px) * 4
             if protect_transparent and arr[idx + 3] <= 1e-6:
                 continue
             curr = arr[idx + 3]
-            arr[idx + 3] = curr + (alpha - curr) * mix
+            arr[idx + 3] = curr + (alpha - curr) * mix * weight
 
     img.pixels.foreach_set(arr)
     img.update()

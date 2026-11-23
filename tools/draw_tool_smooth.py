@@ -14,15 +14,21 @@ def _tag_redraw_all_image_views():
         pass
 
 
-def smooth_pixels_in_image(img, pixels, smooth_radius, opacity):
-    """Blur pixels by averaging their neighbors within smooth_radius."""
+def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=None):
+    """Blur pixels by averaging their neighbors within smooth_radius.
+
+    ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel, e.g. a brush falloff.
+    """
     w, h = img.size
     arr = np.array(img.pixels, dtype=np.float32)
     arr_4ch = arr.reshape(h, w, 4)
     result = arr_4ch.copy()
 
-    for (px, py) in pixels:
-        if not (0 <= px < w and 0 <= py < h):
+    if pixel_weights is None:
+        pixel_weights = [1.0] * len(pixels)
+
+    for (px, py), weight in zip(pixels, pixel_weights):
+        if not (0 <= px < w and 0 <= py < h) or weight <= 0.0:
             continue
         x0 = max(0, px - smooth_radius)
         x1 = min(w - 1, px + smooth_radius)
@@ -36,7 +42,7 @@ def smooth_pixels_in_image(img, pixels, smooth_radius, opacity):
         else:
             avg = kernel[:, :, :3].mean(axis=(0, 1))
         orig = arr_4ch[py, px, :3]
-        result[py, px, :3] = orig + (avg - orig) * opacity
+        result[py, px, :3] = orig + (avg - orig) * (opacity * weight)
 
     img.pixels.foreach_set(result.ravel())
     img.update()

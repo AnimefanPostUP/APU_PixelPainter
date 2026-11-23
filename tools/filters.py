@@ -32,20 +32,31 @@ class SmoothTool(StrokeTool):
     icon = "Tool_Smooth.png"
     outline_color = (0.7, 0.3, 1.0, 0.9)
     defaults = SettingDefaults(size=True, modifier=True, strength=False, alpha=False)
+    falloff_property = 'pixel_painter_smooth_falloff'
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):
         smooth_radius = max(1, int(env.wm.pixel_painter_modifier * max(1, env.radius)))
-        all_pixels = set()
+        falloff, curve_sampler = env.falloff(self.falloff_property)
+        # Overlapping stamps along the stroke keep the strongest falloff weight.
+        weights = {}
         for (sx, sy) in env.interpolation_steps():
-            all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
+            px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
+                sx, sy, env.radius, falloff, curve_sampler=curve_sampler)
+            for px, w in zip(px_list, pw_list):
+                if w > weights.get(px, 0.0):
+                    weights[px] = w
         if env.protect_transparent:
-            all_pixels = set(_filter_visible_alpha_pixels(env.img, all_pixels))
-        draw_tool_smooth.smooth_pixels_in_image(env.img, list(all_pixels), smooth_radius, env.opacity)
-        if all_pixels:
+            visible = set(_filter_visible_alpha_pixels(env.img, weights))
+            weights = {px: w for px, w in weights.items() if px in visible}
+        if weights:
+            pixels = list(weights)
+            pixel_weights = [weights[px] for px in pixels]
+            draw_tool_smooth.smooth_pixels_in_image(
+                env.img, pixels, smooth_radius, env.opacity, pixel_weights=pixel_weights)
             draw_functions.set_pixels_alpha(
-                env.img, all_pixels, env.alpha_opacity,
-                opacity=env.opacity, protect_transparent=env.protect_transparent)
+                env.img, pixels, env.alpha_opacity, opacity=env.opacity,
+                protect_transparent=env.protect_transparent, pixel_weights=pixel_weights)
         env.mark_painted()
 
 

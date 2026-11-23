@@ -1,8 +1,10 @@
 """Tool settings panel drawing for Pixel Painter."""
 
+from bpy.types import Panel
+
 from ..tools import blend_modes
 from ..tools import falloff
-from ..tools.catalog import TOOLS
+from ..tools.catalog import TOOLS, falloff_property_for
 
 
 def _draw_foldout(layout, data, prop_name, label):
@@ -56,6 +58,35 @@ def draw_falloff_section(layout, context, prop_name):
     else:
         layout.label(text="Falloff")
         _draw_falloff_preset_buttons(layout, wm, prop_name)
+
+
+def _in_tool_header(context):
+    return getattr(getattr(context, 'region', None), 'type', '') == 'TOOL_HEADER'
+
+
+class IMAGE_PT_pixel_painter_falloff(Panel):
+    """Falloff presets + custom curve editor, opened from the tool header."""
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'HEADER'
+    bl_label = "Falloff"
+    bl_ui_units_x = 12
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = False
+        layout.use_property_decorate = False
+        prop_name = falloff_property_for(context.window_manager.pixel_painter_mode)
+        draw_falloff_section(layout, context, prop_name)
+        if getattr(context.window_manager, prop_name) != 'CUSTOM':
+            layout.label(text="Pick 'Custom' to edit the falloff curve", icon='INFO')
+
+
+def draw_falloff_popover(layout, context, prop_name):
+    """Compact header entry: current falloff name, opens the falloff popover."""
+    preset = falloff.get(getattr(context.window_manager, prop_name))
+    label = preset.label if preset else "Falloff"
+    layout.popover(panel=IMAGE_PT_pixel_painter_falloff.__name__, text=f"Falloff: {label}",
+                   icon='SMOOTHCURVE')
 
 
 def _draw_favorites_selector(layout, wm):
@@ -138,7 +169,10 @@ def draw_tool_settings(context, layout):
     tool = TOOLS.get(mode)
     tool.draw_settings(context, layout)
     if tool.falloff_property:
-        draw_falloff_section(layout, context, tool.falloff_property)
+        if _in_tool_header(context):
+            draw_falloff_popover(layout, context, tool.falloff_property)
+        else:
+            draw_falloff_section(layout, context, tool.falloff_property)
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):
@@ -194,3 +228,8 @@ def draw_tool_settings(context, layout):
         # Add a button to reset tool settings to defaults
         col.separator()
         col.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')
+
+
+classes = (
+    IMAGE_PT_pixel_painter_falloff,
+)

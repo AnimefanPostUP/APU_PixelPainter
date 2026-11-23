@@ -137,6 +137,7 @@ def _classes():
         *_module('tools.selection').classes,
         *_module('ui.native_menus').classes,
         *_module('ui.pie_menu').classes,
+        *_module('ui.tool_settings_ui').classes,
     )
 
 
