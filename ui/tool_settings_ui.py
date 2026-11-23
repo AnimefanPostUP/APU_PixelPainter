@@ -168,11 +168,17 @@ def draw_tool_settings(context, layout):
     # Tool-specific controls come from the tool itself.
     tool = TOOLS.get(mode)
     tool.draw_settings(context, layout)
+    in_header = _in_tool_header(context)
     if tool.falloff_property:
-        if _in_tool_header(context):
+        if in_header:
             draw_falloff_popover(layout, context, tool.falloff_property)
         else:
             draw_falloff_section(layout, context, tool.falloff_property)
+
+    if in_header:
+        row = layout.row(align=True)
+        row.prop_enum(wm, "pixel_painter_spacing", 'FREE', text="Free")
+        row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):
