@@ -5,8 +5,7 @@ def _persist_window_manager_settings(context):
     """Best-effort JSON persistence flush after runtime setting writes."""
     try:
         from . import persistence_settings
-        wm = getattr(context, 'window_manager', None)
-        persistence_settings.save_window_manager_settings(wm)
+        persistence_settings.request_save()
     except Exception:
         pass
 

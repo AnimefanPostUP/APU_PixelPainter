@@ -12,6 +12,8 @@ _LOADING = False
 _STARTUP_LOAD_ATTEMPTS = 0
 _MAX_STARTUP_LOAD_ATTEMPTS = 20
 _DEBUG = True
+_SAVE_DELAY = 1.0          # seconds; coalesces bursts of property updates
+_LAST_SAVED_TEXT = None    # serialized content last written/read, to skip no-op writes
 
 
 def _dbg(message):
@@ -66,12 +68,39 @@ def on_property_update(_self, context):
     if _LOADING:
         _dbg("Skipped save during load guard")
         return
-    wm = getattr(context, 'window_manager', None)
-    save_window_manager_settings(wm)
+    request_save()
+
+
+def _deferred_save_timer():
+    save_window_manager_settings()
+    return None
+
+
+def request_save():
+    """Schedule a debounced save; many updates in a burst produce one write."""
+    if _LOADING:
+        return
+    try:
+        if not bpy.app.timers.is_registered(_deferred_save_timer):
+            bpy.app.timers.register(_deferred_save_timer, first_interval=_SAVE_DELAY)
+    except Exception:
+        save_window_manager_settings()
+
+
+def cancel_pending_save():
+    try:
+        if bpy.app.timers.is_registered(_deferred_save_timer):
+            bpy.app.timers.unregister(_deferred_save_timer)
+    except Exception:
+        pass
 
 
 def save_window_manager_settings(wm=None):
-    """Save persisted Pixel Painter settings from WindowManager to disk."""
+    """Save persisted Pixel Painter settings from WindowManager to disk.
+
+    Skips the write when nothing changed since the last save/load.
+    """
+    global _LAST_SAVED_TEXT
     if _LOADING:
         _dbg("Skipped save during load guard")
         return
@@ -96,8 +125,17 @@ def save_window_manager_settings(wm=None):
             continue
 
     try:
+        text = json.dumps(data, indent=2, sort_keys=True)
+    except Exception as exc:
+        print(f"[PixelPainter] Failed to serialize persisted settings: {exc}")
+        return
+    if text == _LAST_SAVED_TEXT and os.path.exists(path):
+        return
+
+    try:
         with open(path, 'w', encoding='utf-8') as handle:
-            json.dump(data, handle, indent=2, sort_keys=True)
+            handle.write(text)
+        _LAST_SAVED_TEXT = text
         _dbg(f"Saved {len(data)} keys to {path}")
     except Exception as exc:
         print(f"[PixelPainter] Failed to save persisted settings: {exc}")
@@ -128,7 +166,7 @@ def ensure_settings_file_exists(wm=None):
 
 def load_window_manager_settings(wm=None):
     """Load persisted Pixel Painter settings into WindowManager."""
-    global _LOADING
+    global _LOADING, _LAST_SAVED_TEXT
 
     if wm is None:
         wm = getattr(bpy.context, 'window_manager', None)
@@ -167,6 +205,10 @@ def load_window_manager_settings(wm=None):
                 continue
     finally:
         _LOADING = False
+    try:
+        _LAST_SAVED_TEXT = json.dumps(data, indent=2, sort_keys=True)
+    except Exception:
+        _LAST_SAVED_TEXT = None
     _dbg(f"Loaded {applied} keys from {path}")
 
 
@@ -234,6 +276,7 @@ def register_startup_load():
 
 def unregister_startup_load():
     """Remove pending startup-load timer when the addon unregisters."""
+    cancel_pending_save()
     try:
         if bpy.app.timers.is_registered(_startup_load_timer):
             bpy.app.timers.unregister(_startup_load_timer)
