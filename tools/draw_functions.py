@@ -824,6 +824,28 @@ def draw_ctrl_pick_overlay(context, state):
     gpu.state.line_width_set(1.0)
 
 
+def draw_view3d_placeholder_cursor(context, state):
+    """Placeholder 3D Viewport cursor: a ring at the mouse (dim when off the mesh).
+
+    TODO(3D): replace with a real brush outline projected onto the surface.
+    """
+    mouse = state.get('mouse_region')
+    if mouse is None:
+        return
+    from .catalog import TOOLS
+    try:
+        color = TOOLS.get(context.window_manager.pixel_painter_mode).outline_color
+    except Exception:
+        color = (1.0, 1.0, 0.0, 0.9)
+    on_mesh = state.get('current_cx') is not None
+    rgba = (color[0], color[1], color[2], color[3] if on_mesh else 0.3)
+    gpu.state.blend_set('ALPHA')
+    _draw_circle_outline(mouse[0], mouse[1], 10.0, (0.0, 0.0, 0.0, rgba[3] * 0.8), width=3.0, steps=32)
+    _draw_circle_outline(mouse[0], mouse[1], 10.0, rgba, width=1.5, steps=32)
+    gpu.state.blend_set('NONE')
+    gpu.state.line_width_set(1.0)
+
+
 def draw_test_corner_label(context, text="test"):
     """Draw a small text label in the top-left corner of the active editor region."""
     area = context.area

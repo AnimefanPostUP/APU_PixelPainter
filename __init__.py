@@ -29,7 +29,7 @@ bl_info = {
     "author": "Kushiro, AnimefanPostUP",
     "version": (1, 1, 0),
     "blender": (4, 2, 0),
-    "location": "Image Editor > Toolbar",
+    "location": "Image Editor > Toolbar, 3D Viewport (Texture Paint) > Toolbar",
     "category": "Image Editor",
 }
 
@@ -66,6 +66,7 @@ _MODULES = (
     # core framework + shared runtime state (no tool imports)
     'core.framework',
     'core.state',
+    'core.view3d',
     'core.context',
     'core.history',
     'core.variables',
@@ -155,7 +156,8 @@ def register():
     _module('ui.icons').register()
     for cls in _classes():
         bpy.utils.register_class(cls)
-    bpy.utils.register_tool(_module('ui.user_interface').PixelPainterTool)
+    for tool in _module('ui.user_interface').TOOLS:
+        bpy.utils.register_tool(tool)
 
     persistence = _module('utils.persistence_settings')
     wm = getattr(bpy.context, 'window_manager', None)
@@ -190,7 +192,11 @@ def unregister():
         pass
 
     _cleanup_runtime()
-    bpy.utils.unregister_tool(_module('ui.user_interface').PixelPainterTool)
+    for tool in reversed(_module('ui.user_interface').TOOLS):
+        try:
+            bpy.utils.unregister_tool(tool)
+        except Exception:
+            pass
     for cls in reversed(_classes()):
         try:
             bpy.utils.unregister_class(cls)

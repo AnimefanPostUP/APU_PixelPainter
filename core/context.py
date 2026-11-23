@@ -1,5 +1,7 @@
 """Per-event context handed to every tool callback (``ctx`` in tool code)."""
 
+from ..utils.blender_utils import get_paint_image
+from . import view3d
 from .state import SETTINGS, STATE
 
 
@@ -50,9 +52,20 @@ class ToolContext:
         return getattr(self.context, 'space_data', None)
 
     @property
-    def image(self):
+    def is_3d(self):
+        """True when running in the 3D Viewport (Texture Paint mode)."""
         space = self.space
-        return getattr(space, 'image', None) if space else None
+        return space is not None and space.type == 'VIEW_3D'
+
+    @property
+    def image(self):
+        """The image being painted (Image Editor image or 3D paint canvas)."""
+        return get_paint_image(self.context)
+
+    @property
+    def can_paint(self):
+        """The editor can map the cursor to image pixels."""
+        return self.is_3d or self.v2d is not None
 
     # ---- tool mode ---------------------------------------------------------------
 
@@ -86,10 +99,21 @@ class ToolContext:
         w, h = image.size
         if w == 0 or h == 0:
             return None
-        u, v = region.view2d.region_to_view(event.mouse_x - region.x, event.mouse_y - region.y)
+        rx, ry = event.mouse_x - region.x, event.mouse_y - region.y
+        if self.is_3d:
+            return view3d.hovered_pixel(self.context, rx, ry, image)
+        u, v = region.view2d.region_to_view(rx, ry)
         return int(u * w), int(v * h)
 
+    def mouse_region(self, event):
+        """``(x, y)`` of ``event`` relative to the WINDOW region, or None."""
+        region = self.region
+        if region is None:
+            return None
+        return event.mouse_x - region.x, event.mouse_y - region.y
+
     def update_cursor(self, event):
+        self.state['mouse_region'] = self.mouse_region(event)
         pixel = self.hovered_pixel(event)
         if pixel is None:
             self.state['current_cx'] = self.state['current_cy'] = None

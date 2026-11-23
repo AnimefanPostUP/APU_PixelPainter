@@ -20,7 +20,7 @@ from ..tools import blend_modes
 from ..tools import draw_functions
 from ..tools import draw_gridoverlay
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
-from . import history
+from . import history, view3d
 from .context import ToolContext, is_shift_smooth_global
 from .framework import InputEvent, ToolManager
 from .state import SETTINGS, STATE, reset_session
@@ -32,6 +32,20 @@ from .variables import build_default_variable_store
 _state = STATE
 _settings = SETTINGS
 _variable_store = build_default_variable_store()
+
+# Workspace tool ids that run this operator (Image Editor and 3D Viewport).
+TOOL_IDNAMES = frozenset({"image.pixel_painter_tool", "view3d.pixel_painter_tool"})
+
+
+def _supported_space(context):
+    """True in the Image Editor, and in the 3D Viewport while in Texture Paint mode."""
+    space = context.space_data
+    if space is None:
+        return False
+    if space.type == 'IMAGE_EDITOR':
+        return True
+    return space.type == 'VIEW_3D' and context.mode == 'PAINT_TEXTURE'
+
 
 MANAGER = ToolManager()
 MANAGER.register_all(TOOLS)
@@ -95,8 +109,12 @@ def _undo_clear():
 def _register_draw_handler(space, context):
     def _callback(ctx):
         try:
-            draw_gridoverlay.draw_pixel_grid_overlay(ctx, ctx.window_manager.pixel_painter_grid_opacity)
-            draw_functions.draw_test_tool_shape_outline(ctx, _state)
+            if view3d.is_view3d(ctx):
+                # TODO(3D): real brush outline on the surface; placeholder for now.
+                draw_functions.draw_view3d_placeholder_cursor(ctx, _state)
+            else:
+                draw_gridoverlay.draw_pixel_grid_overlay(ctx, ctx.window_manager.pixel_painter_grid_opacity)
+                draw_functions.draw_test_tool_shape_outline(ctx, _state)
             draw_functions.draw_test_corner_label(ctx)
             MANAGER.draw(ToolContext(ctx, MANAGER))
         except Exception:
@@ -194,6 +212,13 @@ class PixelPainterOperator(Operator):
         return max(min(xs), 0), max(min(ys), 0), min(max(xs), region.width), min(max(ys), region.height)
 
     def _cursor_over_image(self, ctx, event):
+        if ctx.is_3d:
+            # Off-mesh positions still count (cursor is None there), so a stroke
+            # survives crossing empty space; only leaving the region ends it.
+            region = ctx.region
+            if region is None:
+                return False
+            return 0 <= event.mouse_region_x <= region.width and 0 <= event.mouse_region_y <= region.height
         bounds = self._image_screen_bounds(ctx)
         if bounds is None:
             return True
@@ -314,7 +339,7 @@ class PixelPainterOperator(Operator):
 
     def modal(self, context, event):
         try:
-            if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
+            if not _supported_space(context):
                 self._cleanup()
                 return {'CANCELLED'}
 
@@ -322,7 +347,7 @@ class PixelPainterOperator(Operator):
 
             from bl_ui.space_toolsystem_common import ToolSelectPanelHelper
             tool = ToolSelectPanelHelper.tool_active_from_context(context)
-            if not tool or tool.idname != "image.pixel_painter_tool":
+            if not tool or tool.idname not in TOOL_IDNAMES:
                 self._cleanup()
                 return {'CANCELLED'}
 
@@ -342,13 +367,19 @@ class PixelPainterOperator(Operator):
             return {'CANCELLED'}
 
     def invoke(self, context, event):
-        if context.space_data is None or context.space_data.type != 'IMAGE_EDITOR':
+        if not _supported_space(context):
             return {'CANCELLED'}
 
         # The tool keymap fires on every LMB press; a second modal instance
         # would reset the state mid-stroke.
         if _state['running']:
             return {'CANCELLED'}
+
+        if view3d.is_view3d(context):
+            if blender_utils.get_paint_image(context) is None:
+                self.report({'WARNING'}, "Pixel Painter: no texture to paint on (add a paint slot / canvas)")
+                return {'CANCELLED'}
+            view3d.invalidate()  # the mesh may have changed since the last session
 
         reset_session()
         _state['running'] = True

@@ -9,6 +9,33 @@ def get_space_img(context):
     return space, space.image
 
 
+def get_paint_image(context):
+    """Image being painted: the Image Editor's image, or the 3D Viewport's
+    texture paint canvas (single-image mode canvas or active material slot)."""
+    space = getattr(context, 'space_data', None)
+    if space is None:
+        return None
+    if space.type == 'IMAGE_EDITOR':
+        return space.image
+    if space.type != 'VIEW_3D':
+        return None
+    try:
+        ip = context.tool_settings.image_paint
+        if ip.mode == 'IMAGE':
+            return ip.canvas
+        obj = context.active_object
+        mat = obj.active_material if obj is not None else None
+        if mat is None:
+            return None
+        images = mat.texture_paint_images
+        idx = mat.paint_active_slot
+        if 0 <= idx < len(images):
+            return images[idx]
+    except Exception:
+        pass
+    return None
+
+
 def get_window_region_and_v2d(area):
     """Return (region, view2d) for the WINDOW region of an Image Editor area."""
     if not area or area.type != 'IMAGE_EDITOR':

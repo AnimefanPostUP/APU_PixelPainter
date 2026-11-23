@@ -19,12 +19,14 @@ _DEFAULTS = {
     'draw_space':     None,
     'outline_timer':  None,
     'last_observed_raw_radius': None,
+    'mouse_region':   None,   # (x, y) mouse in WINDOW-region coords (last cursor update)
     # ---- stroke tools ----------------------------------------------------------
     'start_position':     None,  # (cx, cy) when a LINE stroke started
     'back_buffer':        None,  # pixel snapshot for clean line preview
     'last_shape':         'SQUARE',  # tip shape used by LINE
     'last_paint_cx':      None,
     'last_paint_cy':      None,
+    'last_paint_mouse':   None,  # region mouse at the last paint (3D: screen-space interpolation)
     'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
     'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
     'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode

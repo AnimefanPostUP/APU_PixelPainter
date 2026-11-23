@@ -67,6 +67,7 @@ class DrawEnvironment:
         """Remember the cursor as the last painted position (for interpolation)."""
         self.state['last_paint_cx'] = self.cursor_x
         self.state['last_paint_cy'] = self.cursor_y
+        self.state['last_paint_mouse'] = self.state.get('mouse_region')
 
 
 class ToolBase(ToolFrame):

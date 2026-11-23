@@ -60,6 +60,8 @@ class SelectionTool(ToolBase):
         self.actions.hide()
 
     def draw_overlay(self, ctx):
+        if ctx.is_3d:
+            return  # TODO(3D): selection overlay is Image Editor only for now
         from . import overlays_selectmode
         overlays_selectmode.draw_selection_overlay(ctx.context, ctx.state, self.actions)
 

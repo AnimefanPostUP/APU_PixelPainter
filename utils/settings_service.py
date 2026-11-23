@@ -150,10 +150,10 @@ class PixelPainterSettingsService:
     def get_image_pixel_color(self, context, cx, cy):
         """Read RGB from image pixel coordinates and return `(r,g,b)` or None."""
         try:
-            space = context.space_data
-            if not space or not space.image:
+            from . import blender_utils
+            img = blender_utils.get_paint_image(context)
+            if img is None:
                 return None
-            img = space.image
             w, h = img.size
             if not (0 <= cx < w and 0 <= cy < h):
                 return None

@@ -1,6 +1,6 @@
 """Stroke tools: press-drag-release painting plus the standard modifier subtools."""
 
-from ..core import history
+from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils
 from .base import DrawEnvironment, ToolBase
@@ -73,6 +73,7 @@ class StrokeTool(ToolBase):
         state['use_secondary'] = button == 'RMB'
         state['last_paint_cx'] = None
         state['last_paint_cy'] = None
+        state['last_paint_mouse'] = None
         state['outline_immediate'] = True
         img = ctx.image
         if img is not None:
@@ -83,7 +84,7 @@ class StrokeTool(ToolBase):
     def continue_stroke(self, ctx, event):
         if not self.is_stroking:
             return False
-        if ctx.v2d is not None:
+        if ctx.can_paint:
             self.paint(ctx)
         ctx.redraw()
 
@@ -100,6 +101,7 @@ class StrokeTool(ToolBase):
         state = ctx.state
         state['last_paint_cx'] = None
         state['last_paint_cy'] = None
+        state['last_paint_mouse'] = None
         state['use_secondary'] = 'RMB' in self._buttons
         state['outline_immediate'] = self.is_stroking
 
@@ -107,7 +109,7 @@ class StrokeTool(ToolBase):
 
     def on_press(self, ctx):
         """Button pressed: paint the first stamp."""
-        if ctx.v2d is not None:
+        if ctx.can_paint:
             self.paint(ctx)
 
     def on_release(self, ctx):
@@ -140,6 +142,16 @@ class StrokeTool(ToolBase):
         if px is None or py is None or (px == cx and py == cy):
             return [(cx, cy)]
         return math_utils.get_line_pixels(px, py, cx, cy)[1:]
+
+    @staticmethod
+    def _interpolation_steps_3d(ctx, img, cx, cy):
+        """3D Viewport: follow the mouse on screen so strokes never cross UV seams."""
+        state = ctx.state
+        start = state.get('last_paint_mouse')
+        end = state.get('mouse_region')
+        if state['last_paint_cx'] is None or start is None or end is None:
+            return [(cx, cy)]
+        return view3d.pixel_path(ctx.context, start, end, img) or [(cx, cy)]
 
     def paint(self, ctx):
         """Build the :class:`DrawEnvironment` and run one :meth:`on_draw` step."""
@@ -180,7 +192,9 @@ class StrokeTool(ToolBase):
             wm=wm,
             cursor_x=cx,
             cursor_y=cy,
-            interpolation_steps=lambda: self._interpolation_steps(state, cx, cy),
+            interpolation_steps=(
+                (lambda: self._interpolation_steps_3d(ctx, img, cx, cy)) if ctx.is_3d
+                else (lambda: self._interpolation_steps(state, cx, cy))),
             curve_sampler_factory=settings.get_falloff_curve_sampler,
         )
 
