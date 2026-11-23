@@ -4,7 +4,8 @@ import numpy as np
 
 from . import draw_functions
 from . import draw_tool_smooth
-from .base import SettingDefaults, ToolBase
+from .base import SettingDefaults
+from .stroke import StrokeTool
 from ..utils import math_utils
 
 
@@ -22,7 +23,7 @@ def _filter_visible_alpha_pixels(img, pixels, alpha_threshold=1e-6):
     return visible
 
 
-class SmoothTool(ToolBase):
+class SmoothTool(StrokeTool):
     """Blur pixels; the modifier scales the kernel radius."""
 
     tool_id = 'SMOOTH'
@@ -48,7 +49,7 @@ class SmoothTool(ToolBase):
         env.mark_painted()
 
 
-class SmearTool(ToolBase):
+class SmearTool(StrokeTool):
     """Drag pixels opposite the cursor motion; the modifier scales the reach."""
 
     tool_id = 'SMEAR'

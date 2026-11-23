@@ -1,7 +1,11 @@
 """The registered Pixel Painter tools.
 
-Order = mode enum order = tool pie order = Shift+1..8 shortcut order.
-To add a tool, implement it (see :mod:`tools.base`) and list it here.
+``TOOLS``: the selectable tools. Order = mode enum order = tool pie order =
+Shift+1..8 shortcut order. To add a tool, implement it (see
+:mod:`tools.base`) and list it here.
+
+``global_tools()``: tools that receive events for the whole session no
+matter which tool is selected (they run before the selected tool).
 """
 
 from . import falloff
@@ -9,6 +13,7 @@ from .brushes import CircleBrushTool, EraserTool, LineBrushTool, SprayBrushTool,
 from .filters import SmearTool, SmoothTool
 from .registry import ToolRegistry
 from .selection import SelectionTool
+from .subtools.tool_switch import ToolSwitchShortcuts
 
 
 TOOLS = ToolRegistry(
@@ -24,6 +29,12 @@ TOOLS = ToolRegistry(
     ],
     default_id='SQUARE',
 )
+
+
+def global_tools():
+    return [
+        ToolSwitchShortcuts(TOOLS),  # Shift+1..9
+    ]
 
 
 def falloff_property_for(tool_id):

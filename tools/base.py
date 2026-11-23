@@ -1,16 +1,19 @@
 """Tool interface for Pixel Painter.
 
-Every tool is a :class:`ToolBase` subclass registered in
-:data:`tools.catalog.TOOLS`. The registry is the single source of truth:
+Every selectable tool is a :class:`ToolBase` subclass registered in
+:data:`tools.catalog.TOOLS`. ``ToolBase`` is a
+:class:`core.framework.ToolFrame`, so a tool owns its own input handling
+(``on_register`` / ``on_activate`` / subtools); the registry metadata drives
 the mode enum, per-tool settings properties and their defaults, persistence
-keys, the reset operator, the tool pie, Shift+number shortcuts, icons and
-the settings panel are all generated from it.
+keys, the reset operator, the tool pie, icons and the settings panel.
 
 Adding a tool
 -------------
-1. Subclass :class:`ToolBase` (or :class:`BrushTool` for painting tools)
-   and set the metadata class attributes.
-2. Implement :meth:`ToolBase.on_draw`.
+1. Subclass :class:`tools.stroke.StrokeTool` (painting tools: stroke input
+   and the standard modifier subtools come for free) or :class:`ToolBase`
+   (tools with their own interaction, see :mod:`tools.selection`).
+2. Set the metadata class attributes and implement :meth:`ToolBase.on_draw`
+   and/or ``on_register``.
 3. Add an instance to the list in :mod:`tools.catalog`.
 """
 
@@ -19,6 +22,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 
+from ..core.framework import ToolFrame
 from ..utils import math_utils
 
 
@@ -65,8 +69,8 @@ class DrawEnvironment:
         self.state['last_paint_cy'] = self.cursor_y
 
 
-class ToolBase:
-    """Interface every Pixel Painter tool implements."""
+class ToolBase(ToolFrame):
+    """Interface every selectable Pixel Painter tool implements."""
 
     # ---- identity / presentation -------------------------------------------
     tool_id: str = 'BASE'
@@ -84,7 +88,7 @@ class ToolBase:
     respects_pixel_spacing: bool = True     # obey 'Pixel' spacing (skip repeated stamps)
     shows_brush_outline: bool = True
 
-    # ---- lifecycle hooks -----------------------------------------------------
+    # ---- painting hooks (see tools.stroke.StrokeTool) -------------------------
 
     def on_stroke_begin(self, env: DrawEnvironment) -> None:
         """Called before the first :meth:`on_draw` of a stroke. Prepares stroke caches."""
@@ -108,6 +112,3 @@ class ToolBase:
     def __repr__(self):
         return f"<{type(self).__name__} {self.tool_id}>"
 
-
-class BrushTool(ToolBase):
-    """Base class for tools that paint pixels."""

@@ -3,7 +3,8 @@
 import numpy as np
 
 from . import draw_functions
-from .base import BrushTool, SettingDefaults
+from .base import SettingDefaults
+from .stroke import BrushTool
 from ..utils import math_utils
 
 
@@ -132,6 +133,30 @@ class LineBrushTool(BrushTool):
     def on_stroke_begin(self, env):
         # Lines re-render from their own back buffer; no stroke caches needed.
         pass
+
+    # ---- stroke hooks: press snapshots, drag previews, release commits ------
+
+    def on_press(self, ctx):
+        img = ctx.image
+        cx, cy = ctx.cursor
+        if img is not None and cx is not None:
+            ctx.state['back_buffer'] = np.array(img.pixels, dtype=np.float32)
+            ctx.state['start_position'] = (cx, cy)
+
+    def on_release(self, ctx):
+        if ctx.state.get('start_position') is not None:
+            self.paint(ctx)
+        ctx.state['start_position'] = None
+        ctx.state['back_buffer'] = None
+
+    def on_cancel(self, ctx):
+        img = ctx.image
+        back_buffer = ctx.state.get('back_buffer')
+        if img is not None and back_buffer is not None:
+            img.pixels.foreach_set(back_buffer)
+            img.update()
+        ctx.state['start_position'] = None
+        ctx.state['back_buffer'] = None
 
     def outline_pixels(self, state, x, y, radius):
         shape = self.tip_tool(state).outline_shape

@@ -5,30 +5,94 @@
 ```
 __init__.py            bl_info, ordered module reload list, register/unregister
 properties.py          all WindowManager properties (per-tool ones generated from the registry)
-core/                  modal paint operator, undo, sub-modes (E / Shift+E bubbles), selection logic
+core/
+  framework.py         ToolFrame, Shortcut, InputEvent, HoldTool, FunctionTool, ToolManager (no bpy)
+  core.py              modal operator: guards, cursor tracking, MANAGER.dispatch; settings sync
+  context.py           ToolContext -- the `ctx` every tool callback receives
+  state.py             STATE (shared blackboard read by overlays), SETTINGS service
+  history.py           pixel undo integrated with Blender's undo
 tools/
-  base.py              ToolBase interface, DrawEnvironment, SettingDefaults
+  base.py              ToolBase (a ToolFrame + registry metadata), DrawEnvironment, SettingDefaults
+  stroke.py            StrokeTool / BrushTool: press-drag-release painting + standard subtools
   registry.py          ToolRegistry
-  catalog.py           TOOLS — the registered tools (order = enum / pie / Shift+number order)
+  catalog.py           TOOLS (order = enum / pie / Shift+number order) and global_tools()
   brushes.py           Square, Circle, Spray (WeightedBrushTool), Line, Eraser
   filters.py           Smooth, Smear
-  selection.py         Select tool metadata + settings UI
+  selection.py         Select tool (box drag / move / resize, copy / paste, stencil) + its operators
+  selection_ops.py     selection box geometry and pixel-region operations
+  subtools/            color_pick (E), strength (Shift+E), eyedropper (hold Ctrl),
+                       tool_switch (hold Alt -> Line, hold Shift -> Smooth/Eraser, Shift+1..9)
   falloff.py           falloff presets (enum, curve preset, icons)
   blend_modes.py       blend modes (enum, groups, favorites)
   draw_*.py, overlays*.py  pixel writing and canvas overlays
 ui/
-  kit/                 generic UI kit (no Pixel Painter knowledge) — see below
+  kit/                 generic UI kit (no Pixel Painter knowledge) -- see below
   pie_menu.py          ToolPie / FalloffPie / FalloffPicker + W-key operator
   selection_actions.py Copy / Apply / Stencil buttons under the selection box
   native_menus.py      Blender-native blend pie and mode pie
   icons.py             ICONS (tool + falloff icons)
   tool_settings_ui.py  header / N-panel settings
-tests/                 pure-Python unit tests for the UI kit
+tests/                 pure-Python unit tests (UI kit, tool framework)
 ```
+
+## Tools and input
+
+The core does not know what tools do. `core/core.py` guards the session,
+tracks the hovered pixel and hands every event to `MANAGER`
+(`core.framework.ToolManager`). The manager offers it to every active root
+tool -- the global tools, then the selected tool -- until one **consumes** it
+(`event.consume()`, Unity's `Event.Use()`). Unconsumed events pass through to
+Blender.
+
+Every tool, subtool and key binding is a `ToolFrame`. Inside a tool, an event
+goes to:
+
+1. its **active subtools** (latest first). An `exclusive` active subtool
+   hides the event from its parent even if it doesn't consume it;
+2. its **idle subtools** in registration order -- the first whose shortcut
+   matches is activated (`bind()` bindings just call their function);
+3. `on_event()`.
+
+Subtools are reached only through their parent, so their shortcuts only work
+while the parent tool is in use.
+
+| Hook | When |
+|---|---|
+| `on_register()` | once: `bind()` shortcuts, `add_subtool()` subtools |
+| `on_activate(ctx, event)` | tool selected / subtool triggered (`event` = trigger or `None`) |
+| `on_deactivate(ctx)` | tool switched away / subtool ended (`self.deactivate(ctx)`) |
+| `on_interrupt(ctx)` | abort running work (cursor left the image, a blocking subtool took over) |
+| `on_event(ctx, event)` | catch-all after subtools |
+| `draw_overlay(ctx)` | POST_PIXEL drawing while active |
+| `on_session_end(ctx)` | the modal operator stopped |
+
+Flags: `exclusive` (block the parent while active), `captures_input` (core
+skips its cursor-over-image gating, e.g. the color picker), `is_global` +
+`priority` (root tools active for the whole session).
+
+Building blocks:
+
+```python
+self.bind(Shortcut('C', ctrl=True), self.copy)          # function; return False = don't consume
+self.add_subtool(ColorPickTool(), Shortcut('E'))         # full subtool, trigger override
+self.fine = self.add_subtool(HoldTool('SHIFT',           # active while Shift is held
+                                      on_hold=self.sync, on_release=self.sync))
+self.add_subtool(TemporaryToolSwitch('LINE', 'ALT'))     # another tool stands in while Alt is held
+```
+
+`Shortcut('SHIFT')` matches both shift keys; modifier arguments are
+`True` (held) / `False` (not held) / `None` (don't care); `value=None`
+matches any value (use it for `MOUSEMOVE`).
 
 ## Adding a tool
 
-1. Subclass `ToolBase` (or `BrushTool` / `WeightedBrushTool`) in `tools/`:
+1. Subclass a tool base in `tools/`:
+   * `BrushTool` / `StrokeTool` (`tools/stroke.py`) for painting: LMB/RMB
+     strokes plus the standard subtools (Ctrl eyedropper, Alt line, Shift
+     smooth/eraser, E color pick, Shift+E strength) come for free.
+     Override `register_modifier_subtools()` to change that set, and
+     `on_press` / `on_release` / `on_cancel` for special strokes (see `LineBrushTool`).
+   * `ToolBase` for tools with their own interaction (see `SelectionTool`).
 
    ```python
    class DitherTool(BrushTool):
@@ -39,6 +103,13 @@ tests/                 pure-Python unit tests for the UI kit
        outline_color = (0.2, 0.9, 1.0, 0.9)
        defaults = SettingDefaults(size=True, modifier=False, strength=False, alpha=False)
 
+       def on_register(self):
+           super().on_register()          # standard subtools + stroke bindings
+           self.bind(Shortcut('D'), self.flip_phase)   # only while Dither is in use
+
+       def flip_phase(self, ctx, event):
+           ...
+
        def on_draw(self, env):
            ...                             # paint into env.img at env.cursor_x/y
            env.mark_painted()
@@ -47,7 +118,8 @@ tests/                 pure-Python unit tests for the UI kit
            ...                             # optional extra header controls
    ```
 
-2. Add an instance to the list in `tools/catalog.py`.
+2. Add an instance to the list in `tools/catalog.py` (or to `global_tools()`
+   for a tool that is always active).
 
 That's it: the mode enum, per-tool size/strength/modifier/alpha properties and
 their defaults, persistence, the reset operator, the tool pie, Shift+number

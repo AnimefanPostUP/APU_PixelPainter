@@ -63,26 +63,30 @@ _MODULES = (
     'tools.draw_tool_smooth',
     'tools.overlays',
     'tools.overlays_selectmode',
+    # core framework + shared runtime state (no tool imports)
+    'core.framework',
+    'core.state',
+    'core.context',
+    'core.history',
+    'core.variables',
     # tools
     'tools.falloff',
     'tools.blend_modes',
     'tools.base',
     'tools.registry',
+    'tools.subtools.helpers',
+    'tools.subtools.color_pick',
+    'tools.subtools.strength',
+    'tools.subtools.eyedropper',
+    'tools.subtools.tool_switch',
+    'tools.stroke',
     'tools.brushes',
     'tools.filters',
+    'ui.selection_actions',
+    'tools.selection_ops',
     'tools.selection',
     'tools.catalog',
-    # core
-    'core.variables',
-    'core.core_runtime',
-    'core.history',
-    'core.submodes.base',
-    'core.submodes.helpers',
-    'core.submodes.opacity',
-    'core.submodes.color_pick',
-    'core.submodes.controller',
-    'core.submodes.selector',
-    'ui.selection_actions',
+    # core operator (builds the tool manager from the catalog)
     'core.core',
     'properties',
     # addon UI
@@ -130,6 +134,7 @@ def _cleanup_runtime():
 def _classes():
     return (
         *_module('core.core').classes,
+        *_module('tools.selection').classes,
         *_module('ui.native_menus').classes,
         *_module('ui.pie_menu').classes,
     )
