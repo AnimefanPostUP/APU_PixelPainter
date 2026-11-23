@@ -13,6 +13,7 @@ theme     colors, metrics, timings, UI scaling   (pure Python)
 events    UIEvent and result constants           (pure Python)
 widget    Widget base, DrawContext, Row/Column/Grid layouts
 widgets   Label, Button, BubbleButton, Panel
+color_pad ColorPad: swipeable HSV selector (pens)
 radial    RadialMenu (pie)
 overlay   Overlay interaction controller         (no bpy)
 draw      GPU primitives (the only gpu/blf user)
@@ -26,13 +27,14 @@ from .geometry import Rect
 from .theme import Theme
 from .events import UIEvent
 from .widget import Column, DrawContext, Grid, Row, Widget
-from .widgets import BubbleButton, Button, Label, Panel, RoundButton
+from .widgets import BubbleButton, Button, DragBubble, Label, Panel, RoundButton
 from .radial import RadialMenu
+from .color_pad import ColorPad, hsv_for_rgb
 from .overlay import Overlay
 
 __all__ = (
     'Rect', 'Theme', 'UIEvent',
     'Widget', 'DrawContext', 'Row', 'Column', 'Grid',
-    'Label', 'Button', 'BubbleButton', 'RoundButton', 'Panel',
-    'RadialMenu', 'Overlay',
+    'Label', 'Button', 'BubbleButton', 'RoundButton', 'DragBubble', 'Panel',
+    'RadialMenu', 'ColorPad', 'hsv_for_rgb', 'Overlay',
 )

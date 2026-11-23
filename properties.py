@@ -191,6 +191,33 @@ def _static_properties():
         'grid_opacity': _factor(
             "Grid Opacity", 0.0, description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
             update=_persist),
+        # ---- pen / tablet ----
+        'pen_pressure_size': bpy.props.BoolProperty(
+            name="Pressure Size", description="Pen pressure scales the brush size", default=False,
+            update=_persist),
+        'pen_pressure_strength': bpy.props.BoolProperty(
+            name="Pressure Strength", description="Pen pressure scales the strength", default=False,
+            update=_persist),
+        'pen_pressure_alpha': bpy.props.BoolProperty(
+            name="Pressure Alpha", description="Pen pressure scales the alpha (opacity) written to the canvas",
+            default=False, update=_persist),
+        'pen_pressure_modifier': bpy.props.BoolProperty(
+            name="Pressure Modifier", description="Pen pressure scales the modifier (smooth / smear spread)",
+            default=False, update=_persist),
+        'pen_pressure_min': _factor(
+            "Minimum Pressure", 0.0,
+            description="Multiplier at the lightest touch (0 = pressure is the multiplier, "
+                        "higher = light strokes stay stronger)",
+            update=_persist),
+        'pen_bar': bpy.props.BoolProperty(
+            name="Pen Bar",
+            description="On-canvas controls for pens: drag knobs, tap buttons, press-drag-release menus",
+            default=False, update=_persist),
+        'pen_bar_side': bpy.props.EnumProperty(
+            name="Pen Bar Side", description="Bottom corner of the editor the pen bar sits in",
+            items=[('LEFT', "Left", "Left edge of the editor"), ('RIGHT', "Right", "Right edge of the editor")],
+            default='LEFT', update=_persist),
+        'ui_show_pen': bpy.props.BoolProperty(name="Show Pen Settings", default=False, update=_persist),
     }
 
 
@@ -295,6 +322,9 @@ def reset_tool_settings(wm):
     wm.pixel_painter_protect_transparent = False
     wm.pixel_painter_view3d_mode = 'UV'
     wm.pixel_painter_grid_opacity = 0.0
+    for channel in ('size', 'strength', 'alpha', 'modifier'):
+        setattr(wm, f'pixel_painter_pen_pressure_{channel}', False)
+    wm.pixel_painter_pen_pressure_min = 0.0
     for tool in TOOLS:
         for name, default in tool_property_defaults(tool.tool_id).items():
             setattr(wm, name, default)

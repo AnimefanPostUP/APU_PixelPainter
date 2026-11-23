@@ -36,7 +36,7 @@ class SmoothTool(StrokeTool):
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):
-        smooth_radius = max(1, int(env.wm.pixel_painter_modifier * max(1, env.radius)))
+        smooth_radius = max(1, int(env.modifier * max(1, env.radius)))
         falloff, curve_sampler = env.falloff(self.falloff_property)
         # Overlapping stamps along the stroke keep the strongest falloff weight.
         weights = {}
@@ -73,7 +73,7 @@ class SmearTool(StrokeTool):
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):
-        modifier = env.wm.pixel_painter_modifier
+        modifier = env.modifier
         falloff, curve_sampler = env.falloff(self.falloff_property)
         steps = list(env.interpolation_steps())
         prev_x = env.state['last_paint_cx']

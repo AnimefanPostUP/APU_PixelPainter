@@ -126,6 +126,23 @@ class ToolContext:
             return None
         return event.mouse_x - region.x, event.mouse_y - region.y
 
+    _PEN_EVENTS = frozenset({'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE'})
+
+    def update_pen(self, event):
+        """Track the pen pressure (``pen_pressure``; 1.0 for a mouse).
+
+        Releases are skipped: a lifted pen reports 0, and tools that paint on
+        release (Line) should see the pressure the stroke ended with.
+        """
+        if event.type not in self._PEN_EVENTS or event.value == 'RELEASE':
+            return
+        if event.is_tablet:
+            self.state['pen_pressure'] = max(0.0, min(1.0, event.pressure))
+            self.state['pen_is_tablet'] = True
+        else:
+            self.state['pen_pressure'] = 1.0
+            self.state['pen_is_tablet'] = False
+
     def update_cursor(self, event):
         self.state['mouse_region'] = self.mouse_region(event)
         pixel = self.hovered_pixel(event)

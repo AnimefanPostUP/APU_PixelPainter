@@ -4,6 +4,13 @@
 COLOR_PICK_H_DIV = 500.0
 COLOR_PICK_V_DIV = 300.0
 
+# Saturation slider to the right of the color-pick sheet (region px, relative to
+# the sheet; the sheet is COLOR_PICK_H_DIV x COLOR_PICK_V_DIV around the start).
+SAT_BAR_GAP = 6.0
+SAT_BAR_W = 24.0
+SAT_BAR_HIT_MARGIN = 10.0   # extra grab area around the bar (pens are imprecise)
+SAT_TAP_TRAVEL = 4.0        # less pointer travel than this = a tap (jump to the spot)
+
 # State shared by the modal sub-modes (color pick / strength); each sub-mode
 # merges this into its own ``state_defaults``.
 SUB_MODE_STATE = {
@@ -38,12 +45,8 @@ def warp_cursor_to_sub_start(state, context):
             pass
 
 
-def warp_cursor_to_color_pick_hv(state, context, h, v, warp=False):
-    """Place the picker cursor at the position that represents ``h``/``v`` relative to center.
-
-    Always updates the tracked (fake) cursor; with ``warp=True`` the OS cursor
-    is moved there as well.
-    """
+def color_pick_offset(h, v):
+    """``(dx, dy)`` from the picker center to the spot that represents ``h``/``v``."""
     h = float(h) % 1.0
     v = max(0.0, min(1.0, float(v)))
     delta_h = h - 0.5
@@ -51,8 +54,52 @@ def warp_cursor_to_color_pick_hv(state, context, h, v, warp=False):
         delta_h += 1.0
     elif delta_h >= 0.5:
         delta_h -= 1.0
-    dx = delta_h * COLOR_PICK_H_DIV
-    dy = (v - 0.5) * COLOR_PICK_V_DIV
+    return delta_h * COLOR_PICK_H_DIV, (v - 0.5) * COLOR_PICK_V_DIV
+
+
+def sat_bar_rect(state):
+    """``(x0, y0, x1, y1)`` of the saturation slider, or None before the picker is placed."""
+    rx = state.get('sub_start_region_x')
+    ry = state.get('sub_start_region_y')
+    if rx is None or ry is None:
+        return None
+    x0 = rx + COLOR_PICK_H_DIV * 0.5 + SAT_BAR_GAP
+    return x0, ry - COLOR_PICK_V_DIV * 0.5, x0 + SAT_BAR_W, ry + COLOR_PICK_V_DIV * 0.5
+
+
+def over_sat_bar(state, x, y, margin=SAT_BAR_HIT_MARGIN):
+    """Whether region point ``x``/``y`` grabs the saturation slider."""
+    rect = sat_bar_rect(state)
+    if rect is None or x is None or y is None:
+        return False
+    x0, y0, x1, y1 = rect
+    return x0 - margin <= x <= x1 + margin and y0 - margin <= y <= y1 + margin
+
+
+def in_sat_column(state, x):
+    """Whether ``x`` lies in the strip between the sheet's right edge and the slider's
+    grab area -- the pointer is heading for the slider, so hue / value hold still."""
+    rect = sat_bar_rect(state)
+    if rect is None or x is None:
+        return False
+    return rect[0] - SAT_BAR_GAP <= x <= rect[2] + SAT_BAR_HIT_MARGIN
+
+
+def sat_at(state, y):
+    """Saturation shown at height ``y`` on the slider (clamped to 0..1)."""
+    rect = sat_bar_rect(state)
+    if rect is None:
+        return None
+    return max(0.0, min(1.0, (y - rect[1]) / (rect[3] - rect[1])))
+
+
+def warp_cursor_to_color_pick_hv(state, context, h, v, warp=False):
+    """Place the picker cursor at the position that represents ``h``/``v`` relative to center.
+
+    Always updates the tracked (fake) cursor; with ``warp=True`` the OS cursor
+    is moved there as well.
+    """
+    dx, dy = color_pick_offset(h, v)
 
     sx = state.get('sub_start_screen_x')
     sy = state.get('sub_start_screen_y')

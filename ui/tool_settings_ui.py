@@ -146,6 +146,42 @@ def _draw_shortcuts(layout):
         row.label(text=key_text)
         row.label(text=action_text)
 
+_PRESSURE_CHANNELS = (("size", "Size"), ("strength", "Strength"), ("alpha", "Alpha"), ("modifier", "Modifier"))
+
+
+def _draw_pen_quick_row(layout, wm):
+    """Pen bar toggle + which channels follow pen pressure."""
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_pen_bar", text="Pen Bar", toggle=True, icon='GREASEPENCIL')
+    row = layout.row(align=True)
+    row.label(text="", icon='STYLUS_PRESSURE')
+    for channel, text in _PRESSURE_CHANNELS:
+        row.prop(wm, f"pixel_painter_pen_pressure_{channel}", text=text, toggle=True)
+
+
+def _draw_pen_settings(layout, wm):
+    layout.prop(wm, "pixel_painter_pen_pressure_min", text="Minimum Pressure", slider=True)
+    row = layout.row(align=True)
+    row.label(text="Pen Bar Side")
+    row.prop_enum(wm, "pixel_painter_pen_bar_side", 'LEFT', text="Left")
+    row.prop_enum(wm, "pixel_painter_pen_bar_side", 'RIGHT', text="Right")
+    hints = (
+        "Knobs: press and drag up/down",
+        "Color: color pad under the bar",
+        "Color pad: swipe like a touchpad, tap jumps",
+        "Preview: color changes live while swiping",
+        "Bubble: old/new color (tap: accept new)",
+        "Picker: arm, then tap the canvas",
+        "Corner triangle: drag to resize the bar",
+        "Tools: tap an icon beside the Size knob",
+        "Blend: press, drag onto entry, lift",
+        "RMB: pen paints the secondary color",
+    )
+    col = layout.column(align=True)
+    for hint in hints:
+        col.label(text=hint)
+
+
 def draw_extra_paint_faces_button(layout):
     layout.separator()
     layout.operator("apu.paint_selected_faces_uv", text="Paint Selected Faces (UV)", icon='FACESEL')
@@ -169,6 +205,7 @@ def draw_tool_settings(context, layout):
     row.prop(wm, "pixel_painter_protect_transparent", text="Protect Transparent", toggle=True)
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
+    _draw_pen_quick_row(layout, wm)
 
     row = layout.row(align=True)
     if ups.use_unified_color:
@@ -238,6 +275,9 @@ def draw_tool_settings(context, layout):
         row.prop(wm, f'pixel_painter_{mode}_use_global_alpha', text="Use Global Alpha")
         if not getattr(wm, f'pixel_painter_{mode}_use_global_alpha', True):
             row.prop(wm, f'pixel_painter_{mode}_alpha', text="Alpha", slider=True)
+
+    if _draw_foldout(col, wm, "pixel_painter_ui_show_pen", "Pen / Tablet"):
+        _draw_pen_settings(col.box().column(align=True), wm)
 
     if _draw_foldout(col, wm, "pixel_painter_ui_show_blend_mode", "Blend Mode"):
         blend_col = col.box().column(align=True)

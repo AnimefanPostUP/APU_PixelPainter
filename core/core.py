@@ -44,6 +44,8 @@ declare_state({
     'view3d_hit_local': None, # object-space surface point under the 3D cursor
     'view3d_texel_px': None,  # screen pixels per texel on the hovered face (brush size mapping)
     'view3d_written_size': None,  # Blender brush size last written by the 3D size sync
+    'pen_pressure':   1.0,    # tablet pressure of the last pointer event (1.0 for a mouse)
+    'pen_is_tablet':  False,
 }, persistent=('outline_timer',))
 
 
@@ -418,6 +420,12 @@ class PixelPainterOperator(Operator):
         window = ctx.context.window
         if not (0 <= ev.mouse_x < window.width and 0 <= ev.mouse_y < window.height):
             return self._cursor_lost(ctx)
+        ctx.update_pen(ev)
+
+        # On-screen UI (pen bar) first: it sits anywhere in the editor, also off the image.
+        if MANAGER.dispatch_screen(ctx, ev):
+            ctx.redraw()
+            return {'RUNNING_MODAL'}
 
         # Capturing subtools (color pick, strength) get every event, wherever the cursor is.
         if not MANAGER.is_capturing() and ev.type != 'ESC':
@@ -518,7 +526,9 @@ class PixelPainterOperator(Operator):
 
         # The press that started the operator is not re-delivered to modal():
         # route it now (modifier subtools see Ctrl/Alt/Shift on it).
+        # (The pen bar was not visible before this press, so it does not get it.)
         ev = InputEvent.from_blender(event)
+        ctx.update_pen(ev)
         if ctx.update_cursor(ev) is not None:
             MANAGER.dispatch(ctx, ev)
 

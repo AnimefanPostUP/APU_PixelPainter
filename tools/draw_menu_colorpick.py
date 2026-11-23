@@ -203,3 +203,60 @@ def draw_color_pick_sheet_overlay(state):
     ]}).draw(su)
     gpu.state.blend_set('NONE')
     gpu.state.depth_test_set('LESS_EQUAL')
+
+
+def _lines(shader, points, rgba, width):
+    gpu.state.line_width_set(width)
+    shader.uniform_float("color", rgba)
+    gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": points}).draw(shader)
+
+
+def draw_color_pick_markers(state):
+    """Previous color (small cross on the sheet, tick on the slider) and the
+    saturation slider's grab highlight."""
+    from .subtools import helpers
+
+    rx = state.get('sub_start_region_x')
+    ry = state.get('sub_start_region_y')
+    rect = helpers.sat_bar_rect(state)
+    if rx is None or ry is None or rect is None:
+        return
+
+    su = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+
+    # Slider highlight: grabbed (strong) / under the pointer (faint).
+    x0, y0, x1, y1 = rect
+    if state.get('sub_color_sat_drag') is not None:
+        outline = (1.0, 1.0, 1.0, 0.9)
+    elif state.get('sub_color_sat_hover'):
+        outline = (1.0, 1.0, 1.0, 0.45)
+    else:
+        outline = None
+    if outline is not None:
+        p = 3.0
+        _lines(su, [(x0 - p, y0 - p), (x1 + p, y0 - p), (x1 + p, y0 - p), (x1 + p, y1 + p),
+                    (x1 + p, y1 + p), (x0 - p, y1 + p), (x0 - p, y1 + p), (x0 - p, y0 - p)],
+               outline, 1.5)
+
+    white = (1.0, 1.0, 1.0, 0.55)
+
+    # Previous saturation: a short tick left of the slider.
+    start_s = state.get('sub_color_start_s')
+    if start_s is not None:
+        ty = y0 + start_s * (y1 - y0)
+        _lines(su, [(x0 - 9, ty), (x0 - 3, ty)], white, 2.0)
+
+    # Previous color: a tiny cross on the sheet.
+    start_h = state.get('sub_color_start_h')
+    start_v = state.get('sub_color_start_v')
+    if start_h is not None and start_v is not None:
+        dx, dy = helpers.color_pick_offset(start_h, start_v)
+        cx, cy = rx + dx, ry + dy
+        arm = 4.0
+        _lines(su, [(cx - arm, cy), (cx + arm, cy), (cx, cy - arm), (cx, cy + arm)], white, 1.5)
+
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+    gpu.state.depth_test_set('LESS_EQUAL')

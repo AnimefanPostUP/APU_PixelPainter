@@ -61,6 +61,7 @@ class DrawEnvironment:
     # mode, where it carries the stamp over UV seams.
     expand_stamp: Optional[Callable[..., Tuple[list, list]]] = None
     edge_mode: bool = False   # 3D Viewport, Edge mode
+    modifier: float = 0.5     # tool modifier (button-specific, pen pressure applied)
 
     def expand(self, x, y, pixels, weights=None):
         """Footprint of a stamp at ``(x, y)`` -> ``(pixels, weights)`` lists to write."""
@@ -99,6 +100,7 @@ class ToolBase(ToolFrame):
     usable_as_line_tip: bool = True         # remembered as the Line tool's tip shape
     line_tip_shape: str = 'CIRCLE'          # tip used by Line: 'SQUARE' | 'CIRCLE' | 'FALLOFF'
     respects_pixel_spacing: bool = True     # obey 'Pixel' spacing (skip repeated stamps)
+    uses_pen_pressure: bool = True          # pen pressure scales the enabled channels
     shows_brush_outline: bool = True
 
     # ---- painting hooks (see tools.stroke.StrokeTool) -------------------------

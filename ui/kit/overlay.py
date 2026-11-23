@@ -12,6 +12,11 @@ Interaction rules
 * A click is *press then release on the same widget*. Widgets with
   ``drag_release = True`` (radial items) also accept a release after the
   pointer travelled to them, as Blender's own pie menus do.
+* ``activate_on_press`` widgets activate on the press itself (a flyout
+  opener: keep the pen down, drag onto the flyout entry, release).
+* ``draggable`` widgets capture the pointer from press to release and get
+  ``drag_begin`` / ``drag_update`` / ``drag_end`` (value knobs); ESC /
+  right-click during a drag cancel it.
 * Enter / Numpad-Enter / Space confirm the hot widget.
 * Holding the key that opened the overlay, moving, and releasing it
   confirms the hot widget (after ``theme.hold_release_delay``).
@@ -58,6 +63,7 @@ class Overlay:
         self.pointer_widget = None   # whatever pick() returned (may be a blocker)
         self.hot = None              # interactive widget under the pointer
         self.pressed = None          # widget that received the current LMB press
+        self.dragging = None         # draggable widget capturing the pointer
         self._press_seen = False
         self._last_frame = None
         self.layout()
@@ -126,6 +132,9 @@ class Overlay:
 
         self.update_pointer(event.x, event.y)
 
+        if self.dragging is not None:
+            return self._handle_drag(event)
+
         if event.type == 'MOUSEMOVE':
             return self._unhandled()
 
@@ -134,15 +143,27 @@ class Overlay:
 
         if event.type == 'LEFTMOUSE':
             if event.value == PRESS:
-                self.pressed = self.hot
-                self._press_seen = True
-                return RUNNING if (self.modal or self.hot is not None) else PASS_THROUGH
+                hot = self.hot
+                if hot is not None and hot.draggable:
+                    self.dragging = self.pressed = hot
+                    hot.drag_begin(event.x, event.y)
+                    return RUNNING
+                if self.modal or hot is not None:
+                    self._press_seen = True
+                if hot is not None and hot.activate_on_press:
+                    self.pressed = None
+                    return self.choose(hot)
+                self.pressed = hot
+                return RUNNING if (self.modal or hot is not None) else PASS_THROUGH
             if event.value == RELEASE:
                 pressed, self.pressed = self.pressed, None
+                press_seen = self._press_seen
+                if not self.modal:
+                    self._press_seen = False  # a layer only owns presses that landed on it
                 hot = self.hot
-                if hot is not None and (hot is pressed or (getattr(hot, 'drag_release', False) and self._press_seen)):
+                if hot is not None and (hot is pressed or (getattr(hot, 'drag_release', False) and press_seen)):
                     return self.choose(hot)
-                return RUNNING if (self.modal or pressed is not None) else PASS_THROUGH
+                return RUNNING if (self.modal or pressed is not None or press_seen) else PASS_THROUGH
 
         if event.type in _CONFIRM_KEYS and event.value == PRESS and self.hot is not None:
             return self.choose(self.hot)
@@ -158,6 +179,24 @@ class Overlay:
             return self._consumed()
 
         return self._unhandled()
+
+    def _handle_drag(self, event):
+        """Every event belongs to the dragged widget until release / cancel."""
+        if event.type == 'MOUSEMOVE':
+            self.dragging.drag_update(event.x, event.y)
+        elif event.type == 'LEFTMOUSE' and event.value == RELEASE:
+            self.end_drag(event.x, event.y)
+        elif event.type in _CANCEL_KEYS and event.value == PRESS:
+            self.end_drag(cancelled=True)
+        return RUNNING
+
+    def end_drag(self, x=None, y=None, cancelled=False):
+        """Finish the running drag (e.g. the host lost the pointer: ``cancelled=True``)."""
+        widget, self.dragging = self.dragging, None
+        self.pressed = None
+        if widget is not None:
+            px, py = self.pointer if x is None else (x, y)
+            widget.drag_end(px, py, cancelled)
 
     def choose(self, widget):
         """Confirm ``widget``: activate now, or after the close animation."""

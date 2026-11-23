@@ -136,6 +136,7 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `widget.py` | `Widget` base, `Row`, `Column`, `Grid`, `DrawContext` |
 | `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `Panel` |
 | `radial.py` | `RadialMenu` (arc or explicit directions, `attach_below`, number keys) |
+| `color_pad.py` | `ColorPad` — compact HSV selector, every part swiped like a touchpad (pure Python layout / input) |
 | `overlay.py` | `Overlay` — interaction controller (pure Python, unit-tested) |
 | `modal.py` | `OverlayOperator` mixin — draw handler, timer, modal wiring |
 | `draw.py`, `icons.py`, `theme.py` | GPU primitives, image icons, colors/metrics/timings |
@@ -164,6 +165,34 @@ Interaction rules (see `overlay.py`): one widget under the pointer at a time;
 click = press + release on the same widget; radial items also accept
 drag-release; Enter/Space confirm; holding the opening key and releasing it
 confirms; ESC/RMB cancel; actions run after the close animation.
+
+## Pen / tablet
+
+* **Pressure** (`tools/pen_pressure.py`): the core stores the pressure of the
+  last pointer event in `STATE['pen_pressure']` (1.0 for a mouse; releases are
+  skipped). `StrokeTool.paint` scales size (by diameter), strength, alpha and
+  modifier for the channels enabled in `pixel_painter_pen_pressure_*`.
+  Tools that commit on release set `uses_pen_pressure = False` (Line).
+  Tools read the modifier from `env.modifier`, not the WindowManager.
+* **Pen bar** (`tools/pen_bar.py` + `ui/pen_bar.py`): a global tool with
+  `screen_space = True`. The core calls `MANAGER.dispatch_screen()` *before*
+  its cursor-over-image gating, so on-screen UI works anywhere in the editor;
+  `dispatch()` then skips screen-space tools. Pens may have no hover and no
+  wheel, so the bar uses only press / drag / release: `DragBubble` knobs
+  (`draggable`), flyout openers (`activate_on_press`) and flyout entries
+  (`drag_release`). The bar sits in the bottom corner. *Color* toggles the
+  `ColorPad` (inside the bar under the color row, stretched to its width): the
+  hue/value sheet and the hue, value and saturation bars all move relative to
+  the swipe (`gain` 0.5), a tap jumps; it commits once, on release. It edits
+  the color the pen paints. With *Preview* on the pad is `live` (commits
+  every step). The color from before (`pen_color_original`) stays marked and
+  shows in the always-visible old / new `ColorBubble` until it is tapped;
+  `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
+  saturation survive grey / black. *Picker* arms `PenEyedropperTool`
+  (`tools/subtools/pen.py`) for the next canvas press; the RMB lock rewrites
+  pen-tip LMB events to RMB for every tool after the bar.
+  The whole bar renders at `BAR_SCALE` x the UI scale x `pen_bar_scale`
+  (persistent, 0.2..2), set by dragging the triangle in its top corner.
 
 ## Undo
 

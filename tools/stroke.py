@@ -3,6 +3,7 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils
+from . import pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
@@ -190,6 +191,9 @@ class StrokeTool(ToolBase):
         spacing = wm.pixel_painter_spacing
         # Apply the button-specific modifier so tools reading wm.pixel_painter_modifier see it.
         wm.pixel_painter_modifier = modifier
+        if self.uses_pen_pressure:
+            radius, strength, alpha_opacity, modifier = pen_pressure.from_settings(wm, state).apply(
+                radius, strength, alpha_opacity, modifier)
         env = DrawEnvironment(
             context=context,
             state=state,
@@ -209,6 +213,7 @@ class StrokeTool(ToolBase):
                 (lambda: self._interpolation_steps_3d(ctx, img, cx, cy)) if ctx.is_3d
                 else (lambda: self._interpolation_steps(state, cx, cy))),
             curve_sampler_factory=settings.get_falloff_curve_sampler,
+            modifier=modifier,
         )
         if ctx.edge_mode:
             env.edge_mode = True

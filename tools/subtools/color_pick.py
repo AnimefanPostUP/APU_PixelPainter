@@ -1,4 +1,9 @@
-"""Color-pick subtool (E): drag to pick hue/value, wheel for saturation."""
+"""Color-pick subtool (E): drag to pick hue/value; saturation via the slider or the wheel.
+
+The saturation slider right of the sheet is grabbed anywhere and swiped like a
+wheel (relative, no jump); a tap without dragging jumps to the tapped spot.
+While the pointer is in the slider's column, hue / value hold still.
+"""
 
 import colorsys
 
@@ -29,6 +34,9 @@ class ColorPickTool(ToolFrame):
         'sub_color_v':        None,
         'sub_color_start_h':  None,
         'sub_color_start_v':  None,
+        'sub_color_start_s':  None,   # previous color (marked on sheet + slider)
+        'sub_color_sat_drag': None,   # {'travel': px} while the slider is held
+        'sub_color_sat_hover': False,
         'sub_color_total_dx': 0.0,
         'sub_color_total_dy': 0.0,
     }
@@ -39,7 +47,8 @@ class ColorPickTool(ToolFrame):
             'SHIFT', on_hold=self._sync_cursor_to_hv, on_release=self._sync_cursor_to_hv))
 
         self.bind(Shortcut('MOUSEMOVE', None), self._on_mouse_move)
-        self.bind(Shortcut('LEFTMOUSE'), self._confirm)
+        self.bind(Shortcut('LEFTMOUSE'), self._on_press)
+        self.bind(Shortcut('LEFTMOUSE', 'RELEASE'), self._on_release)
         self.bind(Shortcut(('RIGHTMOUSE', 'ESC')), self._cancel)
         self.bind(Shortcut('WHEELUPMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, +1))
         self.bind(Shortcut('WHEELDOWNMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, -1))
@@ -68,15 +77,20 @@ class ColorPickTool(ToolFrame):
         state['sub_orig_color_secondary'] = sec_rgb
         state['sub_color_start_h'] = state['sub_color_h']
         state['sub_color_start_v'] = state['sub_color_v']
+        state['sub_color_start_s'] = state['sub_color_s']
+        state['sub_color_sat_drag'] = None
+        state['sub_color_sat_hover'] = False
 
+        # Center the picker at the cursor and move the mouse onto the current color's spot.
         helpers.set_sub_start_to_event(state, event)
-        # Move the mouse onto the current color's spot in the picker.
         helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'], warp=True)
         state['sub_fake_cursor_x'] = state.get('sub_last_x')
         state['sub_fake_cursor_y'] = state.get('sub_last_y')
         ctx.redraw()
 
     def on_deactivate(self, ctx):
+        ctx.state['sub_color_sat_drag'] = None
+        ctx.state['sub_color_sat_hover'] = False
         if ctx.state.get('sub_mode') == self.mode_name:
             ctx.state['sub_mode'] = None
         ctx.redraw()
@@ -89,6 +103,27 @@ class ColorPickTool(ToolFrame):
 
     def _confirm(self, ctx, event):
         self.deactivate(ctx)
+
+    def _on_press(self, ctx, event):
+        x, y = event.mouse_region_x, event.mouse_region_y
+        if helpers.over_sat_bar(ctx.state, x, y):
+            ctx.state['sub_color_sat_drag'] = {'travel': 0.0}
+            self._track_pointer(ctx.state, x, y)
+            ctx.redraw()
+            return
+        self._confirm(ctx, event)
+
+    def _on_release(self, ctx, event):
+        state = ctx.state
+        drag = state.get('sub_color_sat_drag')
+        if drag is None:
+            return False  # not ours (the picker applies on press)
+        state['sub_color_sat_drag'] = None
+        if drag['travel'] < helpers.SAT_TAP_TRAVEL:  # a tap: jump to the spot
+            state['sub_color_s'] = helpers.sat_at(state, event.mouse_region_y)
+            self._write_color(ctx)
+        state['sub_color_sat_hover'] = helpers.over_sat_bar(state, event.mouse_region_x, event.mouse_region_y)
+        ctx.redraw()
 
     def _cancel(self, ctx, event):
         state, settings = ctx.state, ctx.settings
@@ -105,12 +140,39 @@ class ColorPickTool(ToolFrame):
         else:
             ctx.settings.set_brush_rgb(ctx.context, *rgb)
 
+    def _track_pointer(self, state, x, y):
+        """Follow the real pointer without changing hue / value (keeps the
+        position -> hue/value mapping consistent for when it moves on)."""
+        state['sub_last_x'], state['sub_last_y'] = x, y
+        state['sub_color_total_dx'] = x - state['sub_start_region_x']
+        state['sub_color_total_dy'] = y - state['sub_start_region_y']
+        state['sub_fake_cursor_x'], state['sub_fake_cursor_y'] = x, y
+
     def _on_mouse_move(self, ctx, event):
         state = ctx.state
-        dx = event.mouse_region_x - state['sub_last_x']
-        dy = event.mouse_region_y - state['sub_last_y']
-        state['sub_last_x'] = event.mouse_region_x
-        state['sub_last_y'] = event.mouse_region_y
+        x, y = event.mouse_region_x, event.mouse_region_y
+        dx = x - state['sub_last_x']
+        dy = y - state['sub_last_y']
+
+        drag = state.get('sub_color_sat_drag')
+        if drag is not None:  # swiping the slider: relative, like a wheel
+            drag['travel'] += abs(dx) + abs(dy)
+            scale = 1.0 / _COLOR_PICK_SHIFT_FACTOR if self.precision.is_active else 1.0
+            sat = (state.get('sub_color_s') or 0.0) + dy * scale / helpers.COLOR_PICK_V_DIV
+            state['sub_color_s'] = max(0.0, min(1.0, sat))
+            self._write_color(ctx)
+            self._track_pointer(state, x, y)
+            ctx.redraw()
+            return
+
+        state['sub_color_sat_hover'] = helpers.over_sat_bar(state, x, y)
+        if helpers.in_sat_column(state, x):  # on the way to / on the slider
+            self._track_pointer(state, x, y)
+            ctx.redraw()
+            return
+
+        state['sub_last_x'] = x
+        state['sub_last_y'] = y
 
         sensitivity = _COLOR_PICK_SHIFT_FACTOR if self.precision.is_active else 1.0
         state['sub_color_total_dx'] += dx / sensitivity
@@ -157,6 +219,7 @@ class ColorPickTool(ToolFrame):
         state['sub_color_v'] = v_new
         state['sub_color_start_h'] = state['sub_color_h']
         state['sub_color_start_v'] = state['sub_color_v']
+        state['sub_color_start_s'] = state['sub_color_s']
         helpers.warp_cursor_to_color_pick_hv(state, context, state['sub_color_h'], state['sub_color_v'], warp=True)
         state['sub_fake_cursor_x'] = state.get('sub_last_x')
         state['sub_fake_cursor_y'] = state.get('sub_last_y')

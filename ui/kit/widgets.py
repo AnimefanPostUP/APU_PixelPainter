@@ -1,4 +1,4 @@
-"""Ready-made widgets: Label, Button, BubbleButton, RoundButton, Panel."""
+"""Ready-made widgets: Label, Button, BubbleButton, RoundButton, DragBubble, Panel."""
 
 import math
 
@@ -6,7 +6,7 @@ from . import anim
 from . import draw
 from .geometry import Rect, point_on_circle_toward, point_on_rect_toward
 from .theme import mix, with_alpha
-from .widget import Widget
+from .widget import Widget, _resolve
 
 
 class Label(Widget):
@@ -35,12 +35,13 @@ class Button(Widget):
 
     interactive = True
 
-    def __init__(self, label="", *, icon=None, icons=None, size=(46.0, 46.0), **kwargs):
+    def __init__(self, label="", *, icon=None, icons=None, size=(46.0, 46.0), icon_only=False, **kwargs):
         super().__init__(**kwargs)
         self.label = label
         self.icon = icon
         self.icons = icons
         self.size = size
+        self.icon_only = icon_only   # small buttons: centered icon, label only if the icon is missing
         self._visual = None
 
     def measure(self, theme):
@@ -80,10 +81,13 @@ class Button(Widget):
         draw.rect(rect, with_alpha(fill, alpha))
         draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(1.5))
 
-        icon_size = max(1.0, min(w, h) * 0.62)
+        icon_size = max(1.0, min(w, h) * (0.72 if self.icon_only else 0.62))
         icon_drawn = False
         if self.icons is not None and self.icon:
-            icon_drawn = self.icons.draw(self.icon, cx, cy + icon_size * 0.2, icon_size, icon_alpha * alpha)
+            icon_y = cy if self.icon_only else cy + icon_size * 0.2
+            icon_drawn = self.icons.draw(self.icon, cx, icon_y, icon_size, icon_alpha * alpha)
+        if icon_drawn and self.icon_only:
+            return
         label_y = cy - h * 0.22 if icon_drawn else cy
         label_alpha = max(0.72, icon_alpha) * alpha
         draw.text_centered(self.label, cx, label_y, theme.px(theme.font_size_small) * scale,
@@ -214,6 +218,98 @@ class RoundButton(Widget):
         draw.circle(cx, cy, radius, with_alpha(fill, alpha))
         draw.circle_outline(cx, cy, radius, with_alpha(border, alpha), width=theme.px(1.0))
         draw.text_centered(self.label, cx, cy, theme.px(self.font_size), with_alpha(theme.text, alpha), theme.font_id)
+
+
+class DragBubble(Widget):
+    """Round knob that edits a value by press-and-drag (no hover needed: pen friendly).
+
+    The press calls ``on_drag_begin()``, every move ``on_drag(dx, dy)`` with
+    the pointer offset (screen px) from the press point, the release
+    ``on_drag_end(cancelled)``. ``value_text`` (str or zero-arg callable) is
+    drawn under the label, ``fraction`` (0..1, or callable) as a ring.
+    """
+
+    interactive = True
+    draggable = True
+
+    def __init__(self, label="", *, value_text=None, fraction=None, radius=22.0,
+                 font_size=10.0, value_font_size=None, on_drag_begin=None, on_drag=None,
+                 on_drag_end=None, **kwargs):
+        super().__init__(**kwargs)
+        self.label = label
+        self.value_text = value_text
+        self.fraction = fraction
+        self.radius = radius
+        self.font_size = font_size
+        self.value_font_size = value_font_size
+        self.on_drag_begin = on_drag_begin
+        self.on_drag = on_drag
+        self.on_drag_end = on_drag_end
+        self.drag_origin = None
+
+    def measure(self, theme):
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        return math.hypot(x - self.rect.cx, y - self.rect.cy) <= self.rect.width * 0.5
+
+    def anchor_point(self, tx, ty):
+        r = self.rect.width * 0.5
+        return point_on_circle_toward(self.rect.cx, self.rect.cy, r, tx, ty), (self.rect.cx, self.rect.cy)
+
+    # ---- drag --------------------------------------------------------------
+
+    def drag_begin(self, x, y):
+        self.drag_origin = (x, y)
+        if self.on_drag_begin is not None:
+            self.on_drag_begin()
+
+    def drag_update(self, x, y):
+        if self.drag_origin is None or self.on_drag is None:
+            return
+        self.on_drag(x - self.drag_origin[0], y - self.drag_origin[1])
+
+    def drag_end(self, x, y, cancelled=False):
+        self.drag_origin = None
+        if self.on_drag_end is not None:
+            self.on_drag_end(cancelled)
+
+    # ---- drawing -----------------------------------------------------------
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        radius = self.rect.width * 0.5 * dc.reveal_scale(0.6)
+        if radius <= 1.0:
+            return
+        active = 1.0 if self.drag_origin is not None else anim.ease_in_out(self.hover_t)
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        fill = mix(theme.surface, theme.surface_pressed, active)
+        border = mix(theme.border, theme.accent, active)
+        draw.circle(cx, cy, radius, with_alpha(fill, alpha))
+        draw.circle_outline(cx, cy, radius, with_alpha(border, alpha), width=theme.px(1.0))
+
+        fraction = _resolve(self.fraction, None)
+        if fraction is not None:
+            fraction = max(0.0, min(1.0, float(fraction)))
+            ring = radius - theme.px(3.0)
+            draw.arc(cx, cy, ring, 0.0, math.tau, with_alpha(theme.surface_dark, alpha), width=theme.px(2.5))
+            if fraction > 0.0:
+                # Clockwise from 12 o'clock.
+                draw.arc(cx, cy, ring, math.pi * 0.5, math.pi * 0.5 - math.tau * fraction,
+                         with_alpha(theme.accent, alpha), width=theme.px(2.5))
+
+        label_size = theme.px(self.font_size)
+        value = _resolve(self.value_text, "")
+        text = with_alpha(theme.text, alpha)
+        if value:
+            value_size = theme.px(self.value_font_size or self.font_size * 1.3)
+            draw.text_centered(self.label, cx, cy + radius * 0.3, label_size,
+                               with_alpha(theme.text_muted, alpha), theme.font_id)
+            draw.text_centered(str(value), cx, cy - radius * 0.15, value_size, text, theme.font_id)
+        else:
+            draw.text_centered(self.label, cx, cy, label_size, text, theme.font_id)
 
 
 class Panel(Widget):

@@ -691,6 +691,7 @@ def draw_sub_mode_overlay(context, state):
             s = state.get('sub_color_s') or 0.0
             v = state.get('sub_color_v') or 0.0
             draw_menu_colorpick.draw_color_pick_axes(rx, ry, h, s, v, 0.0)
+            draw_menu_colorpick.draw_color_pick_markers(state)
 
     _draw_sub_mode_cursor_dot(context, state)
     if sub in {'COLOR_PICK', 'STRENGTH'}:
@@ -747,7 +748,7 @@ def draw_sub_mode_overlay(context, state):
                 r, g, b = (brush.color if brush else (0, 0, 0))[:3]
             h, s, v = colorsys.rgb_to_hsv(r, g, b)
             line1 = f"Target {target}   H {h:.3f}   S {s:.3f}   V {v:.3f}"
-            line2 = "Mouse X Hue   Mouse Y Value   Scroll Sat   E toggle target   LMB apply   RMB cancel"
+            line2 = "Mouse X Hue   Mouse Y Value   Sat: drag / tap the bar or scroll   E toggle target   LMB apply   RMB cancel"
         else:
             return
     except Exception:

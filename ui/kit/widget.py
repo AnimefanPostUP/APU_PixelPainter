@@ -76,6 +76,9 @@ class Widget:
     interactive = False      # can be hot / pressed / clicked
     blocks_pointer = False   # claims the pointer without being clickable
     drag_release = False     # releasing over it confirms even if pressed elsewhere
+    draggable = False        # a press starts a drag: drag_begin / drag_update / drag_end
+    activate_on_press = False  # activates on press instead of press+release (e.g. opens a
+                               # flyout the pointer can then be dragged into)
 
     def __init__(self, *, key=None, on_click=None, selected=None, enabled=True,
                  visible=True, keep_open=False):
@@ -179,6 +182,15 @@ class Widget:
         if self.on_click is not None:
             self.on_click()
 
+    def drag_begin(self, x, y):
+        """``draggable`` widgets: the press that starts a drag."""
+
+    def drag_update(self, x, y):
+        """``draggable`` widgets: pointer moved while dragging (anywhere on screen)."""
+
+    def drag_end(self, x, y, cancelled=False):
+        """``draggable`` widgets: release (or cancel) ending the drag."""
+
     def on_key(self, event, ui):
         """Keyboard hook; return True when consumed. Children get it first."""
         for child in self.children:
@@ -223,7 +235,11 @@ class _Container(Widget):
 
 
 class Row(_Container):
-    """Lays children out left-to-right, vertically centered."""
+    """Lays children out left-to-right, vertically centered (``align='top'``: top-aligned)."""
+
+    def __init__(self, children=(), *, gap=8.0, align='center', **kwargs):
+        super().__init__(children, gap=gap, **kwargs)
+        self.align = align
 
     def measure(self, theme):
         sizes = [c.measure(theme) for c in self._visible_children()]
@@ -240,7 +256,8 @@ class Row(_Container):
         total = sum(w for w, _ in sizes) + gap * max(0, len(sizes) - 1)
         x = rect.cx - total * 0.5
         for child, (w, h) in zip(children, sizes):
-            child.arrange(Rect.from_size(x, rect.cy - h * 0.5, w, h), theme)
+            y0 = rect.y1 - h if self.align == 'top' else rect.cy - h * 0.5
+            child.arrange(Rect.from_size(x, y0, w, h), theme)
             x += w + gap
 
 

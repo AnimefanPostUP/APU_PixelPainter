@@ -86,6 +86,41 @@ def circle_outline(cx, cy, radius, color, width=1.5, segments=48):
     gpu.state.line_width_set(1.0)
 
 
+def arc(cx, cy, radius, a0, a1, color, width=1.5, segments=48):
+    """Circular arc from angle ``a0`` to ``a1`` (radians, counter-clockwise positive)."""
+    steps = max(2, int(segments * abs(a1 - a0) / math.tau) + 1)
+    verts = [
+        (cx + math.cos(a0 + (a1 - a0) * i / steps) * radius,
+         cy + math.sin(a0 + (a1 - a0) * i / steps) * radius)
+        for i in range(steps + 1)
+    ]
+    polyline(verts, color, width)
+
+
+def shaded_tris(verts, colors):
+    """Triangles with per-vertex colors (gradients): 3 verts / colors per triangle."""
+    shader = gpu.shader.from_builtin('SMOOTH_COLOR')
+    batch_for_shader(shader, 'TRIS', {'pos': verts, 'color': colors}).draw(shader)
+
+
+def gradient_quad(r, c00, c10, c11, c01):
+    """Rectangle ``r`` with corner colors (bottom-left, bottom-right, top-right, top-left)."""
+    a, b, c, d = (r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)
+    shaded_tris([a, b, c, a, c, d], [c00, c10, c11, c00, c11, c01])
+
+
+def sector(cx, cy, radius, a0, a1, color, segments=24):
+    """Filled pie slice from angle ``a0`` to ``a1`` (radians, counter-clockwise from +x)."""
+    verts = []
+    for i in range(segments):
+        t0 = a0 + (a1 - a0) * i / segments
+        t1 = a0 + (a1 - a0) * (i + 1) / segments
+        verts += [(cx, cy),
+                  (cx + math.cos(t0) * radius, cy + math.sin(t0) * radius),
+                  (cx + math.cos(t1) * radius, cy + math.sin(t1) * radius)]
+    _draw('TRIS', verts, color)
+
+
 def triangle(p0, p1, p2, color):
     _draw('TRIS', [p0, p1, p2], color)
 

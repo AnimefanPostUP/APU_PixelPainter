@@ -77,11 +77,13 @@ class InputEvent:
     __slots__ = (
         'type', 'value', 'shift', 'ctrl', 'alt',
         'mouse_x', 'mouse_y', 'mouse_region_x', 'mouse_region_y',
+        'pressure', 'is_tablet',
         'raw', 'consumed',
     )
 
     def __init__(self, type, value='NOTHING', *, shift=False, ctrl=False, alt=False,
-                 mouse_x=0, mouse_y=0, mouse_region_x=0, mouse_region_y=0, raw=None):
+                 mouse_x=0, mouse_y=0, mouse_region_x=0, mouse_region_y=0,
+                 pressure=1.0, is_tablet=False, raw=None):
         self.type = type
         self.value = value
         self.shift = bool(shift)
@@ -91,6 +93,8 @@ class InputEvent:
         self.mouse_y = mouse_y
         self.mouse_region_x = mouse_region_x
         self.mouse_region_y = mouse_region_y
+        self.pressure = float(pressure)   # tablet pen pressure 0..1 (1.0 for a mouse)
+        self.is_tablet = bool(is_tablet)
         self.raw = raw
         self.consumed = False
 
@@ -101,6 +105,8 @@ class InputEvent:
             shift=event.shift, ctrl=event.ctrl, alt=event.alt,
             mouse_x=event.mouse_x, mouse_y=event.mouse_y,
             mouse_region_x=event.mouse_region_x, mouse_region_y=event.mouse_region_y,
+            pressure=getattr(event, 'pressure', 1.0),
+            is_tablet=getattr(event, 'is_tablet', False),
             raw=event,
         )
 
@@ -181,7 +187,9 @@ class ToolFrame:
     # ---- behaviour flags (class defaults, override per class) ---------------
     priority: int = 0               # manager iteration order for root tools (higher first)
     is_global: bool = False         # active for the whole session, not only when selected
-    exclusive: bool = False         # while active as subtool, the parent gets no events
+    screen_space: bool = False      # global on-screen UI: gets events before the core's
+                                    # cursor-over-image gating (ToolManager.dispatch_screen)
+    exclusive: bool = False        # while active as subtool, the parent gets no events
     captures_input: bool = False    # while active, the core skips its cursor/bounds gating
     consume_trigger: bool = True    # consume the event that activated this subtool
     triggers: Sequence[Shortcut] = ()  # shortcuts that activate this tool as a subtool
@@ -525,10 +533,27 @@ class ToolManager:
 
     # ---- routing ---------------------------------------------------------------
 
+    def dispatch_screen(self, ctx, event) -> bool:
+        """Offer ``event`` to the active ``screen_space`` root tools (on-screen UI).
+
+        The host calls this before deciding whether the cursor is over the
+        image, so on-screen UI also works over parts of the editor outside
+        it. :meth:`dispatch` skips these tools: each sees an event once.
+        """
+        self.sync(ctx)
+        for tool in self.root_tools():
+            if tool.screen_space:
+                tool.dispatch(ctx, event)
+                if event.consumed:
+                    break
+        return event.consumed
+
     def dispatch(self, ctx, event) -> bool:
         """Offer ``event`` to every active root tool until one consumes it."""
         self.sync(ctx)
         for tool in self.root_tools():
+            if tool.screen_space:
+                continue  # offered in dispatch_screen()
             tool.dispatch(ctx, event)
             if event.consumed:
                 break

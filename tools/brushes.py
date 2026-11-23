@@ -126,6 +126,9 @@ class LineBrushTool(BrushTool):
     defaults = SettingDefaults(size=False, modifier=False, strength=False, alpha=False)
     usable_as_line_tip = False
     respects_pixel_spacing = False
+    # The line is committed on release, when a lifting pen reports almost no
+    # pressure: pressure would make every line thin.
+    uses_pen_pressure = False
 
     state_defaults = {
         **BrushTool.state_defaults,
