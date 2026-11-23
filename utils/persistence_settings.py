@@ -8,7 +8,6 @@ import bpy
 from bpy.app.handlers import persistent
 
 
-_TOOLS = ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']
 _LOADING = False
 _STARTUP_LOAD_ATTEMPTS = 0
 _MAX_STARTUP_LOAD_ATTEMPTS = 20
@@ -52,46 +51,8 @@ def _legacy_settings_file_path():
 
 def _persisted_keys():
     """Return all WindowManager property names that should be persisted."""
-    keys = [
-        'pixel_painter_mode',
-        'pixel_painter_radius',
-        'pixel_painter_spacing',
-        'pixel_painter_modifier',
-        'pixel_painter_global_modifier',
-        'pixel_painter_global_strength',
-        'pixel_painter_global_alpha',
-        'pixel_painter_global_strength_rmb',
-        'pixel_painter_global_modifier_rmb',
-        'pixel_painter_global_alpha_rmb',
-        'pixel_painter_circle_falloff',
-        'pixel_painter_spray_falloff',
-        'pixel_painter_spray_strength',
-        'pixel_painter_protect_transparent',
-        'pixel_painter_grid_opacity',
-        'pixel_painter_blend_favorites',
-        'pixel_painter_ui_show_settings',
-        'pixel_painter_ui_show_blend_mode',
-        'pixel_painter_ui_show_shortcuts',
-        'pixel_painter_ui_show_tool_settings',
-    ]
-    for tool in _TOOLS:
-        keys.extend([
-            f'pixel_painter_{tool}_size',
-            f'pixel_painter_{tool}_use_global_size',
-            f'pixel_painter_{tool}_modifier',
-            f'pixel_painter_{tool}_use_global_modifier',
-            f'pixel_painter_{tool}_strength',
-            f'pixel_painter_{tool}_use_global_strength',
-            f'pixel_painter_{tool}_alpha',
-            f'pixel_painter_{tool}_use_global_alpha',
-            f'pixel_painter_{tool}_strength_rmb',
-            f'pixel_painter_{tool}_use_global_strength_rmb',
-            f'pixel_painter_{tool}_modifier_rmb',
-            f'pixel_painter_{tool}_use_global_modifier_rmb',
-            f'pixel_painter_{tool}_alpha_rmb',
-            f'pixel_painter_{tool}_use_global_alpha_rmb',
-        ])
-    return keys
+    from .. import properties  # late import: properties imports this module
+    return properties.persisted_property_names()
 
 
 def _json_safe(value):

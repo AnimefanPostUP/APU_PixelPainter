@@ -219,10 +219,12 @@ def draw_brush_outline(context, state):
     if not space or not space.image:
         return
 
+    from .catalog import TOOLS
+
     wm = context.window_manager
     radius = blender_utils.get_brush_image_radius(context)
-    mode = wm.pixel_painter_mode
-    if mode == 'SELECT':
+    tool = TOOLS.get(wm.pixel_painter_mode)
+    if not tool.shows_brush_outline:
         return
     w, h = space.image.size
     if w == 0 or h == 0:
@@ -236,28 +238,10 @@ def draw_brush_outline(context, state):
         return
     v2d = region.view2d
 
-    outline_color = {
-        'SPRAY': (1.0, 0.55, 0.0, 0.9),
-        'SMEAR': (1.0, 0.3, 0.7, 0.9),   # pink
-        'SMOOTH': (0.7, 0.3, 1.0, 0.9),
-        'ERASER': (1.0, 0.1, 0.1, 0.9),  # red
-    }.get(mode, (1.0, 1.0, 0.0, 0.9))
+    outline_color = tool.outline_color
 
     def _outline_pixels_at(ix, iy):
-        if mode == 'LINE':
-            shape = state.get('last_shape') or 'SQUARE'
-            tip_shape = 'CIRCLE' if shape == 'SPRAY' else shape
-            if state['start_position'] is None:
-                return math_utils.get_pixels_in_shape(ix, iy, radius, tip_shape)
-
-            x0, y0 = state['start_position']
-            pixels = set()
-            for (lx, ly) in math_utils.get_line_pixels(x0, y0, ix, iy):
-                pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, tip_shape)
-            return pixels
-
-        outline_mode = 'CIRCLE' if mode == 'SPRAY' else mode
-        return math_utils.get_pixels_in_shape(ix, iy, radius, outline_mode)
+        return tool.outline_pixels(state, ix, iy, radius)
 
     if state.get('outline_immediate'):
         base_ix = round(cx)

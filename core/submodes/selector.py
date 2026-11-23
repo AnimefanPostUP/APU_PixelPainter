@@ -37,10 +37,6 @@ def _selection_clear_pending_preview(state):
     state['selection_pending_action'] = None
     state['selection_pending_region'] = None
     state['selection_pending_source_box'] = None
-    state['selection_apply_button_bounds'] = None
-    state['selection_cancel_button_bounds'] = None
-    state['selection_copy_button_bounds'] = None
-    state['selection_stencil_button_bounds'] = None
     _selection_dispose_preview(state)
 
 
@@ -159,13 +155,6 @@ def _selection_update_paste_preview_position(context, state, cx, cy):
     if context.area:
         context.area.tag_redraw()
     return True
-
-
-def _selection_button_hit(px, py, bounds):
-    if bounds is None or px is None or py is None:
-        return False
-    x0, y0, x1, y1 = bounds
-    return x0 <= px <= x1 and y0 <= py <= y1
 
 
 def _selection_center_box_for_region(region, cx, cy):

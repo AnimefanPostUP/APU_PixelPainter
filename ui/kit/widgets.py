@@ -1,0 +1,280 @@
+"""Ready-made widgets: Label, Button, BubbleButton, RoundButton, Panel."""
+
+import math
+
+from . import anim
+from . import draw
+from .geometry import Rect, point_on_circle_toward, point_on_rect_toward
+from .theme import mix, with_alpha
+from .widget import Widget
+
+
+class Label(Widget):
+    def __init__(self, text, *, size=None, color=None, **kwargs):
+        super().__init__(**kwargs)
+        self.text = text
+        self.size = size
+        self.color = color
+
+    def _font_size(self, theme):
+        return theme.px(self.size if self.size is not None else theme.font_size)
+
+    def measure(self, theme):
+        w, h = draw.text_size(self.text, self._font_size(theme), theme.font_id)
+        return w, max(h, self._font_size(theme))
+
+    def draw_self(self, dc):
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        alpha = dc.alpha * (1.0 - dc.closing)
+        color = with_alpha(self.color or dc.theme.text, 0.95 * alpha)
+        draw.text_centered(self.text, cx, cy, self._font_size(dc.theme), color, dc.theme.font_id)
+
+
+class Button(Widget):
+    """Square/rectangular button with an optional icon above a label."""
+
+    interactive = True
+
+    def __init__(self, label="", *, icon=None, icons=None, size=(46.0, 46.0), **kwargs):
+        super().__init__(**kwargs)
+        self.label = label
+        self.icon = icon
+        self.icons = icons
+        self.size = size
+        self._visual = None
+
+    def measure(self, theme):
+        return theme.px(self.size[0]), theme.px(self.size[1])
+
+    def anchor_point(self, tx, ty):
+        return None  # connectors attach to the containing panel
+
+    def _colors(self, dc):
+        theme = dc.theme
+        pressed = dc.pressed is self and dc.hot is self
+        if self.is_selected:
+            return theme.accent, theme.accent_light, 1.0
+        normal_fill, normal_border, normal_icon = theme.surface, theme.border, 0.78
+        hover_fill = theme.surface_pressed if pressed else theme.surface_hover
+        t = anim.ease_in_out(self.hover_t)
+        fill = mix(normal_fill, hover_fill, t)
+        border = mix(normal_border, theme.accent, t)
+        return fill, border, normal_icon + (0.95 - normal_icon) * t
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        scale = dc.reveal_scale(0.6)
+        if dc.closing > 0.0 and dc.chosen is not self:
+            scale *= 1.0 - dc.closing
+        w = self.rect.width * scale
+        h = self.rect.height * scale
+        if w <= 1.0 or h <= 1.0:
+            self._visual = None
+            return
+        rect = Rect.from_center(cx, cy, w, h)
+        self._visual = rect
+
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        fill, border, icon_alpha = self._colors(dc)
+        draw.rect(rect, with_alpha(fill, alpha))
+        draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(1.5))
+
+        icon_size = max(1.0, min(w, h) * 0.62)
+        icon_drawn = False
+        if self.icons is not None and self.icon:
+            icon_drawn = self.icons.draw(self.icon, cx, cy + icon_size * 0.2, icon_size, icon_alpha * alpha)
+        label_y = cy - h * 0.22 if icon_drawn else cy
+        label_alpha = max(0.72, icon_alpha) * alpha
+        draw.text_centered(self.label, cx, label_y, theme.px(theme.font_size_small) * scale,
+                           with_alpha(theme.text, label_alpha), theme.font_id)
+
+
+class BubbleButton(Widget):
+    """Round button with icon + label; the classic radial-menu item."""
+
+    interactive = True
+    drag_release = True
+
+    def __init__(self, label="", *, icon=None, icons=None, radius=28.0,
+                 hover_grow=0.18, chosen_grow=1.6, **kwargs):
+        super().__init__(**kwargs)
+        self.label = label
+        self.icon = icon
+        self.icons = icons
+        self.radius = radius
+        self.hover_grow = hover_grow
+        self.chosen_grow = chosen_grow
+        self._visual = None   # (cx, cy, radius) as last drawn
+
+    def measure(self, theme):
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        r = self.rect.width * 0.5
+        return math.hypot(x - self.rect.cx, y - self.rect.cy) <= r
+
+    def anchor_point(self, tx, ty):
+        if self._visual is not None:
+            cx, cy, r = self._visual
+        else:
+            cx, cy, r = self.rect.cx, self.rect.cy, self.rect.width * 0.5
+        return point_on_circle_toward(cx, cy, r, tx, ty), (cx, cy)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        item_r = self.rect.width * 0.5
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        base_scale = dc.reveal_scale(0.5)
+        te = anim.ease_in_out(self.hover_t)
+        radius = item_r * base_scale * (1.0 + self.hover_grow * te)
+        content_scale = base_scale
+
+        if dc.closing > 0.0:
+            if dc.chosen is self:
+                target = item_r * self.chosen_grow
+                radius += (target - radius) * dc.closing
+                content_scale = max(base_scale, radius / max(item_r, 1e-4))
+            else:
+                radius *= 1.0 - dc.closing
+                content_scale *= 1.0 - dc.closing
+        if radius <= 0.25 or dc.alpha <= 0.01:
+            self._visual = None
+            return
+        self._visual = (cx, cy, radius)
+
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        selected = self.is_selected
+        if te > 0.0:
+            draw.circle(cx, cy, radius + theme.px(1.9), with_alpha(theme.accent, te * alpha))
+            if selected:
+                fill = with_alpha(theme.accent, 0.95)
+            else:
+                g = 0.30 + 0.025 * te
+                fill = (g, g, g, 0.94 + 0.02 * te)
+        elif selected:
+            fill = with_alpha(theme.accent, 0.95)
+        else:
+            fill = theme.surface
+        draw.circle(cx, cy, radius, with_alpha(fill, alpha))
+
+        # Content scales with the bubble's *unscaled* metrics so it stays crisp.
+        s = content_scale * theme.scale
+        y_off = self.radius * 0.2 * s
+        icon_drawn = False
+        if self.icons is not None and self.icon:
+            icon_drawn = self.icons.draw(self.icon, cx, cy + y_off, max(1.0, 32.0 * s), alpha)
+        text_color = with_alpha(theme.text, alpha)
+        if icon_drawn:
+            draw.text_centered(self.label, cx, cy - 20.0 * s + y_off, max(1.0, 10.0 * s), text_color, theme.font_id)
+        else:
+            draw.text_centered(self.label, cx, cy + y_off, max(1.0, 12.0 * s), text_color, theme.font_id)
+
+
+class RoundButton(Widget):
+    """Compact circular text button with an outline ring.
+
+    Colors default to the theme; pass ``fill/border/active_fill/active_border``
+    to restyle a single button. "Active" = hovered or selected.
+    """
+
+    interactive = True
+
+    def __init__(self, label="", *, radius=17.0, font_size=10.0, fill=None, border=None,
+                 active_fill=None, active_border=None, **kwargs):
+        super().__init__(**kwargs)
+        self.label = label
+        self.radius = radius
+        self.font_size = font_size
+        self.fill = fill
+        self.border = border
+        self.active_fill = active_fill
+        self.active_border = active_border
+
+    def measure(self, theme):
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        return math.hypot(x - self.rect.cx, y - self.rect.cy) <= self.rect.width * 0.5
+
+    def anchor_point(self, tx, ty):
+        r = self.rect.width * 0.5
+        return point_on_circle_toward(self.rect.cx, self.rect.cy, r, tx, ty), (self.rect.cx, self.rect.cy)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        radius = self.rect.width * 0.5 * dc.reveal_scale(0.6)
+        active = 1.0 if self.is_selected else anim.ease_in_out(self.hover_t)
+        fill = mix(self.fill or theme.surface, self.active_fill or theme.accent, active)
+        border = mix(self.border or theme.border, self.active_border or theme.accent_light, active)
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        draw.circle(cx, cy, radius, with_alpha(fill, alpha))
+        draw.circle_outline(cx, cy, radius, with_alpha(border, alpha), width=theme.px(1.0))
+        draw.text_centered(self.label, cx, cy, theme.px(self.font_size), with_alpha(theme.text, alpha), theme.font_id)
+
+
+class Panel(Widget):
+    """Titled container around a single content widget.
+
+    Panels block the pointer: hovering empty panel space does not fall
+    through to widgets behind (e.g. radial sectors), and connectors attach
+    to the panel's outline.
+    """
+
+    blocks_pointer = True
+
+    def __init__(self, content=None, *, title=None, padding=10.0, title_gap=6.0,
+                 min_width=0.0, background=True, **kwargs):
+        super().__init__(**kwargs)
+        self.title = title
+        self.padding = padding
+        self.title_gap = title_gap
+        self.min_width = min_width
+        self.background = background
+        self.content = self.add(content) if content is not None else None
+        self._title_y = 0.0
+        self._visual = None
+
+    def _title_height(self, theme):
+        if not self.title:
+            return 0.0
+        return theme.px(theme.font_size) + theme.px(self.title_gap)
+
+    def measure(self, theme):
+        cw, ch = self.content.measure(theme) if self.content is not None else (0.0, 0.0)
+        tw = draw.text_size(self.title, theme.px(theme.font_size), theme.font_id)[0] if self.title else 0.0
+        pad = theme.px(self.padding)
+        width = max(cw, tw, theme.px(self.min_width)) + pad * 2.0
+        height = ch + self._title_height(theme) + pad * 2.0
+        return width, height
+
+    def arrange(self, rect, theme):
+        self.rect = rect
+        pad = theme.px(self.padding)
+        top = rect.y1 - pad
+        if self.title:
+            self._title_y = top - theme.px(theme.font_size) * 0.5
+            top -= self._title_height(theme)
+        if self.content is not None:
+            cw, ch = self.content.measure(theme)
+            self.content.arrange(Rect.from_size(rect.cx - cw * 0.5, top - ch, cw, ch), theme)
+
+    def anchor_point(self, tx, ty):
+        rect = self._visual or self.rect
+        return point_on_rect_toward(rect, tx, ty), (rect.cx, rect.cy)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
+        k = dc.opened * (1.0 - dc.closing)
+        self._visual = Rect.from_center(cx, cy, self.rect.width * k, self.rect.height * k)
+        alpha = dc.alpha * (1.0 - dc.closing)
+        if self.background and k > 0.01:
+            draw.rect(self._visual, with_alpha(theme.panel_background, alpha))
+        if self.title:
+            tx, ty = dc.reveal(self.rect.cx, self._title_y)
+            draw.text_centered(self.title, tx, ty, theme.px(theme.font_size),
+                               with_alpha(theme.text, 0.95 * alpha), theme.font_id)

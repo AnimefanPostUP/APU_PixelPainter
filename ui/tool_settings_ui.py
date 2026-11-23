@@ -1,5 +1,9 @@
 """Tool settings panel drawing for Pixel Painter."""
 
+from ..tools import blend_modes
+from ..tools import falloff
+from ..tools.catalog import TOOLS
+
 
 def _draw_foldout(layout, data, prop_name, label):
     row = layout.row(align=True)
@@ -12,20 +16,14 @@ def _draw_foldout(layout, data, prop_name, label):
 
 
 def _draw_tool_mode_buttons(layout, current_mode):
-    layout.label(text="Tool Modes")
-    split = layout.split(factor=0.5, align=True)
-    left = split.column(align=True)
-    right = split.column(align=True)
-
-    left.operator("image.pixel_painter_set_mode", text="Circle (2)", depress=(current_mode == 'CIRCLE')).mode = 'CIRCLE'
-    left.operator("image.pixel_painter_set_mode", text="Spray (3)", depress=(current_mode == 'SPRAY')).mode = 'SPRAY'
-    left.operator("image.pixel_painter_set_mode", text="Smear (6)", depress=(current_mode == 'SMEAR')).mode = 'SMEAR'
-    left.operator("image.pixel_painter_set_mode", text="Select (8)", depress=(current_mode == 'SELECT')).mode = 'SELECT'
-
-    right.operator("image.pixel_painter_set_mode", text="Square (1)", depress=(current_mode == 'SQUARE')).mode = 'SQUARE'
-    right.operator("image.pixel_painter_set_mode", text="Smooth (5)", depress=(current_mode == 'SMOOTH')).mode = 'SMOOTH'
-    right.operator("image.pixel_painter_set_mode", text="Line (4)", depress=(current_mode == 'LINE')).mode = 'LINE'
-    right.operator("image.pixel_painter_set_mode", text="Eraser (7)", depress=(current_mode == 'ERASER')).mode = 'ERASER'
+    layout.label(text="Tool Modes  (Shift + number)")
+    grid = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    for index, tool in enumerate(TOOLS, start=1):
+        grid.operator(
+            "image.pixel_painter_set_mode",
+            text=f"{tool.label} ({index})",
+            depress=(current_mode == tool.tool_id),
+        ).mode = tool.tool_id
 
 
 def _draw_spacing_buttons(layout, wm):
@@ -36,17 +34,28 @@ def _draw_spacing_buttons(layout, wm):
 
 
 def _draw_falloff_preset_buttons(layout, wm, prop_name):
-    split = layout.split(factor=0.5, align=True)
-    left = split.column(align=True)
-    right = split.column(align=True)
+    grid = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    for preset in falloff.FALLOFF_PRESETS:
+        grid.prop_enum(wm, prop_name, preset.id, text=preset.label)
 
-    left.prop_enum(wm, prop_name, 'CONSTANT', text="Constant")
-    left.prop_enum(wm, prop_name, 'SMOOTH', text="Smooth")
-    left.prop_enum(wm, prop_name, 'SHARPEN', text="Sharpen")
 
-    right.prop_enum(wm, prop_name, 'LINEAR', text="Linear")
-    right.prop_enum(wm, prop_name, 'SPHERE', text="Sphere")
-    right.prop_enum(wm, prop_name, 'CUSTOM', text="Custom")
+def draw_falloff_section(layout, context, prop_name):
+    """Falloff presets, or the custom curve editor when 'Custom' is selected."""
+    wm = context.window_manager
+    brush = context.tool_settings.image_paint.brush
+    use_custom = getattr(wm, prop_name) == 'CUSTOM'
+    if use_custom and brush and hasattr(brush, "curve"):
+        layout.template_curve_mapping(brush, "curve", brush=True)
+        lock_presets = getattr(brush, "curve_preset", "") == 'CUSTOM'
+        col = layout.column(align=True)
+        col.label(text="Curve Preset")
+        col.enabled = not lock_presets
+        _draw_falloff_preset_buttons(col, wm, prop_name)
+        if lock_presets:
+            layout.label(text="Curve edited: presets locked", icon='LOCKED')
+    else:
+        layout.label(text="Falloff")
+        _draw_falloff_preset_buttons(layout, wm, prop_name)
 
 
 def _draw_favorites_selector(layout, wm):
@@ -54,24 +63,17 @@ def _draw_favorites_selector(layout, wm):
     content.use_property_split = False
     content.use_property_decorate = False
     split = content.split(factor=0.5, align=True)
-    left = split.column(align=True)
-    right = split.column(align=True)
-
-    left.label(text="Common")
-    for blend in ('MIX', 'ADD', 'MUL', 'DARKEN', 'LIGHTEN', 'COLOR'):
-        left.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-    left.separator()
-    left.label(text="Contrast")
-    for blend in ('SCREEN', 'OVERLAY', 'SOFTLIGHT', 'HARDLIGHT'):
-        left.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-
-    right.label(text="Math")
-    for blend in ('SUB', 'DIFFERENCE', 'EXCLUSION', 'COLORDODGE', 'COLORBURN'):
-        right.prop_enum(wm, "pixel_painter_blend_favorites", blend)
-    right.separator()
-    right.label(text="HSL/HSV")
-    for blend in ('HUE', 'SATURATION', 'VALUE', 'LUMINOSITY'):
-        right.prop_enum(wm, "pixel_painter_blend_favorites", blend)
+    columns = (
+        (split.column(align=True), (("Common", 'COMMON'), ("Contrast", 'CONTRAST'))),
+        (split.column(align=True), (("Math", 'MATH'), ("HSL/HSV", 'HSL'))),
+    )
+    for col, groups in columns:
+        for i, (title, group) in enumerate(groups):
+            if i:
+                col.separator()
+            col.label(text=title)
+            for blend in blend_modes.ids(group):
+                col.prop_enum(wm, "pixel_painter_blend_favorites", blend)
 
 
 def _draw_shortcuts(layout):
@@ -124,26 +126,6 @@ def draw_tool_settings(context, layout):
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
 
-    if mode == 'SELECT':
-        info = layout.box().column(align=True)
-        info.label(text="Selection Tool")
-        info.label(text="Drag LMB to create or move a box")
-        info.label(text="Drag sides or corners to resize")
-        info.label(text="Ctrl+C copies, Ctrl+V pastes at cursor")
-        if getattr(wm, "pixel_painter_selection_has_pending", False) and not getattr(wm, "pixel_painter_selection_stencil_mode", False):
-            row = info.row(align=True)
-            row.operator("image.pixel_painter_selection_copy", text="Copy", icon='COPYDOWN')
-            info.label(text="Copy the selection before pasting it elsewhere")
-        info.separator()
-        row = info.row(align=True)
-        row.operator(
-            "image.pixel_painter_selection_stencil_toggle",
-            text="Stencil Mode",
-            depress=getattr(wm, "pixel_painter_selection_stencil_mode", False),
-            icon='SNAP_FACE_CENTER',
-        )
-        info.label(text="Stencil mode stamps on LMB and follows the mouse")
-
     row = layout.row(align=True)
     if ups.use_unified_color:
         row.prop(ups, "color", text="")
@@ -152,35 +134,11 @@ def draw_tool_settings(context, layout):
         row.prop(brush, "color", text="")
         row.prop(brush, "secondary_color", text="")
 
-    if mode == 'CIRCLE':
-        use_custom = (wm.pixel_painter_circle_falloff == 'CUSTOM')
-        if use_custom and brush and hasattr(brush, "curve"):
-            layout.template_curve_mapping(brush, "curve", brush=True)
-            lock_presets = getattr(brush, "curve_preset", "") == 'CUSTOM'
-            col = layout.column(align=True)
-            col.label(text="Curve Preset")
-            col.enabled = not lock_presets
-            _draw_falloff_preset_buttons(col, wm, "pixel_painter_circle_falloff")
-            if lock_presets:
-                layout.label(text="Curve edited: presets locked", icon='LOCKED')
-        else:
-            layout.label(text="Falloff")
-            _draw_falloff_preset_buttons(layout, wm, "pixel_painter_circle_falloff")
-    elif mode == 'SPRAY':
-        layout.prop(wm, "pixel_painter_spray_strength", text="Density", slider=True)
-        use_custom = (wm.pixel_painter_spray_falloff == 'CUSTOM')
-        if use_custom and brush and hasattr(brush, "curve"):
-            layout.template_curve_mapping(brush, "curve", brush=True)
-            lock_presets = getattr(brush, "curve_preset", "") == 'CUSTOM'
-            col = layout.column(align=True)
-            col.label(text="Curve Preset")
-            col.enabled = not lock_presets
-            _draw_falloff_preset_buttons(col, wm, "pixel_painter_spray_falloff")
-            if lock_presets:
-                layout.label(text="Curve edited: presets locked", icon='LOCKED')
-        else:
-            layout.label(text="Falloff")
-            _draw_falloff_preset_buttons(layout, wm, "pixel_painter_spray_falloff")
+    # Tool-specific controls come from the tool itself.
+    tool = TOOLS.get(mode)
+    tool.draw_settings(context, layout)
+    if tool.falloff_property:
+        draw_falloff_section(layout, context, tool.falloff_property)
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):

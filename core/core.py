@@ -1,51 +1,3 @@
-import bpy
-import numpy as np
-from bpy.types import Operator
-
-
-class PixelPainterResetToolSettingsOperator(Operator):
-    """Reset all Pixel Painter tool settings to their default values."""
-    bl_idname = "image.pixel_painter_reset_tool_settings"
-    bl_label = "Reset Tool Settings"
-
-    def execute(self, context):
-        wm = context.window_manager
-        # Reset global settings
-        wm.pixel_painter_radius = 1
-        wm.pixel_painter_mode = 'SQUARE'
-        wm.pixel_painter_circle_falloff = 'CONSTANT'
-        wm.pixel_painter_spray_falloff = 'LINEAR'
-        wm.pixel_painter_spray_strength = 0.1
-        wm.pixel_painter_spacing = 'FREE'
-        wm.pixel_painter_modifier = 0.5
-        wm.pixel_painter_global_modifier = 0.5
-        wm.pixel_painter_global_strength = 1.0
-        wm.pixel_painter_global_alpha = 1.0
-        wm.pixel_painter_global_strength_rmb = 1.0
-        wm.pixel_painter_global_modifier_rmb = 0.5
-        wm.pixel_painter_global_alpha_rmb = 1.0
-        wm.pixel_painter_temp_smooth_force_global = False
-        wm.pixel_painter_protect_transparent = False
-        wm.pixel_painter_grid_opacity = 0.0
-        # Reset per-tool settings
-        for tool in ['SQUARE', 'CIRCLE', 'SPRAY', 'LINE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT']:
-            setattr(wm, f'pixel_painter_{tool}_size', 1)
-            setattr(wm, f'pixel_painter_{tool}_use_global_size', tool in ['SQUARE', 'CIRCLE', 'SMOOTH', 'SMEAR', 'ERASER', 'SELECT'])
-            setattr(wm, f'pixel_painter_{tool}_modifier', 0.5)
-            setattr(wm, f'pixel_painter_{tool}_use_global_modifier', tool in ['SMOOTH', 'SMEAR', 'SELECT'])
-            setattr(wm, f'pixel_painter_{tool}_strength', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_strength', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
-            setattr(wm, f'pixel_painter_{tool}_alpha', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_alpha', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
-            # RMB
-            setattr(wm, f'pixel_painter_{tool}_strength_rmb', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_strength_rmb', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
-            setattr(wm, f'pixel_painter_{tool}_modifier_rmb', 0.5)
-            setattr(wm, f'pixel_painter_{tool}_use_global_modifier_rmb', tool in ['SMOOTH', 'SMEAR', 'SELECT'])
-            setattr(wm, f'pixel_painter_{tool}_alpha_rmb', 1.0)
-            setattr(wm, f'pixel_painter_{tool}_use_global_alpha_rmb', tool in ['SQUARE', 'CIRCLE', 'SELECT'])
-        self.report({'INFO'}, "Pixel Painter tool settings reset to defaults.")
-        return {'FINISHED'}
 """Operator classes and module-level tool state."""
 import colorsys
 import time
@@ -64,10 +16,13 @@ from ..tools import draw_gridoverlay
 from ..tools import overlays
 from ..tools import overlays_selectmode
 from .core_runtime import PixelPainterCoreRuntime
-from ..ui.menu_controllers import MenuControllerRegistry
 from ..utils.settings_service import PixelPainterSettingsService
-from ..tools.tool_logic import DrawEnvironment, ToolRegistry
+from ..tools import blend_modes
+from ..tools.base import DrawEnvironment
+from ..tools.catalog import TOOLS, falloff_property_for
 from .variables import build_default_variable_store
+from ..ui.kit.events import number_key_index
+from ..ui.selection_actions import SelectionActions
 from .submodes.controller import SubModeController
 from .submodes import selector
 
@@ -160,12 +115,6 @@ _state = {
     'selection_preview_image_name': None,
     'selection_preview_texture': None,
     'selection_overlay_region': None,
-    'selection_apply_button_bounds': None,
-    'selection_cancel_button_bounds': None,
-    'selection_copy_button_bounds': None,
-    'selection_stencil_button_bounds': None,
-    'selection_mouse_region_x': None,
-    'selection_mouse_region_y': None,
     'selection_stencil_mode': False,
     'selection_stencil_region': None,
     'selection_stencil_restore_box': None,
@@ -185,10 +134,9 @@ _redo_stack = []
 _MAX_UNDO   = 100
 
 _core_runtime = PixelPainterCoreRuntime()
-_tool_registry = ToolRegistry()
-_menu_registry = MenuControllerRegistry()
 _settings = PixelPainterSettingsService()
 _sub_mode_controller = SubModeController(_state, _core_runtime, _settings)
+_selection_actions = SelectionActions(_state)
 _variable_store = build_default_variable_store()
 
 
@@ -243,11 +191,7 @@ def _sync_runtime_tool_info(context):
 
     radius = _settings.get_tool_size(context, mode, force_global=force_global)
     modifier = _settings.get_tool_modifier(context, mode, force_global=force_global)
-    falloff = (
-        context.window_manager.pixel_painter_spray_falloff
-        if mode == 'SPRAY'
-        else context.window_manager.pixel_painter_circle_falloff
-    )
+    falloff = getattr(context.window_manager, falloff_property_for(mode))
 
     _variable_store.set_global('size', radius)
     _variable_store.set_global('modifier', modifier)
@@ -341,7 +285,7 @@ def _register_draw_handler(space, context):
         grid_opacity = ctx.window_manager.pixel_painter_grid_opacity
         draw_gridoverlay.draw_pixel_grid_overlay(ctx, grid_opacity)
         draw_functions.draw_test_tool_shape_outline(ctx, _state)
-        overlays_selectmode.draw_selection_overlay(ctx, _state)
+        overlays_selectmode.draw_selection_overlay(ctx, _state, _selection_actions)
         draw_functions.draw_test_corner_label(ctx)
         draw_functions.draw_sub_mode_overlay(ctx, _state)
         draw_functions.draw_ctrl_pick_overlay(ctx, _state)
@@ -412,10 +356,6 @@ def _selection_update_paste_preview_position(context, cx, cy):
     return selector._selection_update_paste_preview_position(context, _state, cx, cy)
 
 
-def _selection_button_hit(px, py, bounds):
-    return selector._selection_button_hit(px, py, bounds)
-
-
 def _selection_center_box_for_region(region, cx, cy):
     return selector._selection_center_box_for_region(region, cx, cy)
 
@@ -442,28 +382,34 @@ def _selection_apply_stencil(context):
 # Operators
 # ---------------------------------------------------------------------------
 
+def set_active_tool(context, tool_id):
+    """Switch the active tool (used by the operator, pies and shortcuts)."""
+    context.window_manager.pixel_painter_mode = tool_id
+    if TOOLS.get(tool_id).usable_as_line_tip:
+        _state['last_shape'] = tool_id
+    apply_active_tool_settings(context)
+
+
 class PixelPainterSetModeOperator(Operator):
     bl_idname = "image.pixel_painter_set_mode"
     bl_label  = "Set Pixel Painter Mode"
 
-    mode: bpy.props.EnumProperty(
-        items=[
-            ('SQUARE',  "Square",  ""),
-            ('CIRCLE',  "Circle",  ""),
-            ('SPRAY',   "Spray",   ""),
-            ('LINE',    "Line",    ""),
-            ('SMOOTH',  "Smooth",  ""),
-            ('SMEAR',   "Smear",   ""),
-            ('ERASER',  "Eraser",  ""),
-            ('SELECT',  "Select",  ""),
-        ]
-    )
+    mode: bpy.props.EnumProperty(items=TOOLS.enum_items())
 
     def execute(self, context):
-        context.window_manager.pixel_painter_mode = self.mode
-        if self.mode not in {'LINE', 'SELECT'}:
-            _state['last_shape'] = self.mode
-        apply_active_tool_settings(context)
+        set_active_tool(context, self.mode)
+        return {'FINISHED'}
+
+
+class PixelPainterResetToolSettingsOperator(Operator):
+    """Reset all Pixel Painter tool settings to their default values."""
+    bl_idname = "image.pixel_painter_reset_tool_settings"
+    bl_label = "Reset Tool Settings"
+
+    def execute(self, context):
+        from .. import properties
+        properties.reset_tool_settings(context.window_manager)
+        self.report({'INFO'}, "Pixel Painter tool settings reset to defaults.")
         return {'FINISHED'}
 
 
@@ -471,29 +417,7 @@ class PixelPainterSetBlendOperator(Operator):
     bl_idname = "image.pixel_painter_set_blend"
     bl_label  = "Set Pixel Painter Blend Mode"
 
-    blend: bpy.props.EnumProperty(
-        items=[
-            ('MIX',     "Normal",   "Normal blend"),
-            ('ADD',     "Add",      "Add blend"),
-            ('MUL',     "Multiply", "Multiply blend"),
-            ('DARKEN',  "Darken",   "Darken blend"),
-            ('LIGHTEN', "Lighten",  "Lighten blend"),
-            ('SCREEN',    "Screen",     "Screen blend"),
-            ('OVERLAY',   "Overlay",    "Overlay blend"),
-            ('SOFTLIGHT', "Soft Light", "Soft Light blend"),
-            ('HARDLIGHT', "Hard Light", "Hard Light blend"),
-            ('SUB',       "Subtract",   "Subtract blend"),
-            ('DIFFERENCE', "Difference", "Difference blend"),
-            ('EXCLUSION',  "Exclusion",  "Exclusion blend"),
-            ('COLORDODGE', "Color Dodge", "Color Dodge blend"),
-            ('COLORBURN',  "Color Burn",  "Color Burn blend"),
-            ('HUE',        "Hue",         "Hue blend"),
-            ('SATURATION', "Saturation",  "Saturation blend"),
-            ('VALUE',      "Value",       "Value blend"),
-            ('LUMINOSITY', "Luminosity",  "Luminosity blend"),
-            ('COLOR',   "Color",    "Color blend"),
-        ]
-    )
+    blend: bpy.props.EnumProperty(items=blend_modes.enum_items())
 
     def execute(self, context):
         try:
@@ -1021,13 +945,6 @@ class PixelPainterOperator(Operator):
         context.area.tag_redraw()
         return {'RUNNING_MODAL'}
 
-    @staticmethod
-    def _selection_hit_button(px, py, bounds):
-        if bounds is None or px is None or py is None:
-            return False
-        x0, y0, x1, y1 = bounds
-        return x0 <= px <= x1 and y0 <= py <= y1
-
     # ---- drawing -------------------------------------------------------------
 
     def draw_pixels(self, context):
@@ -1085,17 +1002,20 @@ class PixelPainterOperator(Operator):
             curve_sampler_factory=_settings.get_falloff_curve_sampler,
         )
 
-        # Prepare stroke caches on the first draw call of a stroke.
-        _tool_registry.ensure_stroke_state(env)
+        tool = TOOLS.get(mode)
+
+        # First draw call of a stroke: let the tool prepare its caches.
+        if _state['last_paint_cx'] is None:
+            tool.on_stroke_begin(env)
 
         # Pixel spacing: skip if the cursor hasn't moved to a new pixel
         if (spacing == 'PIXEL'
-            and mode not in {'LINE'}
+            and tool.respects_pixel_spacing
             and cx == _state['last_paint_cx']
             and cy == _state['last_paint_cy']):
             return
 
-        _tool_registry.draw_active_tool(env)
+        tool.on_draw(env)
 
     # ---- lifecycle -----------------------------------------------------------
 
@@ -1193,6 +1113,7 @@ class PixelPainterOperator(Operator):
         _state['selection_stencil_mode'] = False
         _state['selection_stencil_region'] = None
         _state['selection_stencil_restore_box'] = None
+        _selection_actions.hide()
         _sub_mode_controller.clear_processes()
         _core_runtime.clear_all_processes()
         self.button_down       = False
@@ -1278,8 +1199,7 @@ class PixelPainterOperator(Operator):
         if event.type != 'MOUSEMOVE':
             return None
 
-        _state['selection_mouse_region_x'] = event.mouse_region_x
-        _state['selection_mouse_region_y'] = event.mouse_region_y
+        _selection_actions.handle(event)  # hover tracking; never consumes moves
         bounds = self.get_image_screen_bounds(context)
         if bounds:
             xmin, ymin, xmax, ymax = bounds[:4]
@@ -1325,17 +1245,9 @@ class PixelPainterOperator(Operator):
             return None
 
         if modal_ctx.mode == 'SELECT':
-            _state['selection_mouse_region_x'] = event.mouse_region_x
-            _state['selection_mouse_region_y'] = event.mouse_region_y
-            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_copy_button_bounds')):
-                return self._selection_copy_and_preview(context)
-            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_stencil_button_bounds')):
-                if not _selection_toggle_stencil_mode(context):
-                    self.report({'WARNING'}, "No selection source available for stencil mode")
-                    return {'CANCELLED'}
-                return {'RUNNING_MODAL'}
-            if _selection_button_hit(event.mouse_region_x, event.mouse_region_y, _state.get('selection_apply_button_bounds')):
-                _selection_apply_pending(context)
+            # On-canvas Copy / Apply / Stencil buttons get the click first.
+            if _selection_actions.handle(event):
+                context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
             if _state.get('selection_stencil_mode'):
                 _selection_apply_stencil(context)
@@ -1395,6 +1307,9 @@ class PixelPainterOperator(Operator):
             return None
 
         if modal_ctx.mode == 'SELECT':
+            if _selection_actions.handle(event):  # completes a button click
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
             return self._selection_finish_left_release(context)
         if self.button_down and modal_ctx.mode == 'LINE':
             if _state['start_position'] is not None:
@@ -1417,8 +1332,6 @@ class PixelPainterOperator(Operator):
             return None
 
         if modal_ctx.mode == 'SELECT':
-            _state['selection_mouse_region_x'] = event.mouse_region_x
-            _state['selection_mouse_region_y'] = event.mouse_region_y
             if _state.get('selection_stencil_mode'):
                 if _selection_toggle_stencil_mode(context):
                     self.button_right_down = False
@@ -1592,23 +1505,11 @@ class PixelPainterOperator(Operator):
     def _handle_shift_number_shortcuts(self, context, event):
         if not (event.value == 'PRESS' and event.shift and not _sub_mode_controller.has_active_mode()):
             return None
-        if event.type not in {'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT'}:
+        index = number_key_index(event.type, include_numpad=False)
+        tool = TOOLS.by_shortcut_index(index) if index is not None else None
+        if tool is None:
             return None
-
-        number_map = {
-            'ONE': 'CIRCLE',
-            'TWO': 'SQUARE',
-            'THREE': 'SPRAY',
-            'FOUR': 'SMOOTH',
-            'FIVE': 'SMEAR',
-            'SIX': 'LINE',
-            'SEVEN': 'ERASER',
-            'EIGHT': 'SELECT',
-        }
-        tool_id = number_map.get(event.type)
-        if tool_id is None:
-            return None
-        context.window_manager.pixel_painter_mode = tool_id
+        context.window_manager.pixel_painter_mode = tool.tool_id
         apply_active_tool_settings(context)
         context.area.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -1822,3 +1723,17 @@ class PixelPainterOperator(Operator):
         _state['outline_timer'] = context.window_manager.event_timer_add(1.0 / 60.0, window=context.window)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+
+classes = (
+    PixelPainterSetModeOperator,
+    PixelPainterSetBlendOperator,
+    PixelPainterUndoOperator,
+    PixelPainterRedoOperator,
+    PixelPainterSelectionCopyOperator,
+    PixelPainterSelectionApplyOperator,
+    PixelPainterSelectionCancelOperator,
+    PixelPainterSelectionStencilToggleOperator,
+    PixelPainterResetToolSettingsOperator,
+    PixelPainterOperator,
+)

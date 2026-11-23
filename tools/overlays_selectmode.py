@@ -6,7 +6,6 @@ from ..tools import draw_functions
 from ..tools import draw_blending
 from ..utils import blender_utils
 from .overlays import (
-    _draw_text_centered,
     _draw_precision_pixel_guide,
     _gpu_draw_circle_outline,
     _gpu_draw_fill,
@@ -113,40 +112,6 @@ def _selection_stencil_box_from_state(state):
     return (left, bottom, left + region_w - 1, bottom + region_h - 1)
 
 
-def _selection_button_layout(rect, state):
-    left, bottom, right, top = rect
-    gap = 10
-    button_size = 34
-    copy_w = button_size
-    paste_w = button_size
-    stencil_w = button_size
-    center_x = (left + right) * 0.5
-    row1_total = copy_w + gap + paste_w + gap + stencil_w
-    row1_start = center_x - row1_total * 0.5
-    y1 = bottom - 26
-    y0 = y1 - button_size
-
-    copy_rect = (row1_start, y0, row1_start + copy_w, y1)
-    paste_rect = (row1_start + copy_w + gap, y0, row1_start + copy_w + gap + paste_w, y1)
-    stencil_rect = (row1_start + copy_w + gap + paste_w + gap, y0, row1_start + row1_total, y1)
-    return copy_rect, paste_rect, stencil_rect
-
-
-def _draw_selection_button(rect, label, active=False):
-    x0, y0, x1, y1 = rect
-    cx = (x0 + x1) * 0.5
-    cy = (y0 + y1) * 0.5
-    radius = min(x1 - x0, y1 - y0) * 0.5
-    fill = (0.16, 0.16, 0.16, 0.9)
-    border = (0.75, 0.75, 0.75, 0.95)
-    if active:
-        fill = (0.22, 0.35, 0.22, 0.95)
-        border = (0.4, 1.0, 0.5, 0.95)
-    _gpu_draw_filled_circle(cx, cy, radius, fill)
-    _gpu_draw_circle_outline(cx, cy, radius, border)
-    _draw_text_centered(label, cx, cy, size=10, alpha=1.0)
-
-
 def _draw_selection_cross_cursor(context, state):
     if state.get('sub_mode') or state.get('ctrl_pick_active'):
         return
@@ -189,54 +154,39 @@ def _draw_selection_cross_cursor(context, state):
     ], (1.0, 1.0, 1.0, 0.95))
 
 
-def draw_selection_overlay(context, state):
+def _selection_overlay_rect(context, state):
+    """Screen rect of the selection box, or None when nothing should be drawn."""
     if context.window_manager.pixel_painter_mode != 'SELECT':
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
+        return None
     if state.get('sub_mode') or state.get('ctrl_pick_active'):
-        return
-
+        return None
     box = state.get('selection_box')
     if not box:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
-
+        return None
     space, img = blender_utils.get_space_img(context)
     if not space or not img:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
+        return None
     width, height = img.size
-    if width == 0 or height == 0:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
-
-    area = context.area
-    if not area:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
-    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    if width == 0 or height == 0 or not context.area:
+        return None
+    region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
     if not region:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
-        return
+        return None
+    return _selection_screen_rect(region.view2d, width, height, box, state)
 
-    rect = _selection_screen_rect(region.view2d, width, height, box, state)
+
+def draw_selection_overlay(context, state, actions=None):
+    """Draw the selection box, handles, preview and the action buttons layer.
+
+    ``actions`` is the :class:`ui.selection_actions.SelectionActions` layer; it
+    is hidden whenever there is no visible selection so it cannot be clicked.
+    """
+    rect = _selection_overlay_rect(context, state)
     if rect is None:
-        state['selection_apply_button_bounds'] = None
-        state['selection_copy_button_bounds'] = None
-        state['selection_stencil_button_bounds'] = None
+        if actions is not None:
+            actions.hide()
         return
+    box = state.get('selection_box')
 
     left, bottom, right, top = rect
     preview_region = None
@@ -292,24 +242,9 @@ def draw_selection_overlay(context, state):
             active_state = True
         _draw_arrow_handle(hx, hy, handle_id, color, highlighted=highlighted, active=active_state)
 
-    copy_rect, paste_rect, stencil_rect = _selection_button_layout(rect, state)
-    state['selection_copy_button_bounds'] = copy_rect
-    state['selection_apply_button_bounds'] = paste_rect
-    state['selection_stencil_button_bounds'] = stencil_rect
-    mouse_x = state.get('selection_mouse_region_x')
-    mouse_y = state.get('selection_mouse_region_y')
-    copy_hover = mouse_x is not None and mouse_y is not None and (
-        copy_rect[0] <= mouse_x <= copy_rect[2] and copy_rect[1] <= mouse_y <= copy_rect[3]
-    )
-    paste_hover = paste_rect is not None and mouse_x is not None and mouse_y is not None and (
-        paste_rect[0] <= mouse_x <= paste_rect[2] and paste_rect[1] <= mouse_y <= paste_rect[3]
-    )
-    stencil_hover = mouse_x is not None and mouse_y is not None and (
-        stencil_rect[0] <= mouse_x <= stencil_rect[2] and stencil_rect[1] <= mouse_y <= stencil_rect[3]
-    )
-    _draw_selection_button(copy_rect, 'Copy', active=copy_hover)
-    _draw_selection_button(paste_rect, 'Apply', active=paste_hover or (state.get('selection_pending_action') is not None))
-    _draw_selection_button(stencil_rect, 'Stencil', active=stencil_hover or state.get('selection_stencil_mode'))
+    if actions is not None:
+        actions.show_below(rect)
+        actions.draw()
     _draw_precision_pixel_guide(context, state.get('current_cx'), state.get('current_cy'))
 
 
