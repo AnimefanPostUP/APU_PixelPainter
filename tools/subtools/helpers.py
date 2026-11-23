@@ -24,8 +24,12 @@ def warp_cursor_to_sub_start(state, context):
             pass
 
 
-def warp_cursor_to_color_pick_hv(state, context, h, v):
-    """Warp cursor to nearest position that represents HSV relative to center."""
+def warp_cursor_to_color_pick_hv(state, context, h, v, warp=False):
+    """Place the picker cursor at the position that represents ``h``/``v`` relative to center.
+
+    Always updates the tracked (fake) cursor; with ``warp=True`` the OS cursor
+    is moved there as well.
+    """
     h = float(h) % 1.0
     v = max(0.0, min(1.0, float(v)))
     delta_h = h - 0.5
@@ -60,10 +64,11 @@ def warp_cursor_to_color_pick_hv(state, context, h, v):
     except Exception:
         pass
 
-    # try:
-    #     context.window.cursor_warp(target_sx, target_sy)
-    # except Exception:
-    #     pass
+    if warp:
+        try:
+            context.window.cursor_warp(target_sx, target_sy)
+        except Exception:
+            pass
 
     state['sub_last_x'] = target_rx
     state['sub_last_y'] = target_ry

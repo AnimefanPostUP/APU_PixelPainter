@@ -56,7 +56,8 @@ class ColorPickTool(ToolFrame):
         state['sub_color_start_v'] = state['sub_color_v']
 
         helpers.set_sub_start_to_event(state, event)
-        helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'])
+        # Move the mouse onto the current color's spot in the picker.
+        helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'], warp=True)
         state['sub_fake_cursor_x'] = state.get('sub_last_x')
         state['sub_fake_cursor_y'] = state.get('sub_last_y')
         ctx.redraw()
@@ -142,7 +143,7 @@ class ColorPickTool(ToolFrame):
         state['sub_color_v'] = v_new
         state['sub_color_start_h'] = state['sub_color_h']
         state['sub_color_start_v'] = state['sub_color_v']
-        helpers.warp_cursor_to_color_pick_hv(state, context, state['sub_color_h'], state['sub_color_v'])
+        helpers.warp_cursor_to_color_pick_hv(state, context, state['sub_color_h'], state['sub_color_v'], warp=True)
         state['sub_fake_cursor_x'] = state.get('sub_last_x')
         state['sub_fake_cursor_y'] = state.get('sub_last_y')
         ctx.redraw()
