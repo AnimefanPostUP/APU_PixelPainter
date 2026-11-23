@@ -39,7 +39,8 @@ def is_view3d(context):
 # ---------------------------------------------------------------------------
 
 class _MeshCache:
-    __slots__ = ('key', 'bvh', 'tri_verts', 'tri_loops', 'verts', 'uvs', 'density')
+    __slots__ = ('key', 'bvh', 'tri_verts', 'tri_loops', 'verts', 'uvs', 'density',
+                 'tri_uv', 'tri_pos', 'uv_min', 'uv_max', 'uv_sign', 'uv_ok', 'version')
 
     def __init__(self, key, bvh, tri_verts, tri_loops, verts, uvs, density):
         self.key = key
@@ -49,6 +50,22 @@ class _MeshCache:
         self.verts = verts           # (V, 3) local positions
         self.uvs = uvs               # (L, 2) loop UVs
         self.density = density       # (T,) UV units per local unit (sqrt of area ratio)
+        # UV -> surface lookup (outline projection)
+        self.tri_uv = uvs[tri_loops].astype(np.float64)     # (T, 3, 2)
+        self.tri_pos = verts[tri_verts].astype(np.float64)  # (T, 3, 3)
+        self.uv_min = self.tri_uv.min(axis=1)                # (T, 2)
+        self.uv_max = self.tri_uv.max(axis=1)
+        e1 = self.tri_uv[:, 1] - self.tri_uv[:, 0]
+        e2 = self.tri_uv[:, 2] - self.tri_uv[:, 0]
+        cross = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+        self.uv_sign = np.sign(cross)                        # UV winding per triangle
+        self.uv_ok = np.abs(cross) > 1e-14                   # skip degenerate UV triangles
+        global _cache_version
+        _cache_version += 1
+        self.version = _cache_version
+
+
+_cache_version = 0
 
 
 _cache = None
@@ -203,6 +220,16 @@ def ray_hit(context, region_x, region_y):
     return Hit((uv.x, uv.y), int(tri), loc)
 
 
+def cached_mesh():
+    """The current mesh cache without (re)building it (safe in draw callbacks)."""
+    return _cache
+
+
+def hit_tile(hit):
+    """Integer UV tile of a hit (UVs outside 0..1 wrap into the image)."""
+    return int(math.floor(hit.uv[0])), int(math.floor(hit.uv[1]))
+
+
 def hit_to_pixel(hit, w, h):
     """Image pixel for a hit; UVs outside 0..1 wrap (tiling)."""
     u = hit.uv[0] % 1.0
@@ -275,3 +302,94 @@ def pixel_path(context, start_xy, end_xy, image):
                 path.append(cur_px)  # seam: jump without connecting
         prev, prev_px = cur, cur_px
     return path
+
+
+# ---------------------------------------------------------------------------
+# UV -> surface projection (brush outline)
+# ---------------------------------------------------------------------------
+
+MAX_PAIR_CELLS = 4_000_000   # edge x triangle pairs per chunk (memory bound)
+
+
+def project_uv_segments(cache, segments):
+    """Map UV-space line segments onto the mesh surface.
+
+    ``segments`` is an ``(E, 2, 2)`` array of UV segments. Every segment is
+    clipped against each UV triangle it crosses and the clipped pieces are
+    mapped to object space with the triangle's barycentric coordinates, so a
+    segment bends exactly where it crosses a mesh edge (around corners).
+    Overlapping / mirrored UVs yield one copy per triangle.
+
+    Returns ``(K, 2, 3)`` object-space segments.
+    """
+    empty = np.empty((0, 2, 3), dtype=np.float64)
+    if cache is None or len(segments) == 0:
+        return empty
+    seg = np.asarray(segments, dtype=np.float64)
+    p0 = seg[:, 0]
+    d = seg[:, 1] - p0
+
+    lo = seg.reshape(-1, 2).min(axis=0)
+    hi = seg.reshape(-1, 2).max(axis=0)
+    cand = np.nonzero(
+        cache.uv_ok
+        & (cache.uv_max[:, 0] >= lo[0]) & (cache.uv_min[:, 0] <= hi[0])
+        & (cache.uv_max[:, 1] >= lo[1]) & (cache.uv_min[:, 1] <= hi[1])
+    )[0]
+    if len(cand) == 0:
+        return empty
+
+    out = []
+    chunk = max(1, MAX_PAIR_CELLS // max(1, len(seg)))
+    for start in range(0, len(cand), chunk):
+        tris = cand[start:start + chunk]
+        pieces = _clip_segments_to_triangles(cache, p0, d, tris)
+        if pieces is not None:
+            out.append(pieces)
+    return np.concatenate(out) if out else empty
+
+
+def _clip_segments_to_triangles(cache, p0, d, tris):
+    uv = cache.tri_uv[tris]                 # (C, 3, 2)
+    sign = cache.uv_sign[tris][None, :]     # (1, C)
+    n_e, n_c = len(p0), len(tris)
+    tmin = np.zeros((n_e, n_c))
+    tmax = np.ones((n_e, n_c))
+    eps = 1e-12
+    for i in range(3):
+        a = uv[:, i]                        # (C, 2)
+        e = uv[:, (i + 1) % 3] - a          # (C, 2)
+        rel_x = p0[:, None, 0] - a[None, :, 0]
+        rel_y = p0[:, None, 1] - a[None, :, 1]
+        # inside half-plane: sign * cross(e, p - a) >= 0, linear in t
+        n0 = sign * (e[None, :, 0] * rel_y - e[None, :, 1] * rel_x)
+        dn = sign * (e[None, :, 0] * d[:, None, 1] - e[None, :, 1] * d[:, None, 0])
+        with np.errstate(divide='ignore', invalid='ignore'):
+            t = -n0 / dn
+        pos = dn > eps
+        neg = dn < -eps
+        tmin = np.where(pos, np.maximum(tmin, t), tmin)
+        tmax = np.where(neg, np.minimum(tmax, t), tmax)
+        tmax = np.where(~pos & ~neg & (n0 < -eps), -1.0, tmax)  # parallel and outside
+
+    ei, ci = np.nonzero(tmax - tmin > 1e-9)
+    if len(ei) == 0:
+        return None
+    tri = tris[ci]
+    q0 = p0[ei] + d[ei] * tmin[ei, ci][:, None]
+    q1 = p0[ei] + d[ei] * tmax[ei, ci][:, None]
+    return np.stack((_uv_to_local(cache, tri, q0), _uv_to_local(cache, tri, q1)), axis=1)
+
+
+def _uv_to_local(cache, tri, q):
+    """Object-space positions of UV points ``q`` (K, 2) inside triangles ``tri`` (K,)."""
+    uv = cache.tri_uv[tri]
+    pos = cache.tri_pos[tri]
+    v0 = uv[:, 1] - uv[:, 0]
+    v1 = uv[:, 2] - uv[:, 0]
+    v2 = q - uv[:, 0]
+    den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
+    w1 = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
+    w2 = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
+    w0 = 1.0 - w1 - w2
+    return w0[:, None] * pos[:, 0] + w1[:, None] * pos[:, 1] + w2[:, None] * pos[:, 2]

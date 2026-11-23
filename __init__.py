@@ -67,6 +67,7 @@ _MODULES = (
     'core.framework',
     'core.state',
     'core.view3d',
+    'tools.overlays_view3d',
     'core.context',
     'core.history',
     'core.variables',

@@ -43,11 +43,20 @@ class PixelPainterOpenBlendPieOperator(Operator):
     def execute(self, context):
         force_cleanup(context.window_manager)
 
+        # Timers run without a window/area; reopen in the editor the key was pressed in.
+        window, area = context.window, context.area
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+
         def _open():
             try:
-                bpy.ops.wm.call_menu_pie(name=PixelPainterBlendPie.bl_idname)
+                with bpy.context.temp_override(window=window, area=area, region=region):
+                    bpy.ops.wm.call_menu_pie(name=PixelPainterBlendPie.bl_idname)
             except Exception:
-                pass
+                try:
+                    bpy.ops.wm.call_menu_pie(name=PixelPainterBlendPie.bl_idname)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
             return None
 
         bpy.app.timers.register(_open, first_interval=0.01)

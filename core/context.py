@@ -101,7 +101,11 @@ class ToolContext:
             return None
         rx, ry = event.mouse_x - region.x, event.mouse_y - region.y
         if self.is_3d:
-            return view3d.hovered_pixel(self.context, rx, ry, image)
+            hit = view3d.ray_hit(self.context, rx, ry)
+            if hit is None:
+                return None
+            self.state['view3d_uv_tile'] = view3d.hit_tile(hit)
+            return view3d.hit_to_pixel(hit, w, h)
         u, v = region.view2d.region_to_view(rx, ry)
         return int(u * w), int(v * h)
 

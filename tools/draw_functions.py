@@ -824,11 +824,8 @@ def draw_ctrl_pick_overlay(context, state):
     gpu.state.line_width_set(1.0)
 
 
-def draw_view3d_placeholder_cursor(context, state):
-    """Placeholder 3D Viewport cursor: a ring at the mouse (dim when off the mesh).
-
-    TODO(3D): replace with a real brush outline projected onto the surface.
-    """
+def draw_view3d_offmesh_cursor(context, state):
+    """3D Viewport cursor while the mouse is off the mesh: a dim ring."""
     mouse = state.get('mouse_region')
     if mouse is None:
         return
@@ -837,8 +834,9 @@ def draw_view3d_placeholder_cursor(context, state):
         color = TOOLS.get(context.window_manager.pixel_painter_mode).outline_color
     except Exception:
         color = (1.0, 1.0, 0.0, 0.9)
-    on_mesh = state.get('current_cx') is not None
-    rgba = (color[0], color[1], color[2], color[3] if on_mesh else 0.3)
+    if state.get('current_cx') is not None:
+        return  # on the mesh: the surface outline (overlays_view3d) is drawn instead
+    rgba = (color[0], color[1], color[2], 0.3)
     gpu.state.blend_set('ALPHA')
     _draw_circle_outline(mouse[0], mouse[1], 10.0, (0.0, 0.0, 0.0, rgba[3] * 0.8), width=3.0, steps=32)
     _draw_circle_outline(mouse[0], mouse[1], 10.0, rgba, width=1.5, steps=32)
@@ -873,20 +871,24 @@ def draw_test_corner_label(context, text="test"):
 # Draw handler management
 # ---------------------------------------------------------------------------
 
-def register_draw_handler(state, space, context, callback):
-    """Register a POST_PIXEL draw callback and store handles in *state*."""
+def register_draw_handler(state, space, context, callback, view_callback=None):
+    """Register a POST_PIXEL draw callback (and optionally a POST_VIEW one) in *state*."""
     state['draw_handler'] = space.draw_handler_add(callback, (context,), 'WINDOW', 'POST_PIXEL')
+    state['draw_handler_view'] = (
+        space.draw_handler_add(view_callback, (context,), 'WINDOW', 'POST_VIEW')
+        if view_callback is not None else None)
     state['draw_space']   = space
 
 
 def remove_draw_handler(state):
     """Remove the registered draw handler stored in *state*, if any."""
-    handler = state.get('draw_handler')
     space   = state.get('draw_space')
-    if handler is not None and space is not None:
-        try:
-            space.draw_handler_remove(handler, 'WINDOW')
-        except Exception:
-            pass
-    state['draw_handler'] = None
+    for key in ('draw_handler', 'draw_handler_view'):
+        handler = state.get(key)
+        if handler is not None and space is not None:
+            try:
+                space.draw_handler_remove(handler, 'WINDOW')
+            except Exception:
+                pass
+        state[key] = None
     state['draw_space']   = None

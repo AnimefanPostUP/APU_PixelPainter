@@ -21,6 +21,7 @@ from ..tools import draw_functions
 from ..tools import draw_gridoverlay
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
 from . import history, view3d
+from ..tools import overlays_view3d
 from .context import ToolContext, is_shift_smooth_global
 from .framework import InputEvent, ToolManager
 from .state import SETTINGS, STATE, reset_session
@@ -106,12 +107,19 @@ def _undo_clear():
 # Draw handler
 # ---------------------------------------------------------------------------
 
+def _in_session_area(ctx):
+    """Draw handlers are per editor *type*: only draw in the editor the session runs in."""
+    area = getattr(ctx, 'area', None)
+    return area is not None and area.as_pointer() == _state.get('session_area')
+
+
 def _register_draw_handler(space, context):
     def _callback(ctx):
         try:
+            if not _in_session_area(ctx):
+                return
             if view3d.is_view3d(ctx):
-                # TODO(3D): real brush outline on the surface; placeholder for now.
-                draw_functions.draw_view3d_placeholder_cursor(ctx, _state)
+                draw_functions.draw_view3d_offmesh_cursor(ctx, _state)
             else:
                 draw_gridoverlay.draw_pixel_grid_overlay(ctx, ctx.window_manager.pixel_painter_grid_opacity)
                 draw_functions.draw_test_tool_shape_outline(ctx, _state)
@@ -119,7 +127,90 @@ def _register_draw_handler(space, context):
             MANAGER.draw(ToolContext(ctx, MANAGER))
         except Exception:
             traceback.print_exc()
-    draw_functions.register_draw_handler(_state, space, context, _callback)
+    def _view_callback(ctx):
+        try:
+            if _in_session_area(ctx):
+                overlays_view3d.draw_brush_outline_3d(ctx, _state)
+        except Exception:
+            traceback.print_exc()
+
+    draw_functions.register_draw_handler(
+        _state, space, context, _callback,
+        view_callback=_view_callback if space.type == 'VIEW_3D' else None)
+
+
+# Session handover token: a newer session (e.g. started in another editor)
+# replaces the running one; the old modal sees the token change and exits.
+_session_counter = 0
+
+# Built-in brush overlay settings to restore when the session ends. Module
+# level so a session that takes over keeps the original values.
+_brush_overlay_restore = []
+
+
+def _mouse_in_area(area, event):
+    if area is None:
+        return False
+    return (area.x <= event.mouse_x < area.x + area.width
+            and area.y <= event.mouse_y < area.y + area.height)
+
+
+def _end_session():
+    """Stop the running session (state, handlers, timer); not the operator instance."""
+    try:
+        MANAGER.end(ToolContext(bpy.context, MANAGER))  # tools restore temp modes, end strokes
+    except Exception:
+        traceback.print_exc()
+    history.commit_all()
+    try:
+        bpy.context.window_manager.pixel_painter_temp_smooth_force_global = False
+    except Exception:
+        pass
+    _restore_builtin_brush_overlay()
+    timer = _state.get('outline_timer')
+    if timer is not None:
+        try:
+            bpy.context.window_manager.event_timer_remove(timer)
+        except Exception:
+            pass
+        _state['outline_timer'] = None
+    draw_functions.remove_draw_handler(_state)
+    reset_session()
+
+
+def _disable_builtin_brush_overlay(context):
+    if _brush_overlay_restore:
+        return  # already disabled by a session that was taken over
+    try:
+        image_paint = context.tool_settings.image_paint
+    except Exception:
+        image_paint = None
+
+    brush = getattr(image_paint, 'brush', None) if image_paint else None
+    if brush is not None:
+        for attr in ('use_cursor_overlay', 'use_cursor_overlay_override'):
+            if hasattr(brush, attr):
+                try:
+                    _brush_overlay_restore.append((brush, attr, getattr(brush, attr)))
+                    setattr(brush, attr, False)
+                except Exception:
+                    pass
+
+    if image_paint is not None and hasattr(image_paint, 'show_brush'):
+        try:
+            _brush_overlay_restore.append((image_paint, 'show_brush', getattr(image_paint, 'show_brush')))
+            image_paint.show_brush = False
+        except Exception:
+            pass
+
+
+def _restore_builtin_brush_overlay():
+    for owner, attr, value in _brush_overlay_restore:
+        try:
+            setattr(owner, attr, value)
+        except Exception:
+            pass
+    _brush_overlay_restore.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -225,38 +316,6 @@ class PixelPainterOperator(Operator):
         xmin, ymin, xmax, ymax = bounds
         return xmin <= event.mouse_region_x <= xmax and ymin <= event.mouse_region_y <= ymax
 
-    def _disable_builtin_brush_overlay(self, context):
-        self._brush_overlay_restore = []
-        try:
-            image_paint = context.tool_settings.image_paint
-        except Exception:
-            image_paint = None
-
-        brush = getattr(image_paint, 'brush', None) if image_paint else None
-        if brush is not None:
-            for attr in ('use_cursor_overlay', 'use_cursor_overlay_override'):
-                if hasattr(brush, attr):
-                    try:
-                        self._brush_overlay_restore.append((brush, attr, getattr(brush, attr)))
-                        setattr(brush, attr, False)
-                    except Exception:
-                        pass
-
-        if image_paint is not None and hasattr(image_paint, 'show_brush'):
-            try:
-                self._brush_overlay_restore.append((image_paint, 'show_brush', getattr(image_paint, 'show_brush')))
-                image_paint.show_brush = False
-            except Exception:
-                pass
-
-    def _restore_builtin_brush_overlay(self):
-        for owner, attr, value in getattr(self, '_brush_overlay_restore', []):
-            try:
-                setattr(owner, attr, value)
-            except Exception:
-                pass
-        self._brush_overlay_restore = []
-
     def _set_modal_cursor(self, context):
         if getattr(self, '_cursor_is_custom', False):
             return
@@ -279,28 +338,14 @@ class PixelPainterOperator(Operator):
 
     def _cleanup(self):
         try:
-            MANAGER.end(ToolContext(bpy.context, MANAGER))  # tools restore temp modes, end strokes
-        except Exception:
-            traceback.print_exc()
-        history.commit_all()
-        try:
             self._restore_modal_cursor(bpy.context)
         except Exception:
             pass
-        try:
-            bpy.context.window_manager.pixel_painter_temp_smooth_force_global = False
-        except Exception:
-            pass
-        self._restore_builtin_brush_overlay()
-        timer = _state.get('outline_timer')
-        if timer is not None:
-            try:
-                bpy.context.window_manager.event_timer_remove(timer)
-            except Exception:
-                pass
-            _state['outline_timer'] = None
-        draw_functions.remove_draw_handler(_state)
-        reset_session()
+        if self._owns_session():
+            _end_session()
+
+    def _owns_session(self):
+        return bool(_state.get('running')) and getattr(self, '_token', None) == _state.get('session_token')
 
     def _cursor_lost(self, ctx):
         """Cursor left the window/image: abort strokes and forget the hovered pixel."""
@@ -339,6 +384,11 @@ class PixelPainterOperator(Operator):
 
     def modal(self, context, event):
         try:
+            if not self._owns_session():
+                # Replaced by a session in another editor: leave quietly
+                # (the new session owns the state, handlers and cursor).
+                return {'CANCELLED', 'PASS_THROUGH'}
+
             if not _supported_space(context):
                 self._cleanup()
                 return {'CANCELLED'}
@@ -360,6 +410,12 @@ class PixelPainterOperator(Operator):
                     context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
 
+            # The modal keeps the context of the editor it started in. Events
+            # over other editors are not ours: pass them on, so e.g. the 3D
+            # tool's click can start (take over) a session there.
+            if not MANAGER.is_capturing() and not _mouse_in_area(context.area, event):
+                return self._cursor_lost(ToolContext(context, MANAGER))
+
             return self._route(ToolContext(context, MANAGER), event)
         except Exception:
             traceback.print_exc()
@@ -371,9 +427,11 @@ class PixelPainterOperator(Operator):
             return {'CANCELLED'}
 
         # The tool keymap fires on every LMB press; a second modal instance
-        # would reset the state mid-stroke.
+        # in the same editor would reset the state mid-stroke.
         if _state['running']:
-            return {'CANCELLED'}
+            if _state.get('session_area') == context.area.as_pointer():
+                return {'CANCELLED'}
+            _end_session()  # started in another editor: take the session over
 
         if view3d.is_view3d(context):
             if blender_utils.get_paint_image(context) is None:
@@ -381,12 +439,17 @@ class PixelPainterOperator(Operator):
                 return {'CANCELLED'}
             view3d.invalidate()  # the mesh may have changed since the last session
 
+        global _session_counter
         reset_session()
+        _session_counter += 1
+        self._token = _session_counter
+        _state['session_token'] = self._token
+        _state['session_area'] = context.area.as_pointer()
         _state['running'] = True
         _state['outline_anim_start'] = time.perf_counter()
         _state['last_observed_raw_radius'] = blender_utils.get_raw_brush_image_radius(context)
         self._set_modal_cursor(context)
-        self._disable_builtin_brush_overlay(context)
+        _disable_builtin_brush_overlay(context)
 
         ctx = ToolContext(context, MANAGER)
         MANAGER.begin(ctx)

@@ -16,6 +16,10 @@ _DEFAULTS = {
     'current_cx':     None,   # image pixel under the cursor
     'current_cy':     None,
     'draw_handler':   None,
+    'draw_handler_view': None,  # POST_VIEW handler (3D Viewport surface outline)
+    'session_token':  None,   # token of the modal instance that owns the session
+    'session_area':   None,   # area.as_pointer() of the editor the session runs in
+    'view3d_uv_tile': (0, 0), # UDIM-less UV tile (floor(u), floor(v)) under the 3D cursor
     'draw_space':     None,
     'outline_timer':  None,
     'last_observed_raw_radius': None,
@@ -96,7 +100,7 @@ _DEFAULTS = {
 
 # Survive the end of a modal session (handles are cleaned up explicitly).
 _PERSISTENT_KEYS = frozenset({
-    'draw_handler', 'draw_space', 'outline_timer',
+    'draw_handler', 'draw_handler_view', 'draw_space', 'outline_timer',
     'last_shape', 'selection_clipboard',
     'selection_preview_image_name', 'selection_preview_texture',
 })

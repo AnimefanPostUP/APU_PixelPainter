@@ -105,8 +105,12 @@ def _operator_from_idname(idname):
 class OverlayOperator:
     """Mixin for modal operators that display a widget overlay."""
 
-    overlay_area_type = 'IMAGE_EDITOR'
-    overlay_space_type = 'SpaceImageEditor'
+    # Editors the overlay may open in, mapped to the bpy.types space that
+    # owns the draw handler (the overlay draws in the editor that opened it).
+    overlay_space_types = {
+        'IMAGE_EDITOR': 'SpaceImageEditor',
+        'VIEW_3D': 'SpaceView3D',
+    }
     overlay_timer_interval = 1.0 / 60.0
     overlay_fit_region = True     # shift the overlay to stay inside the editor
     overlay_warp_back = True      # after confirming, return the cursor to its start
@@ -152,7 +156,7 @@ class OverlayOperator:
     def invoke(self, context, event):
         global _session, _next_token
         area = context.area
-        if area is None or area.type != self.overlay_area_type:
+        if area is None or area.type not in self.overlay_space_types:
             return {'CANCELLED'}
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         if region is None:
@@ -175,7 +179,7 @@ class OverlayOperator:
 
         _next_token += 1
         self._token = _next_token
-        space_type = getattr(bpy.types, self.overlay_space_type)
+        space_type = getattr(bpy.types, self.overlay_space_types[area.type])
         session = _Session(overlay, area, space_type, self._token, (event.mouse_x, event.mouse_y))
 
         if self.overlay_fit_region:
@@ -199,7 +203,7 @@ class OverlayOperator:
         session = _session
         if session is None or session.token != getattr(self, '_token', None):
             return {'CANCELLED'}  # replaced by another overlay or cleaned up
-        if context.area is None or context.area.type != self.overlay_area_type:
+        if context.area is None or context.area.type not in self.overlay_space_types:
             self._finish(context, warp=False)
             return {'CANCELLED'}
 

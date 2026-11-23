@@ -34,7 +34,6 @@ class PixelPainterTool3D(WorkSpaceTool):
 
     Runs the same modal operator; the hovered pixel comes from ray-casting
     the active mesh (see core/view3d.py).
-    TODO(3D): pies (W / Shift+W) still only exist in the Image Editor.
     """
     bl_space_type   = 'VIEW_3D'
     bl_context_mode = 'PAINT_TEXTURE'
@@ -45,10 +44,7 @@ class PixelPainterTool3D(WorkSpaceTool):
     bl_icon        = "ops.generic.select_box"
     bl_operator    = "image.pixel_painter_operator"
 
-    bl_keymap = (
-        ("image.pixel_painter_operator", {"type": 'LEFTMOUSE',  "value": 'PRESS'}, None),
-        ("image.pixel_painter_operator", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
-    )
+    bl_keymap = PixelPainterTool.bl_keymap
 
     def draw_settings(context, layout, _tool):
         tool_settings_ui.draw_tool_settings(context, layout)
