@@ -36,14 +36,16 @@ class SquareBrushTool(BrushTool):
             # never double-stamps a coordinate.
             painted = env.state['stroke_painted']
             for (sx, sy) in env.interpolation_steps():
-                step_pixels = math_utils.get_pixels_in_shape(sx, sy, env.radius, 'SQUARE') - painted
+                stamp, _ = env.expand(sx, sy, math_utils.get_pixels_in_shape(sx, sy, env.radius, 'SQUARE'))
+                step_pixels = set(stamp) - painted
                 if step_pixels:
                     _paint(env, step_pixels)
                     painted |= step_pixels
         else:
             all_pixels = set()
             for (sx, sy) in env.interpolation_steps():
-                all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'SQUARE')
+                stamp, _ = env.expand(sx, sy, math_utils.get_pixels_in_shape(sx, sy, env.radius, 'SQUARE'))
+                all_pixels.update(stamp)
             if all_pixels:
                 _paint(env, all_pixels)
         env.mark_painted()
@@ -70,7 +72,7 @@ class WeightedBrushTool(BrushTool):
         pixel_spacing = env.spacing == 'PIXEL'
         weights = env.state['stroke_weight_map'] if pixel_spacing else {}
         for (sx, sy) in env.interpolation_steps():
-            px_list, pw_list = self.sample(env, sx, sy, falloff, curve_sampler)
+            px_list, pw_list = env.expand(sx, sy, *self.sample(env, sx, sy, falloff, curve_sampler))
             for px, w in zip(px_list, pw_list):
                 if w > weights.get(px, 0.0):
                     weights[px] = w
@@ -142,12 +144,16 @@ class LineBrushTool(BrushTool):
         if img is not None and cx is not None:
             ctx.state['back_buffer'] = np.array(img.pixels, dtype=np.float32)
             ctx.state['start_position'] = (cx, cy)
+            # 3D: the surface point, for the Edge-mode shortest path
+            tri, local = ctx.state.get('view3d_hit_tri'), ctx.state.get('view3d_hit_local')
+            ctx.state['line_start_hit'] = (tri, local) if ctx.is_3d and tri is not None else None
 
     def on_release(self, ctx):
         if ctx.state.get('start_position') is not None:
             self.paint(ctx)
         ctx.state['start_position'] = None
         ctx.state['back_buffer'] = None
+        ctx.state['line_start_hit'] = None
 
     def on_cancel(self, ctx):
         img = ctx.image
@@ -157,6 +163,24 @@ class LineBrushTool(BrushTool):
             img.update()
         ctx.state['start_position'] = None
         ctx.state['back_buffer'] = None
+        ctx.state['line_start_hit'] = None
+
+    @staticmethod
+    def surface_endpoints(state):
+        """``(start, end)`` surface points ``(tri, local)`` of an Edge-mode line, or None."""
+        start = state.get('line_start_hit')
+        tri, local = state.get('view3d_hit_tri'), state.get('view3d_hit_local')
+        if start is None or tri is None or local is None:
+            return None
+        return start, (tri, local)
+
+    def tip_pixels(self, state, line, radius):
+        """Union of the tip shape stamped at every ``line`` pixel (outline)."""
+        shape = self.tip_tool(state).outline_shape
+        pixels = set()
+        for (lx, ly) in line:
+            pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, shape)
+        return pixels
 
     def outline_pixels(self, state, x, y, radius):
         shape = self.tip_tool(state).outline_shape
@@ -173,10 +197,32 @@ class LineBrushTool(BrushTool):
         # intermediate previews.
         if env.state['start_position'] is None or env.state['back_buffer'] is None:
             return
-        x0, y0 = env.state['start_position']
-        line = math_utils.get_line_pixels(x0, y0, env.cursor_x, env.cursor_y)
-        tip = getattr(self.tip_tool(env.state), 'line_tip_shape', 'CIRCLE')
+        line = None
+        frame = None
+        if env.edge_mode:
+            # Shortest path over the surface, across UV seams.
+            from ..core import view3d
+            ends = self.surface_endpoints(env.state)
+            result = view3d.edge_line(env.context, env.img, *ends, env.radius) if ends else None
+            if result is not None:
+                frame, line = result
+        if line is None:
+            x0, y0 = env.state['start_position']
+            line = math_utils.get_line_pixels(x0, y0, env.cursor_x, env.cursor_y)
 
+        pixels, weights = self._line_footprint(env, line)
+        if frame is not None:
+            # ``line`` is in the start face's unfolded texture space: map to real pixels.
+            from ..core import view3d
+            w, h = env.img.size
+            pixels, weights = view3d.expand_footprint(
+                frame, pixels, weights, w, h, (0, 0), drop_uncovered=True)
+        if pixels:
+            _paint(env, pixels, base_buffer=env.state['back_buffer'], weights=weights)
+
+    def _line_footprint(self, env, line):
+        """``(pixels, weights|None)`` of the tip stamped along ``line``."""
+        tip = getattr(self.tip_tool(env.state), 'line_tip_shape', 'CIRCLE')
         if tip == 'FALLOFF':
             falloff, curve_sampler = env.falloff('pixel_painter_circle_falloff')
             weights = {}
@@ -186,16 +232,13 @@ class LineBrushTool(BrushTool):
                 for px, w in zip(px_list, pw_list):
                     if w > weights.get(px, 0.0):
                         weights[px] = w
-            if weights:
-                _paint(env, list(weights.keys()), base_buffer=env.state['back_buffer'],
-                       weights=list(weights.values()))
-            return
+            return list(weights.keys()), list(weights.values())
 
         shape = 'SQUARE' if tip == 'SQUARE' else 'CIRCLE'
         all_pixels = set()
         for (lx, ly) in line:
             all_pixels |= math_utils.get_pixels_in_shape(lx, ly, env.radius, shape)
-        _paint(env, all_pixels, base_buffer=env.state['back_buffer'])
+        return list(all_pixels), None
 
 
 class EraserTool(BrushTool):
@@ -212,7 +255,8 @@ class EraserTool(BrushTool):
     def on_draw(self, env):
         all_pixels = set()
         for (sx, sy) in env.interpolation_steps():
-            all_pixels |= math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE')
+            stamp, _ = env.expand(sx, sy, math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE'))
+            all_pixels.update(stamp)
         if not all_pixels:
             return
         w, h = env.img.size

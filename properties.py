@@ -164,6 +164,13 @@ def _static_properties():
         'active_alpha': _factor(
             "Alpha", 1.0, description="Active alpha setter routing to global or local value for current tool",
             get=alpha_get, set=alpha_set),
+        'view3d_mode': bpy.props.EnumProperty(
+            name="3D Mode", description="How brushes map onto the mesh in the 3D Viewport",
+            items=[
+                ('UV', "UV", "Brushes stay inside the UV island (stop at UV seams)"),
+                ('EDGE', "Edge", "Brushes continue over mesh edges onto the connected face, even across UV seams"),
+            ],
+            default='UV', update=_persist),
         'protect_transparent': bpy.props.BoolProperty(
             name="Protect Transparent", description="Prevent painting on fully transparent pixels (alpha = 0)",
             default=False, update=_persist),
@@ -286,6 +293,7 @@ def reset_tool_settings(wm):
     wm.pixel_painter_global_alpha_rmb = 1.0
     wm.pixel_painter_temp_smooth_force_global = False
     wm.pixel_painter_protect_transparent = False
+    wm.pixel_painter_view3d_mode = 'UV'
     wm.pixel_painter_grid_opacity = 0.0
     for tool in TOOLS:
         for name, default in tool_property_defaults(tool.tool_id).items():

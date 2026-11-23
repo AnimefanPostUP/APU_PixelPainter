@@ -41,8 +41,8 @@ class SmoothTool(StrokeTool):
         # Overlapping stamps along the stroke keep the strongest falloff weight.
         weights = {}
         for (sx, sy) in env.interpolation_steps():
-            px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
-                sx, sy, env.radius, falloff, curve_sampler=curve_sampler)
+            px_list, pw_list = env.expand(sx, sy, *math_utils.get_pixels_in_circle_weighted(
+                sx, sy, env.radius, falloff, curve_sampler=curve_sampler))
             for px, w in zip(px_list, pw_list):
                 if w > weights.get(px, 0.0):
                     weights[px] = w

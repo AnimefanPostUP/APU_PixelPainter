@@ -56,6 +56,18 @@ class DrawEnvironment:
     cursor_y: int
     interpolation_steps: Callable[[], object]
     curve_sampler_factory: Callable[[object], object]
+    # (x, y, pixels, weights|None) -> (pixels, weights): maps one stamp's
+    # footprint onto the image. Identity except in the 3D Viewport's Edge
+    # mode, where it carries the stamp over UV seams.
+    expand_stamp: Optional[Callable[..., Tuple[list, list]]] = None
+    edge_mode: bool = False   # 3D Viewport, Edge mode
+
+    def expand(self, x, y, pixels, weights=None):
+        """Footprint of a stamp at ``(x, y)`` -> ``(pixels, weights)`` lists to write."""
+        if self.expand_stamp is not None:
+            return self.expand_stamp(x, y, pixels, weights)
+        pixels = list(pixels)
+        return pixels, (list(weights) if weights is not None else [1.0] * len(pixels))
 
     def falloff(self, prop_name):
         """``(falloff_enum, curve_sampler_or_None)`` read from a WindowManager property."""

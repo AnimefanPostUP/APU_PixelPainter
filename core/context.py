@@ -63,6 +63,11 @@ class ToolContext:
         return get_paint_image(self.context)
 
     @property
+    def edge_mode(self):
+        """3D Viewport with brushes continuing over mesh edges (across UV seams)."""
+        return self.is_3d and getattr(self.wm, 'pixel_painter_view3d_mode', 'UV') == 'EDGE'
+
+    @property
     def can_paint(self):
         """The editor can map the cursor to image pixels."""
         return self.is_3d or self.v2d is not None
@@ -105,6 +110,11 @@ class ToolContext:
             if hit is None:
                 return None
             self.state['view3d_uv_tile'] = view3d.hit_tile(hit)
+            self.state['view3d_hit_tri'] = hit.tri
+            self.state['view3d_hit_local'] = tuple(hit.local)
+            texel_px = view3d.texel_screen_size(self.context, hit, image)
+            if texel_px is not None:
+                self.state['view3d_texel_px'] = texel_px
             return view3d.hit_to_pixel(hit, w, h)
         u, v = region.view2d.region_to_view(rx, ry)
         return int(u * w), int(v * h)

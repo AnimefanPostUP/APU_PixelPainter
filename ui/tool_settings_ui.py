@@ -35,6 +35,19 @@ def _draw_spacing_buttons(layout, wm):
     row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
 
 
+def _is_view3d(context):
+    space = getattr(context, 'space_data', None)
+    return space is not None and space.type == 'VIEW_3D'
+
+
+def _draw_view3d_mode_buttons(layout, wm, label=True):
+    if label:
+        layout.label(text="3D Mode")
+    row = layout.row(align=True)
+    row.prop_enum(wm, "pixel_painter_view3d_mode", 'UV', text="UV")
+    row.prop_enum(wm, "pixel_painter_view3d_mode", 'EDGE', text="Edge")
+
+
 def _draw_falloff_preset_buttons(layout, wm, prop_name):
     grid = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
     for preset in falloff.FALLOFF_PRESETS:
@@ -179,6 +192,8 @@ def draw_tool_settings(context, layout):
         row = layout.row(align=True)
         row.prop_enum(wm, "pixel_painter_spacing", 'FREE', text="Free")
         row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
+        if _is_view3d(context):
+            _draw_view3d_mode_buttons(layout, wm, label=False)
 
     root = layout.column(align=True)
     if not _draw_foldout(root, wm, "pixel_painter_ui_show_settings", "Settings"):
@@ -189,6 +204,9 @@ def draw_tool_settings(context, layout):
     col.separator()
     _draw_spacing_buttons(col, wm)
     col.separator()
+    if _is_view3d(context):
+        _draw_view3d_mode_buttons(col, wm)
+        col.separator()
     col.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
     col.separator()
     

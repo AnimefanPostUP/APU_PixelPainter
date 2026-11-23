@@ -23,21 +23,58 @@ _cache_key = None
 _cache_local = None   # (K, 2, 3) object-space segments
 
 
-def _outline_local(state, tool, cache, img, cx, cy, radius):
+def _edge_line_outline(context, state, tool, img, radius):
+    """Edge-mode Line preview: the shortest surface path, projected; None if not applicable."""
+    ends = tool.surface_endpoints(state) if hasattr(tool, 'surface_endpoints') else None
+    if ends is None or state.get('start_position') is None:
+        return None
+    result = view3d.edge_line(context, img, *ends, radius)
+    if result is None:
+        return None
+    frame, line = result
+    edges = math_utils.get_outline_edges(tool.tip_pixels(state, line, radius))
+    if not edges:
+        return np.empty((0, 2, 3), dtype=np.float64)
+    w, h = img.size
+    seg = np.array(edges, dtype=np.float64) / np.array((w, h), dtype=np.float64)  # tile 0: frame space
+    return view3d.project_segments(frame, seg)
+
+
+def _outline_local(context, state, tool, cache, img, cx, cy, radius, edge_mode):
     global _cache_key, _cache_local
     w, h = img.size
     tile = state.get('view3d_uv_tile') or (0, 0)
+    hit_tri = state.get('view3d_hit_tri')
     key = (cache.version, tool.tool_id, cx, cy, radius, w, h, tile,
-           state.get('start_position'), state.get('last_shape'))
+           state.get('start_position'), state.get('last_shape'),
+           edge_mode, hit_tri if edge_mode else None,
+           state.get('line_start_hit') if edge_mode else None,
+           state.get('view3d_hit_local') if edge_mode and state.get('line_start_hit') else None)
     if key == _cache_key:
         return _cache_local
+
+    if edge_mode:
+        local = _edge_line_outline(context, state, tool, img, radius)
+        if local is not None:
+            _cache_key, _cache_local = key, local
+            return local
 
     edges = math_utils.get_outline_edges(tool.outline_pixels(state, cx, cy, radius))
     if edges:
         seg = np.array(edges, dtype=np.float64)                 # (E, 2, 2) pixel corners
         seg /= np.array((w, h), dtype=np.float64)
         seg += np.array(tile, dtype=np.float64)
-        local = view3d.project_uv_segments(cache, seg)
+        if edge_mode:
+            # Lay the mesh out around the hovered face so the outline
+            # continues over mesh edges, across UV seams.
+            center = ((cx + 0.5) / w + tile[0], (cy + 0.5) / h + tile[1])
+            seed = view3d.find_triangle(cache, center, prefer=hit_tri)
+            flat = seg.reshape(-1, 2)
+            frame = (view3d.unfold(cache, seed, flat.min(axis=0), flat.max(axis=0))
+                     if seed is not None else None)
+            local = view3d.project_segments(frame, seg)
+        else:
+            local = view3d.project_uv_segments(cache, seg)
     else:
         local = np.empty((0, 2, 3), dtype=np.float64)
     _cache_key, _cache_local = key, local
@@ -90,7 +127,8 @@ def draw_brush_outline_3d(context, state):
         return
     radius = blender_utils.get_brush_image_radius(context)
 
-    local = _outline_local(state, tool, cache, img, cx, cy, radius)
+    edge_mode = getattr(context.window_manager, 'pixel_painter_view3d_mode', 'UV') == 'EDGE'
+    local = _outline_local(context, state, tool, cache, img, cx, cy, radius, edge_mode)
     if len(local) == 0:
         return
     coords = _to_world_towards_view(local, obj, rv3d)

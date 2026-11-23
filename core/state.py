@@ -20,6 +20,11 @@ _DEFAULTS = {
     'session_token':  None,   # token of the modal instance that owns the session
     'session_area':   None,   # area.as_pointer() of the editor the session runs in
     'view3d_uv_tile': (0, 0), # UDIM-less UV tile (floor(u), floor(v)) under the 3D cursor
+    'view3d_hit_tri': None,   # loop-triangle under the 3D cursor (seed for Edge mode)
+    'view3d_hit_local': None, # object-space surface point under the 3D cursor
+    'line_start_hit':  None,  # (tri, local) where an Edge-mode line started
+    'view3d_texel_px': None,  # screen pixels per texel on the hovered face (brush size mapping)
+    'view3d_written_size': None,  # Blender brush size last written by the 3D size sync
     'draw_space':     None,
     'outline_timer':  None,
     'last_observed_raw_radius': None,

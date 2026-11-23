@@ -197,6 +197,13 @@ class StrokeTool(ToolBase):
                 else (lambda: self._interpolation_steps(state, cx, cy))),
             curve_sampler_factory=settings.get_falloff_curve_sampler,
         )
+        if ctx.edge_mode:
+            env.edge_mode = True
+            tile = state.get('view3d_uv_tile') or (0, 0)
+            hit_tri = state.get('view3d_hit_tri')
+            env.expand_stamp = lambda x, y, pixels, weights: view3d.edge_expand(
+                context, img, x, y, pixels, weights, tile,
+                prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
 
         # First draw call of a stroke: let the tool prepare its caches.
         if state['last_paint_cx'] is None:

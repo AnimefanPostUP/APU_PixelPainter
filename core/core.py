@@ -74,6 +74,44 @@ def _sync_external_brush_size_into_tool_setting(context):
     _state['last_observed_raw_radius'] = raw_radius
 
 
+def _sync_brush_size_3d(context):
+    """3D Viewport: map Blender's brush size (screen px) <-> tool radius (texels).
+
+    Blender's size is a screen-pixel radius (F key). In 3D it is converted
+    with the texel size on the hovered face, so the F circle matches the
+    brush on the mesh: an outside change (F drag) sets the texel radius,
+    and the size is kept at the brush's on-screen radius so F starts from it.
+    """
+    texel_px = _state.get('view3d_texel_px')
+    if not texel_px:
+        return
+    mode = context.window_manager.pixel_painter_mode
+    force_global = is_shift_smooth_global(context)
+    size = blender_utils.get_raw_brush_size(context)
+    written = _state.get('view3d_written_size')
+    if written is not None and size != written:
+        radius = max(0, min(64, int(round(size / texel_px - 0.5))))
+        _settings.set_tool_size(context, mode, radius, force_global=force_global)
+    radius = _settings.get_tool_size(context, mode, force_global=force_global)
+    desired = max(1, min(blender_utils.BRUSH_SIZE_MAX, int(round((radius + 0.5) * texel_px))))
+    if desired != size:
+        blender_utils.set_raw_brush_size(context, desired)
+    _state['view3d_written_size'] = blender_utils.get_raw_brush_size(context)
+    _state['last_observed_raw_radius'] = blender_utils.get_raw_brush_image_radius(context)
+
+
+def _restore_brush_size_2d(context):
+    """After a 3D session: back to the Image Editor convention (size = radius + 1)."""
+    if _state.get('view3d_written_size') is None:
+        return
+    try:
+        mode = context.window_manager.pixel_painter_mode
+        radius = _settings.get_tool_size(context, mode, force_global=is_shift_smooth_global(context))
+        blender_utils.set_raw_brush_size(context, radius + 1)
+    except Exception:
+        pass
+
+
 def _sync_variable_store(context):
     mode = context.window_manager.pixel_painter_mode
     force_global = is_shift_smooth_global(context)
@@ -167,6 +205,7 @@ def _end_session():
     except Exception:
         pass
     _restore_builtin_brush_overlay()
+    _restore_brush_size_2d(bpy.context)
     timer = _state.get('outline_timer')
     if timer is not None:
         try:
@@ -402,7 +441,10 @@ class PixelPainterOperator(Operator):
                 return {'CANCELLED'}
 
             # Every event, so the outline follows F-key resizing in real time.
-            _sync_external_brush_size_into_tool_setting(context)
+            if view3d.is_view3d(context):
+                _sync_brush_size_3d(context)
+            else:
+                _sync_external_brush_size_into_tool_setting(context)
             apply_active_tool_settings(context)
 
             if event.type == 'TIMER':

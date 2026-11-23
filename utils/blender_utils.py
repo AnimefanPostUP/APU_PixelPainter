@@ -71,6 +71,33 @@ def get_brush_image_radius(context):
     return round((size - 1) * 64 / 64)
 
 
+BRUSH_SIZE_MAX = 5000  # Blender's hard limit for brush / unified size
+
+
+def get_raw_brush_size(context):
+    """Blender brush size (screen-pixel radius), respecting unified size."""
+    try:
+        ups = context.tool_settings.unified_paint_settings
+        brush = context.tool_settings.image_paint.brush
+        return int(ups.size if ups.use_unified_size else (brush.size if brush else 1))
+    except Exception:
+        return 1
+
+
+def set_raw_brush_size(context, size):
+    """Write the Blender brush size (unified or per-brush, whichever is active)."""
+    size = max(1, min(BRUSH_SIZE_MAX, int(size)))
+    try:
+        ups = context.tool_settings.unified_paint_settings
+        brush = context.tool_settings.image_paint.brush
+        if ups.use_unified_size:
+            ups.size = size
+        elif brush is not None:
+            brush.size = size
+    except Exception:
+        pass
+
+
 def get_raw_brush_image_radius(context):
     """Map raw brush/unified size [1-512] to image radius [0-64], ignoring routed tool size."""
     try:
