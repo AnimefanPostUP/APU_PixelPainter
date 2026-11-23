@@ -143,19 +143,28 @@ def _refresh_display(img):
         bpy.app.timers.register(_flush_refresh, first_interval=_REFRESH_INTERVAL)
 
 
-def _push_undo(message):
-    """Push a global (memfile) undo step.
+# Context members the undo system reads to pick the step type. Blender asks
+# every undo type's poll in turn and uses the first that accepts; memfile is
+# the catch-all at the end. The image-paint type accepts when the editor is an
+# Image Editor in Paint mode *or when the active object is in Texture Paint
+# mode* (any editor) -- i.e. always while painting in the 3D Viewport. Its
+# steps store no ID properties, so the stamp would never be restored. Hiding
+# the editor and the active object makes every mode-based type decline.
+_MEMFILE_OVERRIDES = (
+    dict(area=None, region=None, active_object=None, object=None),
+    dict(area=None, region=None),  # fallback if this build rejects None objects
+)
 
-    In the Image Editor's paint mode a plain ``ed.undo_push`` would create an
-    image-paint step, which does not store ID properties, so clear the context
-    members the undo system uses to pick that step type.
-    """
-    try:
-        with bpy.context.temp_override(area=None, region=None):
-            bpy.ops.ed.undo_push(message=message)
-        return True
-    except Exception:
-        pass
+
+def _push_undo(message):
+    """Push a global (memfile) undo step (the only kind that stores ID properties)."""
+    for override in _MEMFILE_OVERRIDES:
+        try:
+            with bpy.context.temp_override(**override):
+                bpy.ops.ed.undo_push(message=message)
+            return True
+        except Exception:
+            continue
     try:
         bpy.ops.ed.undo_push(message=message)
         return True
