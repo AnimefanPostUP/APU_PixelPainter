@@ -73,14 +73,16 @@ class TextBlock(Widget):
 class Group(Widget):
     """Titled block of related controls. ``tint`` (RGB) colors the stripe and the
     background; ``painter`` draws an icon before the title; ``width`` (unscaled)
-    makes groups of a page equally wide. The content is centered."""
+    makes groups of a page equally wide; ``title_indent`` (unscaled) moves the title
+    right (room for a corner button). The content is centered."""
 
     blocks_pointer = True
 
     def __init__(self, title, content, *, tint=(0.66, 0.44, 0.92), painter=None, width=None,
-                 padding=7.0, title_size=10.5, **kwargs):
+                 padding=7.0, title_size=10.5, title_indent=0.0, **kwargs):
         super().__init__(**kwargs)
         self.title = title
+        self.title_indent = title_indent
         self.content = self.add(content)
         self.tint = tint
         self.painter = painter
@@ -115,7 +117,7 @@ class Group(Widget):
         pad = theme.px(self.padding)
         size = theme.px(self.title_size)
         ty = r.y1 - pad - size * 0.5
-        x = r.x0 + theme.px(3.0) + pad
+        x = r.x0 + theme.px(3.0) + pad + theme.px(self.title_indent)
         if self.painter is not None:
             self.painter(dc, x + size * 0.6, ty, size * 1.4, alpha)
             x += size * 1.6

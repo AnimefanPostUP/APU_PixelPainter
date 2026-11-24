@@ -264,7 +264,26 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `GRID_DEFAULT_OPACITY`), a vertical drag sets the opacity (`GRID_DRAG_PX` for
   0 -> 100 %, ESC restores it). In the 3D Viewport `draw_pixel_grid_overlay_3d`
   (`tools/draw_gridoverlay.py`) draws the cached mesh with a texel-border shader
-  (lines via `fwidth`, faded out below ~2-5 px per texel, small clip-space depth bias). The color from before (`pen_color_original`) stays marked and
+  (lines via `fwidth`, faded out below ~2-5 px per texel, small clip-space depth bias).
+  *Mask* (`MASK_ARC`) and *View* (`VIEW_ARC`) open floating windows
+  (`TOOL_WINDOWS`, content in `ui/pen_windows.py`): movable / lockable /
+  resizable like the color selector (state `pen_<name>_panel`, `_locked`,
+  `_scale`, `_pos`; default spot beside the menu, tops level). Mask: the paint
+  mask controls (a dot on the corner button while the mask is on). View
+  (`tools/view_nav.py`, numpy math in `tests/test_view_nav.py`): axis views,
+  15 degree orbit / roll, *Level* (world up is up on screen), *Fit* (pivot on the
+  object, distance so every vertex is inside `FIT_MARGIN` of the view, from
+  `rv3d.window_matrix`), *Center*, zoom, Persp / Ortho; *Auto Fit*
+  (`pen_view_autofit`) re-fits after orient / orbit / roll. Works on the
+  `RegionView3D` (a camera view switches to a free view); in the Image Editor
+  only Fit / Center / zoom / 1:1 apply (image operators, deferred).
+  Layout: compact icon buttons (`_Btn`: 1 px outline, 10 px labels); View has two
+  3x3 pads -- Orient (Front in the middle, Top / Bottom / Left / Right around it,
+  roll in the top corners, Level and a differently styled Back at the bottom) and
+  Orbit (arrows around Fit; zoom, Center, Persp / Ortho in the corners). The
+  explanations show only while the window's '?' corner button is on
+  (`_Window.help`, state `pen_<name>_help`). Kit hooks used: `Button.outline`,
+  `Group(title_indent=)`. The color from before (`pen_color_original`) stays marked and
   shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`

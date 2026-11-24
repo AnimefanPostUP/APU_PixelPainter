@@ -22,7 +22,7 @@ from .kit.theme import with_alpha
 from .kit.widget import _resolve
 from ..tools import blend_modes, falloff
 from .pen_bar import (TINT_FALLOFF, TINT_MODES, TINT_TOOLS, _paint_color_wheel, _paint_curve,
-                      _paint_eyedropper, _paint_mask, _paint_save, _thick_line)
+                      _paint_eyedropper, _paint_save, _thick_line)
 
 
 PAGE_WIDTH = 300.0       # unscaled width of every group
@@ -58,7 +58,8 @@ USAGE = (
     "Curve (beside Custom): edit / draw the falloff",
     "RMB: the pen paints the secondary color",
     "Save (top right): saves the image; dot = unsaved",
-    "Mask (top right): UV / Mesh, on / off, Invert, Pick islands",
+    "Mask (top right): opens the paint mask window",
+    "View (top right): orient / roll / fit the 3D view",
 )
 SAVE_METHODS = (('AUTO', "Auto"), ('PACK', "Pack"), ('FILE', "File"))
 SAVE_HINTS = {
@@ -390,27 +391,7 @@ class SettingsMenu:
             self._group("Tool", tools, tint, _icon_brush),
             self._group(title, per_tool, tint),
             self._group("Reset", reset, tint, _icon_reset),
-            self._group("Paint Mask (top right)", self._mask_settings(), tint, _paint_mask),
         ]
-
-    def _mask_settings(self):
-        a = self.a
-        toggles = Row([self._toggle('mask_enabled', "Mask", size=(86.0, 26.0)),
-                       self._toggle('mask_invert', "Invert", size=(86.0, 26.0)),
-                       self._toggle('mask_show', "Show", size=(86.0, 26.0))], gap=6.0)
-        source = Row([self._choice('mask_source', 'UV_ISLAND', "UV Islands", size=(133.0, 26.0)),
-                      self._choice('mask_source', 'MESH_PART', "Mesh Parts", size=(133.0, 26.0))], gap=6.0)
-        grow = self._slider('mask_grow', "Grow (px)", step=1, fill_color=(*TINT_TOOLS, 1.0))
-        pick = IconButton("Pick on canvas", layout='row', size=(170.0, 28.0), key='SET_MASK_PICK',
-                          selected=a.mask_picking, on_click=a.toggle_mask_pick)
-        clear = IconButton("Clear", painter=_icon_reset, layout='row', size=(96.0, 28.0), key='SET_MASK_CLEAR',
-                           on_click=lambda: self.bar.confirm(["Forget all chosen islands / parts?"],
-                                                             a.clear_mask, "Clear"))
-        hint = self._hint(("Pick: tap islands / parts on the canvas to toggle",
-                           "them (drag: several). Only the chosen ones are",
-                           "painted; Invert protects them instead. Grow adds",
-                           "pixels around each island (covers edge pixels)."))
-        return Column([toggles, source, grow, Row([pick, clear], gap=6.0), hint], gap=6.0)
 
     def _tool_label(self, tool_id):
         return next((t.label for t in self.a.tools() if t.tool_id == tool_id), str(tool_id))

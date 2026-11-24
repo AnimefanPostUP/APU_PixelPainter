@@ -31,9 +31,11 @@ class Label(Widget):
 
 
 class Button(Widget):
-    """Square/rectangular button with an optional icon above a label."""
+    """Square/rectangular button with an optional icon above a label.
+    ``outline`` (class attribute, unscaled px): the border width."""
 
     interactive = True
+    outline = 1.5
 
     def __init__(self, label="", *, icon=None, icons=None, size=(46.0, 46.0), icon_only=False, **kwargs):
         super().__init__(**kwargs)
@@ -79,7 +81,7 @@ class Button(Widget):
         alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
         fill, border, icon_alpha = self._colors(dc)
         draw.rect(rect, with_alpha(fill, alpha))
-        draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(1.5))
+        draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(self.outline))
 
         icon_size = max(1.0, min(w, h) * (0.72 if self.icon_only else 0.62))
         icon_drawn = False

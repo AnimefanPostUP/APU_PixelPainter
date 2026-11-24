@@ -107,12 +107,17 @@ from ..tools import blend_modes, color_history, color_palette, falloff
 
 BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
 # Each element's own size (resize triangle), relative to BAR_SCALE.
-SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0)}
+SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0)}
 # Tool state keys holding the elements' size and position; Reset Pen UI restores these.
 LAYOUT_STATE = {
     'pen_bar_scale': 1.0, 'pen_bar_pos': None,       # pos: (x0, y1) top-left in region px, None = default
     'pen_color_scale': 1.0, 'pen_color_pos': None,
+    'pen_mask_scale': 0.8, 'pen_mask_pos': None,
+    'pen_view_scale': 0.8, 'pen_view_pos': None,
 }
+# Windows besides the menu and the color selector, opened from the menu's top-right corner
+# (content: ui/pen_windows.py); shown while the state 'pen_<name>_panel' is set.
+TOOL_WINDOWS = ('mask', 'view')
 COLOR_WIDTH = 220.0      # the color selector's width at scale 1, unscaled px
 _HANDLE_SIZE = 18.0      # resize triangle legs, unscaled px (follows the UI scale, not the element's)
 WINDOW_MARGIN = 4.0      # elements keep this far from the editor borders, unscaled px
@@ -184,16 +189,16 @@ FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the second falloff row (bottom right), as
 FALLOFF_CORNER_INNER = CORNER_INNER + FALLOFF_BAND_DEPTH + DIAL_GAP
 CURVE_SETTINGS_ARC = (295.0, 335.0)  # bottom right past the band: Curve | Settings, around the diagonal
 # Top right, past the S / A / M sliders (the X sits in the cut corner): a small Save at the
-# right side, the pixel grid (opacity %), then the mask buttons Source | Mask | Invert | Pick
-# up to the top edge.
-SAVE_ARC = (15.0, 27.0)
-GRID_ARC = (27.0, 40.0)
-MASK_ARC = (40.0, 88.0)
+# right side, the pixel grid (opacity %), then the Mask and View windows' buttons up to the top.
+SAVE_ARC = (15.0, 28.0)
+GRID_ARC = (28.0, 42.0)
+MASK_ARC = (42.0, 64.0)
+VIEW_ARC = (64.0, 88.0)
 GRID_DRAG_PX = 120.0                 # unscaled px of vertical drag for 0 -> 100 % grid opacity
 TINT_GRID = (0.55, 0.78, 0.95)
-MASK_WEIGHTS = (1.0, 1.35, 1.0, 1.0)
 TINT_SAVE = (0.45, 0.80, 0.45)
 TINT_MASK = (0.78, 0.52, 1.00)
+TINT_VIEW = (0.40, 0.85, 0.95)
 MASK_PICK_HINT = "Tap islands / parts to toggle them (Pick again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
@@ -468,51 +473,82 @@ def _caption(dc, x, y, text, alpha):
     draw.text_centered(text, x, y, theme.px(7.5), with_alpha(theme.text_muted, alpha), theme.font_id)
 
 
-def _paint_mask(dc, x, y, size, alpha):
+def _paint_mask(dc, x, y, size, alpha, caption=True):
     """Mask on / off: a square, half texture (light) and half protected (dark)."""
     theme = dc.theme
-    s = min(size * 0.42, theme.px(16.0))
-    box = Rect.from_center(x, y + s * 0.2, s, s)
+    s = min(size * (0.42 if caption else 0.55), theme.px(16.0))
+    box = Rect.from_center(x, y + (s * 0.2 if caption else 0.0), s, s)
     draw.rect(Rect(box.x0, box.y0, box.cx, box.y1), (0.85, 0.85, 0.85, alpha))
     draw.rect(Rect(box.cx, box.y0, box.x1, box.y1), (0.12, 0.12, 0.12, alpha))
-    draw.rect_outline(box, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.2)))
-    _caption(dc, x, box.y0 - theme.px(6.0), "Mask", alpha)
+    draw.rect_outline(box, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, box.y0 - theme.px(6.0), "Mask", alpha)
 
 
-def _paint_mask_source(source):
+def _paint_mask_menu(enabled):
+    """Mask window button: the mask icon; a dot in the mask's tint while the mask is on."""
+    def paint(dc, x, y, size, alpha):
+        _paint_mask(dc, x, y, size, alpha)
+        if _resolve(enabled, False):
+            theme = dc.theme
+            s = min(size * 0.42, theme.px(16.0))
+            draw.circle(x + s * 0.5, y + s * 0.7, max(2.5, s * 0.2), (*TINT_MASK, alpha),
+                        rim=theme.edge_for(TINT_MASK, alpha), segments=16)
+    return paint
+
+
+def _paint_view(dc, x, y, size, alpha):
+    """View window button: a camera (body, lens, viewfinder) with a caption."""
+    theme = dc.theme
+    s = min(size * 0.42, theme.px(16.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    cy = y + s * 0.2
+    body = Rect.from_center(x, cy, s * 1.3, s * 0.85)
+    draw.rect(body, color)
+    draw.rect(Rect(body.x0 + s * 0.15, body.y1, body.x0 + s * 0.55, body.y1 + s * 0.18), color)
+    draw.circle(x, cy, s * 0.3, with_alpha(theme.surface_dark, alpha), segments=16)
+    draw.circle(x, cy, s * 0.15, color, segments=12)
+    if size > theme.px(30.0):
+        _caption(dc, x, body.y0 - theme.px(6.0), "View", alpha)
+
+
+def _paint_mask_source(source, caption=True):
     """UV Islands / Mesh Parts: the source in big letters."""
     def paint(dc, x, y, size, alpha):
         theme = dc.theme
         uv = _resolve(source, 'UV_ISLAND') != 'MESH_PART'
-        draw.text_centered("UV" if uv else "Mesh", x, y + size * 0.1, theme.px(11.0 if uv else 9.0),
-                           with_alpha(theme.text, alpha), theme.font_id)
-        _caption(dc, x, y - size * 0.25, "Islands" if uv else "Parts", alpha)
+        draw.text_centered("UV" if uv else "Mesh", x, y + (size * 0.1 if caption else 0.0),
+                           theme.px(11.0 if uv else 9.0), with_alpha(theme.text, alpha), theme.font_id)
+        if caption:
+            _caption(dc, x, y - size * 0.25, "Islands" if uv else "Parts", alpha)
     return paint
 
 
-def _paint_mask_invert(dc, x, y, size, alpha):
-    """Invert: a disc, half light and half dark, with a curved arrow."""
+def _paint_mask_invert(dc, x, y, size, alpha, caption=True):
+    """Invert: a disc, half light and half dark."""
     theme = dc.theme
-    r = min(size * 0.22, theme.px(9.0))
-    cy = y + r * 0.45
+    r = min(size * (0.22 if caption else 0.3), theme.px(9.0))
+    cy = y + (r * 0.45 if caption else 0.0)
     draw.sector(x, cy, r, math.pi * 0.5, math.pi * 1.5, (0.85, 0.85, 0.85, alpha), segments=12)
     draw.sector(x, cy, r, -math.pi * 0.5, math.pi * 0.5, (0.12, 0.12, 0.12, alpha), segments=12)
-    draw.circle_outline(x, cy, r, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.2)))
-    _caption(dc, x, cy - r - theme.px(6.0), "Invert", alpha)
+    draw.circle_outline(x, cy, r, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, cy - r - theme.px(6.0), "Invert", alpha)
 
 
-def _paint_mask_pick(dc, x, y, size, alpha):
-    """Pick: a pointer tapping an island."""
+def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
+    """Pick: a target (tap islands)."""
     theme = dc.theme
-    s = min(size * 0.4, theme.px(15.0))
+    s = min(size * (0.4 if caption else 0.55), theme.px(15.0))
     color = with_alpha(theme.text, 0.92 * alpha)
-    cy = y + s * 0.25
-    draw.circle_outline(x, cy, s * 0.5, color, width=max(1.0, theme.px(1.2)))
+    cy = y + (s * 0.25 if caption else 0.0)
+    draw.circle_outline(x, cy, s * 0.5, color, width=max(1.0, theme.px(1.0)))
     draw.circle(x, cy, s * 0.16, color, segments=12)
     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         draw.polyline([(x + dx * s * 0.55, cy + dy * s * 0.55), (x + dx * s * 0.8, cy + dy * s * 0.8)],
-                      color, max(1.0, theme.px(1.2)))
-    _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
+                      color, max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
 
 
 class _GridCorner(CornerSegment):
@@ -726,7 +762,7 @@ class _HintLabel(Label):
 
 
 class _CornerButton(Widget):
-    """Small round button in an element's corner: ``glyph`` 'CLOSE' (X) or 'LOCK'
+    """Small round button in an element's corner: ``glyph`` 'CLOSE' (X), 'HELP' (?) or 'LOCK'
     (padlock, closed while ``selected``). Its tap area is larger than the drawing (pens)."""
 
     interactive = True
@@ -758,6 +794,9 @@ class _CornerButton(Widget):
                             width=theme.px(1.0))
         color = with_alpha(theme.text, 0.9 * dc.alpha)
         width = max(1.0, theme.px(1.2))
+        if self.glyph == 'HELP':
+            draw.text_centered("?", cx, cy, r * 1.35, color, theme.font_id)
+            return
         if self.glyph == 'CLOSE':
             arm = r * 0.5
             draw.polyline([(cx - arm, cy - arm), (cx + arm, cy + arm)], color, width)
@@ -848,13 +887,14 @@ class _Window(Widget):
     hidden while locked). ``tab`` (optional) replaces it while ``collapsed``. Placed
     by its top-left corner."""
 
-    def __init__(self, panel, lock, grip, *, locked, close=None, tab=None, lock_bottom=False):
+    def __init__(self, panel, lock, grip, *, locked, close=None, tab=None, lock_bottom=False, help=None):
         super().__init__()
         self.lock_bottom = lock_bottom
         self.panel = self.add(panel)
         self.tab = self.add(tab) if tab is not None else None
         self.lock = self.add(lock)
         self.close = self.add(close) if close is not None else None
+        self.help = self.add(help) if help is not None else None    # '?' left of the X
         self.grip = self.add(grip)      # last: picked before the panel under it
         self.locked = locked
         self.collapsed = False
@@ -878,7 +918,7 @@ class _Window(Widget):
         self.panel.visible = expanded
         if self.tab is not None:
             self.tab.visible = not expanded
-        for corner in (self.lock, self.close):
+        for corner in (self.lock, self.close, self.help):
             if corner is not None:
                 corner.visible = expanded
         self.grip.visible = expanded and not _resolve(self.locked, False)
@@ -889,9 +929,12 @@ class _Window(Widget):
         lw, lh = self.lock.measure(theme)
         ly = r.y0 + inset if self.lock_bottom else r.y1 - inset - lh
         self.lock.arrange(Rect.from_size(r.x0 + inset, ly, lw, lh), theme)
-        if self.close is not None:
-            cw, ch = self.close.measure(theme)
-            self.close.arrange(Rect.from_size(r.x1 - inset - cw, r.y1 - inset - ch, cw, ch), theme)
+        right = r.x1 - inset
+        for corner in (self.close, self.help):
+            if corner is not None:
+                cw, ch = corner.measure(theme)
+                corner.arrange(Rect.from_size(right - cw, r.y1 - inset - ch, cw, ch), theme)
+                right -= cw + inset * 1.5
         g = self.grip_size
         self.grip.arrange(Rect.from_size(r.x1 - g, r.y0, g, g), theme)
 
@@ -1065,11 +1108,24 @@ class PenBar:
         self.color_window = self._window('color', content,
                                          _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel))
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
-        self.windows = {'bar': (self.menu, self.overlay), 'color': (self.color_window, self.color_overlay)}
+
+        # Mask / View windows (top-right corner buttons).
+        from .pen_windows import build_mask_window, build_view_window  # late import: they import this module
+        builders = {'mask': build_mask_window, 'view': build_view_window}
+        self.tool_windows = {}
+        for name in TOOL_WINDOWS:
+            close = _CornerButton('CLOSE', key=f'{name.upper()}_CLOSE', on_click=lambda n=name: self.toggle_window(n))
+            help_button = _CornerButton('HELP', key=f'{name.upper()}_HELP', selected=lambda n=name: self.help_shown(n),
+                                        on_click=lambda n=name: self.toggle_help(n))
+            window = self._window(name, builders[name](self), close, help=help_button)
+            window.visible = False
+            self.tool_windows[name] = (window, Overlay(window, modal=False, animate=False))
+        self.windows = {'bar': (self.menu, self.overlay), 'color': (self.color_window, self.color_overlay),
+                        **self.tool_windows}
 
     # ---- building ------------------------------------------------------------------
 
-    def _window(self, name, content, close, tab=None, lock_bottom=False):
+    def _window(self, name, content, close, tab=None, lock_bottom=False, help=None):
         locked = lambda: self._locked(name)
         panel = _MovePanel(content, padding=_PANEL_PADDING, key=f"{name.upper()}_PANEL", locked=locked,
                            on_move_begin=lambda: self._begin_move(name), on_move=self._move_to,
@@ -1078,7 +1134,7 @@ class PenBar:
                              on_click=lambda: self._toggle_lock(name))
         grip = _ResizeHandle(lambda: self._begin_resize(name), self._resize_to, self._end_resize,
                              key=f"{name.upper()}_RESIZE")
-        return _Window(panel, lock, grip, locked=locked, close=close, tab=tab, lock_bottom=lock_bottom)
+        return _Window(panel, lock, grip, locked=locked, close=close, tab=tab, lock_bottom=lock_bottom, help=help)
 
     def _knob(self, channel, label, radius, font_size, value_font_size):
         if channel == 'size':
@@ -1228,26 +1284,22 @@ class PenBar:
         dial.add_corner([curve, settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *CURVE_SETTINGS_ARC, **corner)
 
         # Top right, past the S / A / M sliders: a small Save at the right side, the grid
-        # (tap: on / off, drag: opacity), then the paint mask (Source | Mask | Invert | Pick) up to the top edge.
+        # (tap: on / off, drag: opacity), then the Mask and View windows' buttons.
         save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
                              tint=TINT_SAVE, on_click=a.save_image)
         dial.add_corner([save], CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
         grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
         dial.add_corner([grid], CORNER_INNER, SQUARE_HALF, *GRID_ARC, **corner)
-        mask_buttons = [
-            CornerSegment("Mask Source", key='MASK_SOURCE', painter=_paint_mask_source(a.mask_source),
-                          on_click=a.toggle_mask_source),
-            CornerSegment("Mask", key='MASK', painter=_paint_mask, selected=a.mask_enabled,
-                          on_click=a.toggle_mask),
-            CornerSegment("Invert Mask", key='MASK_INVERT', painter=_paint_mask_invert,
-                          selected=a.mask_inverted, on_click=a.toggle_mask_invert),
-            CornerSegment("Pick Mask", key='MASK_PICK', painter=_paint_mask_pick,
-                          selected=a.mask_picking, on_click=a.toggle_mask_pick),
-        ]
-        self.mask_pick_button = mask_buttons[-1]
-        dial.add_corner(mask_buttons, CORNER_INNER, SQUARE_HALF, *MASK_ARC,
-                        weights=MASK_WEIGHTS, tint=TINT_MASK, **corner)
+        mask_button = CornerSegment("Mask", key='MASK', painter=_paint_mask_menu(a.mask_enabled),
+                                    tint=TINT_MASK, selected=lambda: a.panel_open('mask'),
+                                    on_click=lambda: self.toggle_window('mask'))
+        self.mask_pick_button = mask_button
+        dial.add_corner([mask_button], CORNER_INNER, SQUARE_HALF, *MASK_ARC, **corner)
+        view_button = CornerSegment("View", key='VIEW', painter=_paint_view, tint=TINT_VIEW,
+                                    selected=lambda: a.panel_open('view'),
+                                    on_click=lambda: self.toggle_window('view'))
+        dial.add_corner([view_button], CORNER_INNER, SQUARE_HALF, *VIEW_ARC, **corner)
 
     def open_library(self, opener):
         """The library flyout; the palette band switches to its palette view (drag targets)."""
@@ -1445,6 +1497,19 @@ class PenBar:
         if relayout:
             self.overlay.layout()
 
+    def help_shown(self, name):
+        """The window's help text is shown (its '?' corner button)."""
+        return bool(self._get(f'pen_{name}_help', False))
+
+    def toggle_help(self, name):
+        self.actions.set_state(f'pen_{name}_help', not self.help_shown(name))
+        self._relayout()
+
+    def toggle_window(self, name):
+        """Show / hide the Mask or View window."""
+        self.actions.toggle_panel(name)
+        self._relayout()
+
     def set_collapsed(self, collapsed):
         self.actions.set_collapsed(collapsed)
         self.close_flyout(relayout=False)
@@ -1454,6 +1519,8 @@ class PenBar:
         collapsed = bool(self.actions.collapsed())
         self.menu.collapsed = collapsed
         self.color_window.visible = bool(self.actions.color_panel_open()) and not collapsed
+        for name, (window, _overlay) in self.tool_windows.items():
+            window.visible = bool(self.actions.panel_open(name)) and not collapsed
         if collapsed and self.flyout is not None:
             self.close_flyout(relayout=False)
 
@@ -1575,26 +1642,49 @@ class PenBar:
         self.overlay.origin = self._clamp(pos[0], pos[1], w, h)
         self.overlay.layout()
 
-        if not self.color_window.visible:
-            return
-        color_theme = self._theme('color')
-        self.color_overlay.theme = color_theme
-        self.color_window.grip_size = theme.px(_HANDLE_SIZE)
-        cw, ch = self.color_window.measure(color_theme)
-        pos = self._get('pen_color_pos')
-        if pos is None:   # beside the menu, toward the canvas, bottoms level
-            menu = self.menu.rect
-            gap = theme.px(FLYOUT_GAP)
-            x0 = menu.x1 + gap if menu.cx < region_width * 0.5 else menu.x0 - gap - cw
-            pos = (x0, menu.y0 + ch)
-        self.color_overlay.origin = self._clamp(pos[0], pos[1], cw, ch)
-        self.color_overlay.layout()
+        menu = self.menu.rect
+        gap = theme.px(FLYOUT_GAP)
+        toward_right = menu.cx < region_width * 0.5
+        outer = [menu]        # placed elements; default spots go beside the outermost one
+        if self.color_window.visible:
+            color_theme = self._theme('color')
+            self.color_overlay.theme = color_theme
+            self.color_window.grip_size = theme.px(_HANDLE_SIZE)
+            cw, ch = self.color_window.measure(color_theme)
+            pos = self._get('pen_color_pos')
+            if pos is None:   # beside the menu, toward the canvas, bottoms level
+                x0 = menu.x1 + gap if toward_right else menu.x0 - gap - cw
+                pos = (x0, menu.y0 + ch)
+            self.color_overlay.origin = self._clamp(pos[0], pos[1], cw, ch)
+            self.color_overlay.layout()
+            outer.append(self.color_window.rect)
+
+        for name, (window, overlay) in self.tool_windows.items():
+            if not window.visible:
+                continue
+            win_theme = self._theme(name)
+            overlay.theme = win_theme
+            window.grip_size = theme.px(_HANDLE_SIZE)
+            ww, wh = window.measure(win_theme)
+            pos = self._get(f'pen_{name}_pos')
+            if pos is None:   # beside the menu / the windows placed so far, tops level with the menu
+                if toward_right:
+                    x0 = max(r.x1 for r in outer) + gap
+                else:
+                    x0 = min(r.x0 for r in outer) - gap - ww
+                pos = (x0, menu.y1)
+            overlay.origin = self._clamp(pos[0], pos[1], ww, wh)
+            overlay.layout()
+            if self._get(f'pen_{name}_pos') is None:
+                outer.append(window.rect)
 
     def _stack(self):
-        """Overlays, top-most first: the menu while its flyout is open, else the color selector."""
+        """Overlays, top-most first: the menu while its flyout is open, else the Mask / View
+        windows, the color selector, the menu."""
+        windows = [overlay for _window, overlay in self.tool_windows.values()]
         if self.flyout is not None or self.confirm_dialog.is_open:
-            return [self.overlay, self.color_overlay]
-        return [self.color_overlay, self.overlay]
+            return [self.overlay, *windows, self.color_overlay]
+        return [*windows, self.color_overlay, self.overlay]
 
     def handle(self, event):
         """Forward a :class:`~.kit.UIEvent` (region coords); True when an element used it."""
