@@ -967,7 +967,9 @@ class _MenuLayer(Widget):
             fy = opener.rect.cy if opener is not None else win.cy
             right = win.cx < width * 0.5
             fx = win.x1 + gap if right else win.x0 - gap - fw
-            fx, y0 = clamp_box(fx, fy - fh * 0.5, fw, fh, (margin, margin, width - margin, height - margin))
+            anchor = getattr(flyout, 'anchor_bottom', None)   # bottom-anchored: height changes grow upward
+            fy0 = fy - theme.px(anchor) if anchor is not None else fy - fh * 0.5
+            fx, y0 = clamp_box(fx, fy0, fw, fh, (margin, margin, width - margin, height - margin))
             flyout.arrange(Rect.from_size(fx, y0, fw, fh), theme)
         if self.dialog is not None and self.dialog.visible:   # centered over the menu
             dw, dh = self.dialog.measure(theme)

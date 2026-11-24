@@ -1,8 +1,9 @@
 """Pen settings: the settings flyout of the pen menu (its *Settings* gear), built
 from UI-kit widgets like the curve flyout -- usable with a pen, no Blender popup.
 
-Layout: a row of icon tabs and the tab's name, then the tab's page: groups of
-related controls (:class:`~.kit.Group`), each page in its own color. The tabs
+Layout: the tab's name, the tab's page (groups of related controls,
+:class:`~.kit.Group`, each page in its own color), then the row of icon tabs at
+the bottom (the flyout is bottom-anchored so the tabs don't move). The tabs
 and the settings are the ones of the Blender settings popup
 (:mod:`.settings_menu`, still used by the N-panel / tool header) and share its
 remembered tab (``pixel_painter_settings_tab``).
@@ -263,8 +264,11 @@ class SettingsMenu:
         title = TextBlock(lambda: [self._tab(self.current())[1]], size=13.0, color=(1.0, 1.0, 1.0, 1.0),
                           width=PAGE_WIDTH)
         pages = _Pages([(tab_id, self._page(tab_id, tint)) for tab_id, _label, tint, _p in TABS], self.current)
-        self.panel = Panel(Column([Row(tabs, gap=4.0), title, pages], gap=8.0), padding=8.0)
+        # Tabs at the bottom: the flyout is anchored by its bottom edge (tab row at the
+        # gear's height), so switching tabs only grows / shrinks the page above them.
+        self.panel = Panel(Column([title, pages, Row(tabs, gap=4.0)], gap=8.0), padding=8.0)
         self.panel.key = 'SETTINGS_FLYOUT'
+        self.panel.anchor_bottom = 8.0 + TAB_SIZE[1] * 0.5   # unscaled: panel bottom -> tab row center
 
     # ---- tabs ------------------------------------------------------------------------
 

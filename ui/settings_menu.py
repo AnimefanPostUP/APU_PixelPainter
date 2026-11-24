@@ -1,4 +1,4 @@
-"""Settings popup: rarely changed options, grouped in tabs under a header bar.
+"""Settings popup: rarely changed options, grouped in tabs (tab bar at the bottom).
 
 Opened by ``image.pixel_painter_open_settings`` (the pen bar's *Settings*
 button, the N-panel and the tool header). It is a popover panel, so it works
@@ -283,7 +283,7 @@ _TAB_DRAWERS = {
 # ---------------------------------------------------------------------------
 
 class IMAGE_PT_pixel_painter_settings(Panel):
-    """Pixel Painter settings: header bar with categories, the selected one below."""
+    """Pixel Painter settings: the selected category, with the category bar below it."""
     bl_idname = SETTINGS_PANEL_ID
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'HEADER'
@@ -297,14 +297,17 @@ class IMAGE_PT_pixel_painter_settings(Panel):
         layout.use_property_decorate = False
 
         layout.label(text="Pixel Painter Settings", icon='PREFERENCES')
-        header = layout.row(align=True)
-        header.scale_y = 1.25
-        header.prop(wm, "pixel_painter_settings_tab", expand=True)
-        layout.separator()
 
         drawer = _TAB_DRAWERS.get(wm.pixel_painter_settings_tab)
         if drawer is not None:
             drawer(layout.column(), context)
+
+        # Tab bar at the bottom, so switching tabs only resizes the content
+        # above it and the bar itself doesn't jump.
+        layout.separator()
+        tabs = layout.row(align=True)
+        tabs.scale_y = 1.25
+        tabs.prop(wm, "pixel_painter_settings_tab", expand=True)
 
 
 class PixelPainterOpenSettingsOperator(Operator):
