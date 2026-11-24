@@ -9,6 +9,9 @@
 * Each ``add_arc`` is a *group* (a category): neighbouring groups are separated
   by the wider ``group_gap`` with a thin divider line through its middle, and
   ``tint`` colors all of a group's segments slightly.
+* ``add_corner`` fills the corners of the dial's enclosing square with
+  :class:`CornerSegment` buttons: the inner edge follows the circle, the outer
+  edges the square (its extreme corners cut off diagonally by ``chamfer``).
 * Hit-testing uses the unshrunk segment, so the gaps still belong to a segment.
 * :class:`RingSlider` is a radial slider: the value runs from the inner to the
   outer radius; press / drag sets it from the pointer's distance to the center.
@@ -20,7 +23,8 @@ import math
 
 from . import anim
 from . import draw
-from .geometry import Rect, ring_contains, ring_segment_points
+from .geometry import (Rect, corner_contains, corner_room, corner_segment_points, polygon_centroid,
+                       ring_contains, ring_segment_points)
 from .theme import mix, with_alpha
 from .widget import Widget, _resolve
 
@@ -124,11 +128,15 @@ class RingSegment(Widget):
         fill, t = self._fill(dc, active)
         draw.ring_segment(inner, outer, with_alpha(fill, alpha))
         if self.is_selected:
-            band = theme.px(3.0)
-            draw.ring_segment(*self.points(self.pr1 - band, self.pr1), with_alpha(theme.accent, alpha))
+            self.draw_selection(dc, alpha)
         if t > 0.01:
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, t * alpha), width=theme.px(1.5))
         return alpha
+
+    def draw_selection(self, dc, alpha):
+        """Accent band along the outer edge."""
+        band = dc.theme.px(3.0)
+        draw.ring_segment(*self.points(self.pr1 - band, self.pr1), with_alpha(dc.theme.accent, alpha))
 
     def draw_self(self, dc):
         alpha = self.draw_frame(dc)
@@ -148,6 +156,62 @@ class RingSegment(Widget):
         if self.label:
             draw.text_centered(self.label, x, y, theme.px(self.font_size),
                                with_alpha(theme.text, alpha), theme.font_id)
+
+
+class CornerSegment(RingSegment):
+    """A button filling (part of) a corner of the dial's enclosing square: from the
+    circle ``r0`` out to the square ``half`` (unscaled), between angles ``a0 .. a1``;
+    the square's corner is cut off by ``chamfer``. Set by :meth:`Dial.add_corner`."""
+
+    def __init__(self, label="", **kwargs):
+        super().__init__(label, **kwargs)
+        self.half = 0.0
+        self.chamfer = 0.0
+        self._geo = None        # (r0, half, chamfer) screen px
+        self._inner = self._outer = []
+        self._center = (0.0, 0.0)
+        self._room = 0.0
+
+    def place_on(self, cx, cy, theme, gap):
+        self.cx, self.cy = cx, cy
+        self.pr0 = theme.px(self.r0)
+        self.pr1 = half = theme.px(self.half)
+        chamfer = theme.px(self.chamfer)
+        self._geo = (self.pr0, half, chamfer)
+        g = theme.px(gap) * 0.5
+        self.insets = (g + theme.px(self.edge_extra[0]), g + theme.px(self.edge_extra[1]))
+        a0, a1 = self.angles
+        inner, outer = corner_segment_points(self.pr0, half, a0, a1, *self.insets, chamfer)
+        self._inner = [(cx + x, cy + y) for x, y in inner]
+        self._outer = [(cx + x, cy + y) for x, y in outer]
+        if not inner:
+            self._room = 0.0
+            return
+        center = polygon_centroid(inner + list(reversed(outer)))
+        self._center = (cx + center[0], cy + center[1])
+        self._room = 2.0 * corner_room(center, self.pr0, half, a0, a1, *self.insets, chamfer)
+        pts = self._inner + self._outer
+        self.rect = Rect(min(p[0] for p in pts), min(p[1] for p in pts),
+                         max(p[0] for p in pts), max(p[1] for p in pts))
+
+    def contains(self, x, y):
+        if self._geo is None:
+            return False
+        r0, half, chamfer = self._geo
+        return corner_contains(r0, half, *self.angles, chamfer, x - self.cx, y - self.cy)
+
+    def points(self, r0=None, r1=None):
+        return self._inner, self._outer
+
+    def middle(self, r=None):
+        return self._center
+
+    def content_size(self):
+        return self._room
+
+    def draw_selection(self, dc, alpha):
+        """Accent line along the square edges."""
+        draw.polyline(self._outer, with_alpha(dc.theme.accent, alpha), dc.theme.px(3.0))
 
 
 class RingSlider(RingSegment):
@@ -229,6 +293,7 @@ class Dial(Widget):
         self.divider_overhang = divider_overhang
         self.center = self.add(center) if center is not None else None
         self.segments = []
+        self.corners = []     # segments outside the rings: corner segments, bands
         self.dividers = []    # angles (degrees) between groups
         self._divider_lines = []
 
@@ -236,6 +301,21 @@ class Dial(Widget):
         segment.r0, segment.r1, segment.a0, segment.a1 = r0, r1, a0, a1
         self.segments.append(self.add(segment))
         return segment
+
+    def add_band(self, segments, r0, r1, a0, a1, *, tint=None):
+        """Like :meth:`add_arc`, but outside the rings (e.g. in the corners): no
+        dividers, not counted in :attr:`radius`."""
+        segments = list(segments)
+        step = (a1 - a0) / max(1, len(segments))
+        extra = max(0.0, self.group_gap - self.gap) * 0.5
+        for i, segment in enumerate(segments):
+            segment.r0, segment.r1 = r0, r1
+            segment.a0, segment.a1 = a0 + step * i, a0 + step * (i + 1)
+            segment.edge_extra = (extra if i == 0 else 0.0, extra if i == len(segments) - 1 else 0.0)
+            if tint is not None and segment.tint is None:
+                segment.tint = tint
+            self.corners.append(self.add(segment))
+        return segments
 
     def add_arc(self, segments, r0, r1, a0, a1, *, tint=None):
         """A group: split ``a0 .. a1`` evenly between ``segments`` (listed from
@@ -253,12 +333,34 @@ class Dial(Widget):
                 self.dividers.append(angle % 360.0)
         return segments
 
+    def add_corner(self, segments, r0, half, a0, a1, *, chamfer=0.0, weights=None, tint=None):
+        """Corner buttons: split ``a0 .. a1`` between ``segments`` (listed from ``a0``;
+        ``weights``: relative angular sizes) in the region between the circle ``r0`` and
+        the square of half size ``half``. The ends get the group gap; no dividers."""
+        segments = list(segments)
+        weights = list(weights) if weights else [1.0] * len(segments)
+        total = float(sum(weights))
+        extra = max(0.0, self.group_gap - self.gap) * 0.5
+        angle = a0
+        for i, (segment, weight) in enumerate(zip(segments, weights)):
+            end = a1 if i == len(segments) - 1 else angle + (a1 - a0) * weight / total
+            segment.r0, segment.r1, segment.a0, segment.a1 = r0, half, angle, end
+            segment.half, segment.chamfer = half, chamfer
+            segment.edge_extra = (extra if i == 0 else 0.0, extra if i == len(segments) - 1 else 0.0)
+            if tint is not None and segment.tint is None:
+                segment.tint = tint
+            self.corners.append(self.add(segment))
+            angle = end
+        return segments
+
     @property
     def radius(self):
+        """Outer radius of the rings (corner segments excluded)."""
         return max((s.r1 for s in self.segments), default=0.0)
 
     def measure(self, theme):
         d = theme.px(self.radius + (self.divider_overhang if self.dividers else 0.0)) * 2.0
+        d = max([d] + [theme.px(getattr(c, 'half', c.r1)) * 2.0 for c in self.corners])
         if self.center is not None:
             cw, ch = self.center.measure(theme)
             d = max(d, cw, ch)
@@ -270,7 +372,7 @@ class Dial(Widget):
         if self.center is not None:
             w, h = self.center.measure(theme)
             self.center.arrange(Rect.from_center(cx, cy, w, h), theme)
-        for segment in self.segments:
+        for segment in self.segments + self.corners:
             segment.place_on(cx, cy, theme, self.gap)
         r0 = theme.px(min((s.r0 for s in self.segments), default=0.0))
         r1 = theme.px(self.radius + self.divider_overhang)

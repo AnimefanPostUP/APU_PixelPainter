@@ -102,6 +102,7 @@ class ToolBase(ToolFrame):
     respects_pixel_spacing: bool = True     # obey 'Pixel' spacing (skip repeated stamps)
     uses_pen_pressure: bool = True          # pen pressure scales the enabled channels
     shows_brush_outline: bool = True
+    paints_color: bool = False              # paints with the brush color (recorded in the color history)
 
     # ---- painting hooks (see tools.stroke.StrokeTool) -------------------------
 

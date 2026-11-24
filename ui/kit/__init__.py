@@ -18,7 +18,8 @@ color_selector ColorSelector: swipeable color selector, layouts
               Sheet / Square / Triangle / Wheel, HSV / HSL, sliders (pens)
 color_pad ColorPad: the selector with the Sheet layout
 radial    RadialMenu (pie)
-ring      Dial, RingSegment, RingSlider: center widget + rings of pie segments
+curve     CurveEditor: anchors of a 0..1 curve, moved / added / drawn by pen
+ring      Dial, RingSegment, RingSlider, CornerSegment: center widget + rings of pie segments
 overlay   Overlay interaction controller         (no bpy)
 draw      GPU primitives (the only gpu/blf user)
 icons     IconSet: image icons for layouts and overlays
@@ -33,7 +34,8 @@ from .events import UIEvent
 from .widget import Column, DrawContext, Grid, Row, Widget
 from .widgets import BubbleButton, Button, ColorBubble, DragBubble, Label, Panel, RoundButton
 from .radial import RadialMenu
-from .ring import Dial, RingSegment, RingSlider
+from .curve import CurveEditor
+from .ring import CornerSegment, Dial, RingSegment, RingSlider
 from .color_selector import ColorSelector, ColorShape
 from .color_pad import ColorPad, hsv_for_rgb
 from .overlay import Overlay
@@ -42,5 +44,5 @@ __all__ = (
     'Rect', 'Theme', 'UIEvent',
     'Widget', 'DrawContext', 'Row', 'Column', 'Grid',
     'Label', 'Button', 'BubbleButton', 'RoundButton', 'DragBubble', 'ColorBubble', 'Panel',
-    'RadialMenu', 'Dial', 'RingSegment', 'RingSlider', 'ColorSelector', 'ColorShape', 'ColorPad', 'hsv_for_rgb', 'Overlay',
+    'RadialMenu', 'CurveEditor', 'Dial', 'RingSegment', 'CornerSegment', 'RingSlider', 'ColorSelector', 'ColorShape', 'ColorPad', 'hsv_for_rgb', 'Overlay',
 )

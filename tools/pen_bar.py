@@ -1,4 +1,5 @@
-"""Pen bar tool: on-screen controls for pen / tablet painting (see :mod:`ui.pen_bar`).
+"""Pen bar tool: on-screen controls for pen / tablet painting -- the pen menu and the
+color selector (see :mod:`ui.pen_bar`).
 
 A global, ``screen_space`` tool: the core offers it every event before its
 cursor-over-image gating, so the bar works anywhere in the editor. Shown
@@ -23,9 +24,9 @@ import bpy
 from ..core.context import ToolContext
 from ..core.framework import ToolFrame
 from ..ui.kit import Theme, UIEvent, hsv_for_rgb
-from ..ui.pen_bar import PenBar
+from ..ui.pen_bar import LAYOUT_STATE, PenBar
 from ..utils import blender_utils
-from . import blend_modes, falloff
+from . import blend_modes, color_history, falloff
 from .subtools.pen import PenEyedropperTool
 
 
@@ -57,13 +58,16 @@ class PenBarTool(ToolFrame):
         'pen_armed':         None,   # 'EYEDROPPER': runs on the next canvas press
         'pen_rmb_lock':      False,  # the pen tip paints like the right mouse button
         'pen_bar_collapsed': False,
-        'pen_color_panel':   True,   # color pad shown in the bar (under the color row)
-        'pen_bar_scale':     1.0,    # resize handle: 0.2 .. 2 x the default size
+        'pen_color_panel':   True,   # the color selector is shown
+        **LAYOUT_STATE,              # menu / color selector size and position (Reset Pen UI)
+        'pen_bar_locked':    False,  # menu: no moving / resizing
+        'pen_color_locked':  False,  # color selector: no moving / resizing
         'pen_hsv':           None,   # (rgb, hsv) last written by the color pad
         'pen_color_original': None,  # (target, hsv) before the pad edits: bubble + cross compare to it
         'pen_color_pending': None,   # (target, hsv) Preview: pad color not yet applied to the brush
     }
-    persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel', 'pen_bar_scale')
+    persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel',
+                        *LAYOUT_STATE, 'pen_bar_locked', 'pen_color_locked')
 
     def __init__(self, registry):
         super().__init__()
@@ -95,7 +99,7 @@ class PenBarTool(ToolFrame):
 
     def on_event(self, ctx, event):
         if not self.enabled(ctx):
-            if self.bar is not None and (self.bar.flyout is not None or self.bar.overlay.dragging):
+            if self.bar is not None and self.bar.busy():
                 self.bar.reset()
             return
         self._ctx = ctx
@@ -190,6 +194,10 @@ class PenBarTool(ToolFrame):
             setter = getattr(settings, f'set_tool_{channel}')
             setter(ctx.context, mode, value, force_global=force_global, button=self._button(ctx))
         ctx.apply_tool_settings()
+
+    def pen_rgb(self):
+        """The color the pen paints (the secondary one with the RMB lock)."""
+        return tuple(self._pen_color(self._c()))
 
     def _pen_color(self, ctx):
         if ctx.state.get('pen_rmb_lock'):
@@ -355,6 +363,10 @@ class PenBarTool(ToolFrame):
     def rmb_lock(self):
         return bool(self._c().state.get('pen_rmb_lock'))
 
+    def set_rmb_lock(self, value):
+        if bool(value) != self.rmb_lock():
+            self.toggle_rmb_lock()
+
     def toggle_rmb_lock(self):
         state = self._c().state
         state['pen_rmb_lock'] = not state.get('pen_rmb_lock')
@@ -370,6 +382,73 @@ class PenBarTool(ToolFrame):
         ctx = self._c()
         self.manager.select(ctx, tool_id)
         ctx.apply_tool_settings()
+
+    # ---- color history ------------------------------------------------------------------
+
+    def color_history(self):
+        return color_history.colors(self._c().state)
+
+    def use_history_color(self, rgb):
+        """Paint with ``rgb`` from the history (the secondary color with the RMB lock)."""
+        ctx = self._c()
+        if ctx.state.get('pen_rmb_lock'):
+            ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
+        else:
+            ctx.settings.set_brush_rgb(ctx.context, *rgb)
+        ctx.state['pen_color_pending'] = None
+
+    # ---- custom falloff curve (the brush's falloff CurveMapping) ---------------------------
+
+    def _curve_map(self):
+        brush = self._c().context.tool_settings.image_paint.brush
+        mapping = getattr(brush, 'curve', None) if brush is not None else None
+        if mapping is None or not len(mapping.curves):
+            return None, None
+        return mapping, mapping.curves[0]
+
+    def custom_curve_points(self):
+        try:
+            _mapping, curve = self._curve_map()
+            return [tuple(p.location) for p in curve.points] if curve is not None else []
+        except Exception:
+            return []
+
+    def set_custom_curve_points(self, points):
+        """Replace the curve's anchors (at least 2, sorted by x; auto handles)."""
+        points = sorted(points)
+        if len(points) < 2:
+            return
+        try:
+            mapping, curve = self._curve_map()
+            if curve is None:
+                return
+            pts = curve.points
+            while len(pts) > len(points):
+                pts.remove(pts[len(pts) - 1])
+            while len(pts) < len(points):
+                pts.new(0.5, 0.5)
+            for point, (x, y) in zip(pts, points):
+                point.location = (x, y)
+                point.handle_type = 'AUTO'
+            mapping.update()
+        except Exception:
+            traceback.print_exc()
+        self.use_custom_falloff()
+
+    def reset_custom_curve(self):
+        self.set_custom_curve_points(falloff.CUSTOM_DEFAULT_POINTS)
+
+    def use_custom_falloff(self):
+        """Editing the curve selects the Custom falloff (so the edit shows)."""
+        if self.active_falloff() != 'CUSTOM':
+            self.set_falloff('CUSTOM')
+
+    def custom_curve_sampler(self):
+        ctx = self._c()
+        try:
+            return ctx.settings.get_falloff_curve_sampler(ctx.context)
+        except Exception:
+            return None
 
     def _falloff_property(self, ctx):
         return self.registry.get(ctx.mode).falloff_property or falloff.DEFAULT_FALLOFF_PROPERTY
@@ -405,11 +484,12 @@ class PenBarTool(ToolFrame):
     def set_collapsed(self, collapsed):
         self._c().state['pen_bar_collapsed'] = bool(collapsed)
 
-    def bar_scale(self):
-        return self._c().state.get('pen_bar_scale') or 1.0
+    def get_state(self, key):
+        """Pen UI layout state (``pen_bar_*`` / ``pen_color_*`` size, position, lock)."""
+        return self._c().state.get(key)
 
-    def set_bar_scale(self, scale):
-        self._c().state['pen_bar_scale'] = float(scale)
+    def set_state(self, key, value):
+        self._c().state[key] = value
 
     def undo(self):
         self._run_deferred(lambda: bpy.ops.ed.undo())

@@ -3,7 +3,7 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils
-from . import pen_pressure
+from . import color_history, pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
@@ -29,8 +29,9 @@ class StrokeTool(ToolBase):
         'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
+        color_history.HISTORY_KEY: (),  # recently painted colors, newest first
     }
-    persistent_state = ('last_shape',)
+    persistent_state = ('last_shape', color_history.HISTORY_KEY)
 
     def __init__(self):
         super().__init__()
@@ -92,8 +93,21 @@ class StrokeTool(ToolBase):
         img = ctx.image
         if img is not None:
             history.begin(img)
+            if self.paints_color:
+                self._record_color(ctx, button)
         self.on_press(ctx)
         ctx.redraw()
+
+    @staticmethod
+    def _record_color(ctx, button):
+        try:
+            if button == 'RMB':
+                rgb = ctx.settings.get_brush_secondary_rgb(ctx.context)
+            else:
+                rgb = ctx.settings.get_brush_rgb(ctx.context)
+            color_history.record(ctx.state, rgb)
+        except Exception:
+            pass
 
     def continue_stroke(self, ctx, event):
         if not self.is_stroking:
@@ -239,3 +253,5 @@ class StrokeTool(ToolBase):
 
 class BrushTool(StrokeTool):
     """Base class for tools that paint pixels with the brush color."""
+
+    paints_color = True

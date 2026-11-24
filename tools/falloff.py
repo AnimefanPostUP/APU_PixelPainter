@@ -29,6 +29,9 @@ FALLOFF_PRESETS = (
 # Order of the 3x2 grid in the tool pie / settings panel.
 PICKER_ORDER = ('CONSTANT', 'SMOOTH', 'CUSTOM', 'LINEAR', 'SPHERE', 'SHARPEN')
 
+# Anchors (x = distance from the center, y = weight) the custom curve resets to: a smooth fade.
+CUSTOM_DEFAULT_POINTS = ((0.0, 1.0), (0.5, 0.5), (1.0, 0.0))
+
 # Falloff property edited when the active tool has none of its own.
 DEFAULT_FALLOFF_PROPERTY = 'pixel_painter_circle_falloff'
 

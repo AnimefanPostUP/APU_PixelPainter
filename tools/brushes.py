@@ -255,6 +255,7 @@ class EraserTool(BrushTool):
     """Reduce alpha by the tool strength."""
 
     tool_id = 'ERASER'
+    paints_color = False
     label = "Eraser"
     description = "Erase alpha by strength"
     icon = "Tool_Eraser.png"

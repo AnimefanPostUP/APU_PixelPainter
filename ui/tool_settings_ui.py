@@ -119,7 +119,10 @@ def draw_tool_settings(context, layout):
     row.prop(wm, "pixel_painter_protect_transparent", text="Protect Transparent", toggle=True)
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_active_modifier", text="Modifier", slider=True)
-    layout.prop(wm, "pixel_painter_pen_bar", text="Pen Bar", toggle=True, icon='GREASEPENCIL')
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_pen_bar", text="Pen Bar", toggle=True, icon='GREASEPENCIL')
+    row.operator("image.pixel_painter_reset_pen_ui", text="" if _in_tool_header(context) else "Reset Pen UI",
+                 icon='LOOP_BACK')
 
     row = layout.row(align=True)
     if ups.use_unified_color:

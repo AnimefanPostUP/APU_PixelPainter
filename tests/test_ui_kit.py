@@ -16,7 +16,8 @@ from ui.kit import (  # noqa: E402
     BubbleButton, Button, Dial, Grid, Overlay, Panel, RadialMenu, Rect, RingSegment, RingSlider, Theme, UIEvent,
 )
 from ui.kit.events import CANCELLED, FINISHED, PASS_THROUGH, RUNNING  # noqa: E402
-from ui.kit.geometry import fit_offset, ring_contains, ring_segment_points  # noqa: E402
+from ui.kit.geometry import clamp_box, corner_contains, corner_segment_points, fit_offset, ring_contains, ring_segment_points  # noqa: E402
+from ui.kit.curve import CurveEditor, insert_anchor, move_anchor, simplify, stroke_to_curve  # noqa: E402
 from ui.kit.radial import Connector  # noqa: E402
 
 
@@ -284,6 +285,35 @@ class RingGeometryTests(unittest.TestCase):
         for x, y in (inner[0], outer[0]):        # a0 = 0: distance to the +x axis is y
             self.assertTrue(math.isclose(y, 2.0, abs_tol=1e-9))
 
+    def test_clamp_box_keeps_box_inside(self):
+        bounds = (0, 0, 100, 100)
+        self.assertEqual(clamp_box(-20, 50, 30, 30, bounds), (0, 50))     # left edge
+        self.assertEqual(clamp_box(90, 90, 30, 30, bounds), (70, 70))     # top-right corner
+        self.assertEqual(clamp_box(10, -5, 30, 30, bounds), (10, 0))      # bottom edge
+        self.assertEqual(clamp_box(10, 10, 30, 30, bounds), (10, 10))     # inside: unchanged
+
+    def test_clamp_box_too_large_keeps_top_left(self):
+        self.assertEqual(clamp_box(50, -50, 150, 150, (0, 0, 100, 100)), (0, -50))
+
+    def test_corner_segment_follows_circle_and_square(self):
+        inner, outer = corner_segment_points(100, 140, math.radians(90), math.radians(180), 2.0, 2.0, 30.0)
+        self.assertEqual(len(inner), len(outer))
+        for x, y in inner:
+            self.assertTrue(math.isclose(math.hypot(x, y), 100.0))
+        for x, y in outer:   # on the square or on its chamfer
+            on_side = math.isclose(abs(x), 140.0) or math.isclose(abs(y), 140.0)
+            on_chamfer = math.isclose(-x + y, 2 * 140.0 - 30.0)
+            self.assertTrue(on_side or on_chamfer, (x, y))
+        self.assertTrue(any(math.isclose(-x + y, 250.0) for x, y in outer[1:-1]))   # walks the chamfer
+        self.assertTrue(math.isclose(outer[0][0], -2.0))    # side edge 2 px from the +y axis
+
+    def test_corner_contains(self):
+        a0, a1 = math.radians(90), math.radians(180)
+        self.assertTrue(corner_contains(100, 140, a0, a1, 30, -100, 100))
+        self.assertFalse(corner_contains(100, 140, a0, a1, 30, -50, 50))     # inside the circle
+        self.assertFalse(corner_contains(100, 140, a0, a1, 30, -135, 135))   # cut-off corner
+        self.assertFalse(corner_contains(100, 140, a0, a1, 30, 100, 100))    # other quadrant
+
     def test_segment_vanishes_when_inset_too_large(self):
         self.assertEqual(ring_segment_points(0, 0, 2, 4, 0.0, 0.1, inset=3.0), ([], []))
 
@@ -332,6 +362,80 @@ class DialTests(unittest.TestCase):
         self.assertTrue(math.isclose(self.values[0], 0.0, abs_tol=1e-9))
         self.assertTrue(math.isclose(self.values[-1], 1.0))
         self.assertFalse(self.slider.dragging)
+
+
+class CurveLogicTests(unittest.TestCase):
+    def test_insert_keeps_order_and_ends(self):
+        pts, i = insert_anchor([(0.0, 1.0), (1.0, 0.0)], 0.3, 0.7)
+        self.assertEqual((pts, i), ([(0.0, 1.0), (0.3, 0.7), (1.0, 0.0)], 1))
+
+    def test_move_keeps_ends_x_and_neighbour_order(self):
+        pts = [(0.0, 1.0), (0.4, 0.5), (1.0, 0.0)]
+        self.assertEqual(move_anchor(pts, 0, 0.3, 0.2), [(0.0, 0.2), (0.4, 0.5), (1.0, 0.0)])
+        moved = move_anchor(pts, 1, 1.5, -1.0)
+        self.assertTrue(math.isclose(moved[1][0], 0.99) and moved[1][1] == 0.0)
+
+    def test_simplify_straight_line(self):
+        line = [(i / 10, i / 10) for i in range(11)]
+        self.assertEqual(simplify(line, 0.01), [(0.0, 0.0), (1.0, 1.0)])
+
+    def test_stroke_to_curve_spans_0_to_1(self):
+        stroke = [(0.1 + 0.8 * t / 30, 1.0 - (t / 30) ** 2) for t in range(31)]
+        curve = stroke_to_curve(stroke, max_points=8)
+        self.assertEqual((curve[0][0], curve[-1][0]), (0.0, 1.0))
+        self.assertTrue(2 < len(curve) <= 8)
+        self.assertEqual(curve, sorted(curve))
+
+    def test_stroke_too_narrow_is_ignored(self):
+        self.assertIsNone(stroke_to_curve([(0.5, 0.1), (0.51, 0.9)]))
+
+
+class CurveEditorTests(unittest.TestCase):
+    def setUp(self):
+        self.pts = [(0.0, 1.0), (0.5, 0.5), (1.0, 0.0)]
+        self.mode = 'MOVE'
+        self.ed = CurveEditor(lambda: self.pts, self._set, mode=lambda: self.mode, size=(120, 120), padding=10)
+        self.ov = Overlay(self.ed, modal=False, animate=False, origin=(100.0, 100.0))
+
+    def _set(self, pts):
+        self.pts = pts
+
+    def drag(self, a, b):
+        self.ov.handle(ev('LEFTMOUSE', 'PRESS', *self.ed.to_screen(*a)))
+        self.ov.handle(move(*self.ed.to_screen(*b)))
+        self.ov.handle(ev('LEFTMOUSE', 'RELEASE', *self.ed.to_screen(*b)))
+
+    def test_move_anchor(self):
+        self.drag((0.5, 0.5), (0.6, 0.8))
+        self.assertTrue(math.isclose(self.pts[1][0], 0.6) and math.isclose(self.pts[1][1], 0.8))
+
+    def test_add_mode_adds_where_pressed(self):
+        self.mode = 'ADD'
+        self.drag((0.25, 0.9), (0.25, 0.9))
+        self.assertEqual(len(self.pts), 4)
+
+    def test_drag_out_removes_inner_anchor(self):
+        x, y = self.ed.to_screen(0.5, 0.5)
+        self.ov.handle(ev('LEFTMOUSE', 'PRESS', x, y))
+        self.ov.handle(move(x, y - 400))
+        self.ov.handle(ev('LEFTMOUSE', 'RELEASE', x, y - 400))
+        self.assertEqual(self.pts, [(0.0, 1.0), (1.0, 0.0)])
+
+    def test_cancel_restores(self):
+        x, y = self.ed.to_screen(0.5, 0.5)
+        self.ov.handle(ev('LEFTMOUSE', 'PRESS', x, y))
+        self.ov.handle(move(x + 20, y + 20))
+        self.ov.handle(ev('ESC', 'PRESS', x + 20, y + 20))
+        self.assertEqual(self.pts, [(0.0, 1.0), (0.5, 0.5), (1.0, 0.0)])
+
+    def test_draw_mode_replaces_curve(self):
+        self.mode = 'DRAW'
+        self.ov.handle(ev('LEFTMOUSE', 'PRESS', *self.ed.to_screen(0.0, 0.0)))
+        for t in range(1, 21):
+            self.ov.handle(move(*self.ed.to_screen(t / 20, t / 20)))
+        self.ov.handle(ev('LEFTMOUSE', 'RELEASE', *self.ed.to_screen(1.0, 1.0)))
+        self.assertEqual(len(self.pts), 2)
+        self.assertTrue(self.pts[0][1] < 0.1 and self.pts[-1][1] > 0.9)
 
 
 if __name__ == '__main__':

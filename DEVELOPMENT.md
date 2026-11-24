@@ -138,7 +138,8 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `widget.py` | `Widget` base, `Row`, `Column`, `Grid`, `DrawContext` |
 | `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `DragBubble`, `ColorBubble` (old / new), `Panel` |
 | `radial.py` | `RadialMenu` (arc or explicit directions, `attach_below`, number keys) |
-| `ring.py` | `Dial` (center widget + rings of pie segments; each `add_arc` is a category with its own `tint`, separated by `group_gap` and a divider line; `gap` between segments), `RingSegment` (icon / label / painter), `RingSlider` (radial slider: press / drag sets the value from the distance to the center) |
+| `curve.py` | `CurveEditor` (anchors of a 0..1 curve: Move / Add / Draw by pen; `stroke_to_curve` fits a freehand stroke) |
+| `ring.py` | `Dial` (center widget + rings of pie segments; each `add_arc` is a category with its own `tint`, separated by `group_gap` and a divider line; `gap` between segments; `add_corner` fills the enclosing square's corners with `CornerSegment`s), `RingSegment` (icon / label / painter), `RingSlider` (radial slider: press / drag sets the value from the distance to the center) |
 | `color_selector.py` | `ColorSelector` — pen-friendly color selector, every part swiped like a touchpad (pure Python layout / input). Layouts are `ColorShape` variants: `SheetShape`, `SquareShape`, `TriangleShape`, `WheelShape`; model HSV / HSL; optional RGB / HSV / HSL channel sliders underneath |
 | `color_models.py` | HSV / HSL / RGB conversions that keep hue / saturation through grey, black and white |
 | `color_pad.py` | `ColorPad` (the selector with the Sheet layout), `hsv_for_rgb` |
@@ -185,12 +186,29 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `dispatch()` then skips screen-space tools. Pens may have no hover and no
   wheel, so the bar uses only press / drag / release: `DragBubble` knobs
   (`draggable`), flyout openers (`activate_on_press`) and flyout entries
-  (`drag_release`). The bar sits in the bottom corner.
-  Below the color row sits the dial (`kit.Dial`): the Size knob in the center,
+  (`drag_release`). `ui/pen_bar.PenBar` holds two floating elements, each its
+  own non-modal `Overlay` with its own theme scale: the pen menu and the color
+  selector. Each is a `_Window`: a `_MovePanel` (drag the background to move),
+  a padlock (top left: no moving / resizing), an X (top right) and a resize
+  triangle (bottom right). Size and position live in tool state
+  (`pen_bar_scale` / `pen_bar_pos`, `pen_color_scale` / `pen_color_pos`,
+  `ui.pen_bar.LAYOUT_STATE`; scale limits `SCALE_LIMITS`); both are clipped to
+  the editor (`kit.geometry.clamp_box`) and shrunk while it is too small.
+  `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
+  the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
   S / A / M radial sliders top right, the tools top left (two rings), Blend /
   Alphalock / Pixel-Free / RMB bottom left, Undo / Redo and the falloff presets
-  bottom right; the arcs and radii are the `*_ARC` / `*_RING` constants in `ui/pen_bar.py`. *Color* toggles the
-  `ColorPad` (a `ColorSelector` inside the bar under the color row, stretched to its width):
+  bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
+  corners of its enclosing square hold `kit.CornerSegment` buttons
+  (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
+  extreme corners cut for the lock / X / resize triangle): Picker / Color top
+  left, the color history band (`tools/color_history.py`, recorded by
+  `StrokeTool.begin_stroke` for tools with `paints_color`) and primary / Swap /
+  secondary bottom left, the custom curve button (in line with the Custom
+  falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
+  opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
+  (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`). *Color* toggles the
+  color selector element (a `ColorSelector` with the old / new bubble above it, `COLOR_WIDTH` wide):
   every part moves relative to the swipe (`gain` 0.5), a tap jumps. Layout
   (`pixel_painter_color_selector_layout`: Sheet / Square / Triangle / Wheel), model
   (`..._model`: HSV / HSL) and sliders (`..._sliders`: RGB / HSV / HSL, any combination)
@@ -206,13 +224,12 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
   settings popup > Color Selector) the pad is `live` (commits every step).
   *Settings* opens the settings popup. The color from before (`pen_color_original`) stays marked and
-  shows in the always-visible old / new `ColorBubble` until it is tapped;
+  shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`
   (`tools/subtools/pen.py`) for the next canvas press; the RMB lock rewrites
   pen-tip LMB events to RMB for every tool after the bar.
-  The whole bar renders at `BAR_SCALE` x the UI scale x `pen_bar_scale`
-  (persistent, 0.2..2), set by dragging the triangle in its top corner.
+  Each element renders at `BAR_SCALE` x the UI scale x its own scale.
 
 ## Settings popup (`ui/settings_menu.py`)
 

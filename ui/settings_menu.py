@@ -67,7 +67,7 @@ def _draw_color(layout, context):
     ))
 
     layout.separator()
-    layout.label(text="Pen Bar Color Pad")
+    layout.label(text="Pen Color Selector")
     layout.prop(wm, "pixel_painter_pen_color_preview", text="Preview", toggle=True, icon='HIDE_OFF')
     _hints(layout, (
         "On: the pad only previews; the brush keeps its color",
@@ -156,9 +156,10 @@ def _draw_pen(layout, context):
     wm = context.window_manager
     layout.prop(wm, "pixel_painter_pen_bar", text="Pen Bar", toggle=True, icon='GREASEPENCIL')
     row = layout.row(align=True)
-    row.label(text="Pen Bar Side")
+    row.label(text="Default Side")
     row.prop_enum(wm, "pixel_painter_pen_bar_side", 'LEFT', text="Left")
     row.prop_enum(wm, "pixel_painter_pen_bar_side", 'RIGHT', text="Right")
+    layout.operator(RESET_PEN_UI_OPERATOR, icon='LOOP_BACK')
 
     layout.separator()
     layout.label(text="Pen Pressure Affects", icon='STYLUS_PRESSURE')
@@ -170,14 +171,17 @@ def _draw_pen(layout, context):
     layout.separator()
     layout.label(text="Pen Bar Usage")
     _hints(layout.box(), (
-        "Knobs: press and drag up/down",
-        "Color: color pad under the bar",
-        "Color pad: swipe like a touchpad, tap jumps",
+        "Size: press and drag up/down; S / A / M: press or drag",
+        "Background: drag to move the menu / color selector",
+        "Corner triangle: drag to resize; padlock: lock both",
+        "Reset Pen UI: default size and position",
+        "Color: shows the color selector (swipe, tap jumps)",
         "Bubble: old/new color (tap: accept new)",
+        "Colors: tap to paint with it, arrows swap them",
+        "Color history (along the circle): tap to paint with it",
+        "Curve (beside Custom falloff): edit / draw the curve",
         "Settings: opens this menu",
         "Picker: arm, then tap the canvas",
-        "Corner triangle: drag to resize the bar",
-        "Tools: tap an icon beside the Size knob",
         "Blend: press, drag onto entry, lift",
         "RMB: pen paints the secondary color",
     ))
@@ -285,6 +289,25 @@ class PixelPainterColorSlidersNoneOperator(Operator):
         return {'FINISHED'}
 
 
+RESET_PEN_UI_OPERATOR = "image.pixel_painter_reset_pen_ui"
+
+
+class PixelPainterResetPenUIOperator(Operator):
+    """Reset the size and position of the pen menu and the color selector"""
+    bl_idname = RESET_PEN_UI_OPERATOR
+    bl_label = "Reset Pen UI"
+
+    def execute(self, context):
+        from ..core.state import STATE
+        from .pen_bar import LAYOUT_STATE
+        STATE.update(LAYOUT_STATE)
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type in {'IMAGE_EDITOR', 'VIEW_3D'}:
+                    area.tag_redraw()
+        return {'FINISHED'}
+
+
 def draw_settings_button(layout, text="Settings"):
     """Button opening the settings popup (N-panel / header)."""
     layout.popover(panel=SETTINGS_PANEL_ID, text=text, icon='PREFERENCES')
@@ -294,4 +317,5 @@ classes = (
     IMAGE_PT_pixel_painter_settings,
     PixelPainterOpenSettingsOperator,
     PixelPainterColorSlidersNoneOperator,
+    PixelPainterResetPenUIOperator,
 )

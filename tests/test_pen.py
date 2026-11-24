@@ -23,6 +23,7 @@ from ui.kit.events import PASS_THROUGH, RUNNING  # noqa: E402
 
 framework = importlib.import_module(f'{_PACKAGE}.core.framework')
 pen_pressure = importlib.import_module(f'{_PACKAGE}.tools.pen_pressure')
+color_history = importlib.import_module(f'{_PACKAGE}.tools.color_history')
 
 
 def ev(type_, value='PRESS', x=0.0, y=0.0):
@@ -556,6 +557,21 @@ class HsvMemoryTests(unittest.TestCase):
 
     def test_nothing_remembered(self):
         self.assertEqual(hsv_for_rgb((1.0, 0.0, 0.0)), (0.0, 1.0, 1.0))
+
+
+class ColorHistoryTests(unittest.TestCase):
+    def test_newest_first_without_repeats(self):
+        state = {}
+        for rgb in ((1, 0, 0), (0, 1, 0), (1, 0, 0.0002)):   # the last one equals the first
+            color_history.record(state, rgb)
+        self.assertEqual(color_history.colors(state), [(1.0, 0.0, 0.0002), (0.0, 1.0, 0.0)])
+
+    def test_capped(self):
+        state = {}
+        for i in range(12):
+            color_history.record(state, (i / 12, 0, 0), size=8)
+        self.assertEqual(len(color_history.colors(state)), 8)
+        self.assertEqual(color_history.colors(state)[0][0], round(11 / 12, 4))
 
 
 if __name__ == '__main__':

@@ -185,3 +185,130 @@ def ring_segment_points(cx, cy, r0, r1, a0, a1, inset=0.0, steps=None, inset1=No
                  cy + math.sin(b0 + (b1 - b0) * i / steps) * r) for i in range(steps + 1)]
 
     return _arc(r0, *inner_edges), _arc(r1, *outer_edges)
+
+
+def clamp_box(x0, y0, width, height, bounds):
+    """Bottom-left ``(x0, y0)`` of a ``width x height`` box moved inside ``bounds``
+    (x0, y0, x1, y1). A box larger than the bounds keeps its left / top edge inside."""
+    bx0, by0, bx1, by1 = bounds
+    x0 = max(bx0, min(x0, bx1 - width))
+    y1 = min(by1, max(y0 + height, by0 + height))
+    return x0, y1 - height
+
+
+# ---------------------------------------------------------------------------
+# Corner segments (between a circle and its enclosing square)
+# ---------------------------------------------------------------------------
+# Coordinates relative to the shared center. The square has half size ``half``;
+# its corners are cut off diagonally by ``chamfer`` px (room for corner buttons).
+
+def chamfered_square(half, chamfer):
+    """Vertices (counter-clockwise) of the square with its corners cut by ``chamfer``."""
+    k = max(0.0, min(chamfer, half))
+    if k <= 0.0:
+        return [(half, -half), (half, half), (-half, half), (-half, -half)]
+    return [(half, -half + k), (half, half - k), (half - k, half), (-half + k, half),
+            (-half, half - k), (-half, -half + k), (-half + k, -half), (half - k, -half)]
+
+
+def _edges(poly):
+    """``(nx, ny, c)`` per edge of a convex CCW polygon: inside where n . p <= c."""
+    out = []
+    for (x0, y0), (x1, y1) in zip(poly, poly[1:] + poly[:1]):
+        ex, ey = x1 - x0, y1 - y0
+        length = math.hypot(ex, ey)
+        if length < 1e-9:
+            continue
+        nx, ny = ey / length, -ex / length
+        out.append((nx, ny, nx * x0 + ny * y0))
+    return out
+
+
+def _exit_distance(q, d, edges):
+    t = math.inf
+    for nx, ny, c in edges:
+        nd = nx * d[0] + ny * d[1]
+        if nd > 1e-9:
+            t = min(t, (c - nx * q[0] - ny * q[1]) / nd)
+    return t
+
+
+def _resample(points, count):
+    """``count`` points along the polyline, keeping its vertices."""
+    legs = [math.dist(a, b) for a, b in zip(points, points[1:])]
+    total = sum(legs)
+    if total <= 1e-9 or count < len(points):
+        return list(points)
+    out = []
+    remaining = count - 1
+    for i, (a, b) in enumerate(zip(points, points[1:])):
+        last = i == len(legs) - 1
+        n = remaining if last else max(1, round(legs[i] / total * (count - 1)))
+        n = min(n, remaining - (len(legs) - 1 - i))
+        remaining -= n
+        out += [(a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n) for j in range(n)]
+    out.append(points[-1])
+    return out
+
+
+def corner_segment_points(r0, half, a0, a1, inset0=0.0, inset1=0.0, chamfer=0.0, steps=24):
+    """``(inner, outer)`` outline (relative to the center) of the part of the square
+    outside the circle ``r0`` between angles ``a0 < a1`` (radians), its side edges
+    moved inward ``inset0`` / ``inset1`` px parallel to their rays. Both lists run
+    from the ``a0`` side to the ``a1`` side with the same length (a triangle strip).
+    Empty lists when nothing is left."""
+    angles = ring_edge_angles(r0, a0, a1, inset0, inset1)
+    if angles is None:
+        return [], []
+    b0, b1 = angles
+    poly = chamfered_square(half, chamfer)
+    edges = _edges(poly)
+    i0 = (math.cos(b0) * r0, math.sin(b0) * r0)
+    i1 = (math.cos(b1) * r0, math.sin(b1) * r0)
+    d0, d1 = (math.cos(a0), math.sin(a0)), (math.cos(a1), math.sin(a1))
+    t0, t1 = _exit_distance(i0, d0, edges), _exit_distance(i1, d1, edges)
+    if not (0.0 < t0 < math.inf and 0.0 < t1 < math.inf):
+        return [], []
+    p0 = (i0[0] + d0[0] * t0, i0[1] + d0[1] * t0)
+    p1 = (i1[0] + d1[0] * t1, i1[1] + d1[1] * t1)
+    start = math.atan2(p0[1], p0[0])
+    span = normalize_angle(math.atan2(p1[1], p1[0]), start) - start
+    corners = sorted((normalize_angle(math.atan2(y, x), start) - start, (x, y)) for x, y in poly)
+    outer = [p0] + [v for a, v in corners if 1e-9 < a < span - 1e-9] + [p1]
+    outer = _resample(outer, steps + 1)
+    inner = [(math.cos(b0 + (b1 - b0) * i / (len(outer) - 1)) * r0,
+              math.sin(b0 + (b1 - b0) * i / (len(outer) - 1)) * r0) for i in range(len(outer))]
+    return inner, outer
+
+
+def corner_contains(r0, half, a0, a1, chamfer, x, y):
+    """Is ``(x, y)`` (relative to the center) in the corner segment (without insets)?"""
+    if math.hypot(x, y) < r0:
+        return False
+    if any(nx * x + ny * y > c for nx, ny, c in _edges(chamfered_square(half, chamfer))):
+        return False
+    return normalize_angle(math.atan2(y, x), a0) <= a1
+
+
+def polygon_centroid(points):
+    """Area centroid of a simple polygon (vertex mean when degenerate)."""
+    area = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        cross = x0 * y1 - x1 * y0
+        area += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+    if abs(area) < 1e-9:
+        n = max(1, len(points))
+        return sum(p[0] for p in points) / n, sum(p[1] for p in points) / n
+    return cx / (3.0 * area), cy / (3.0 * area)
+
+
+def corner_room(point, r0, half, a0, a1, inset0, inset1, chamfer):
+    """Radius of the largest circle around ``point`` inside the (inset) corner segment."""
+    x, y = point
+    room = math.hypot(x, y) - r0
+    room = min(room, min(c - nx * x - ny * y for nx, ny, c in _edges(chamfered_square(half, chamfer))))
+    room = min(room, -math.sin(a0) * x + math.cos(a0) * y - inset0)
+    room = min(room, math.sin(a1) * x - math.cos(a1) * y - inset1)
+    return max(0.0, room)
