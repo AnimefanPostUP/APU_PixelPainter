@@ -233,11 +233,10 @@ class ScreenDispatchTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Color picker: saturation slider (drag like a wheel, tap to jump)
+# Color picker (E): the color selector at the cursor
 # ---------------------------------------------------------------------------
 
 color_pick = importlib.import_module(f'{_PACKAGE}.tools.subtools.color_pick')
-helpers = importlib.import_module(f'{_PACKAGE}.tools.subtools.helpers')
 
 
 class FakeSettings:
@@ -259,69 +258,193 @@ class FakeSettings:
 
 
 class PickerCtx:
-    def __init__(self):
+    def __init__(self, layout='SQUARE'):
         self.state = {}
         self.settings = FakeSettings()
-        window = types.SimpleNamespace(width=4000, height=4000, cursor_warp=lambda x, y: None)
+        self.warps = []
+        window = types.SimpleNamespace(width=4000, height=4000,
+                                       cursor_warp=lambda x, y: self.warps.append((x, y)))
         self.context = types.SimpleNamespace(window=window)
+        self.wm = types.SimpleNamespace(pixel_painter_color_selector_layout=layout,
+                                        pixel_painter_color_selector_model='HSV',
+                                        pixel_painter_color_selector_sliders=set())
 
     def redraw(self):
         pass
 
 
-def pointer(type_, value, x, y):
-    return framework.InputEvent(type_, value, mouse_x=x, mouse_y=y, mouse_region_x=x, mouse_region_y=y)
+def pointer(type_, value, x, y, shift=False):
+    return framework.InputEvent(type_, value, mouse_x=x, mouse_y=y, mouse_region_x=x, mouse_region_y=y,
+                                shift=shift)
 
 
-class SaturationSliderTests(unittest.TestCase):
-    def open(self, tool_cls, x=1000, y=1000, trigger='E'):
-        self.ctx = PickerCtx()
+class ColorPickTests(unittest.TestCase):
+    def open(self, layout='SQUARE', x=1000, y=1000):
+        self.ctx = PickerCtx(layout)
         self.host = framework.ToolFrame()
-        self.picker = self.host.add_subtool(tool_cls())
+        self.picker = self.host.add_subtool(color_pick.ColorPickTool())
+        self.now = [0.0]
+        self.picker.clock = lambda: self.now[0]
         manager = framework.ToolManager(declare_state=lambda d, p: self.ctx.state.update(d))
         self.host.setup(manager)
-        self.picker.activate(self.ctx, pointer(trigger, 'PRESS', x, y))
-        x0, y0, x1, y1 = helpers.sat_bar_rect(self.ctx.state)
-        self.bar_x, self.bar_bottom, self.bar_top = (x0 + x1) / 2, y0, y1
+        self.picker.activate(self.ctx, pointer('E', 'PRESS', x, y))
+        self.sel = self.picker.selector
 
-    def send(self, type_, value, x, y):
-        event = pointer(type_, value, x, y)
+    def send(self, type_, value, x, y, shift=False):
+        event = pointer(type_, value, x, y, shift)
         self.host.dispatch(self.ctx, event)
         return event
 
-    def test_swipe_is_relative_and_does_not_confirm(self):
-        self.open(color_pick.ColorPickTool)
-        state = self.ctx.state
-        h, v = state['sub_color_h'], state['sub_color_v']
-        mid = (self.bar_bottom + self.bar_top) / 2
-        self.send('MOUSEMOVE', 'NOTHING', self.bar_x, mid)       # onto the slider
-        self.assertEqual((state['sub_color_h'], state['sub_color_v']), (h, v))  # hue/value hold
-        self.assertTrue(state['sub_color_sat_hover'])
-        self.send('LEFTMOUSE', 'PRESS', self.bar_x, mid)
-        self.assertTrue(self.picker.is_active)                   # grabbed, not applied
-        self.send('MOUSEMOVE', 'NOTHING', self.bar_x, mid - 60)  # swipe down 60 px
-        self.send('LEFTMOUSE', 'RELEASE', self.bar_x, mid - 60)
-        self.assertAlmostEqual(state['sub_color_s'], 0.8)        # 1.0 - 60/300, no jump to mid
-        self.assertTrue(self.picker.is_active)
-        self.assertAlmostEqual(self.ctx.settings.rgb[1], 0.2)    # written live (red, s 0.8)
+    def move(self, x, y, dt=0.01):
+        self.now[0] += dt
+        self.send('MOUSEMOVE', 'NOTHING', x, y)
 
-    def test_tap_jumps(self):
-        self.open(color_pick.ColorPickTool)
-        self.send('LEFTMOUSE', 'PRESS', self.bar_x, self.bar_bottom + 75)
-        self.send('LEFTMOUSE', 'RELEASE', self.bar_x, self.bar_bottom + 75)
+    def test_uses_the_selected_layout(self):
+        self.open('WHEEL')
+        self.assertEqual(self.sel.layout_id, 'WHEEL')
+
+    def test_opens_with_the_current_color_under_the_cursor(self):
+        for layout in ('SHEET', 'SQUARE', 'TRIANGLE', 'WHEEL'):
+            self.open(layout)
+            px, py = self.sel.main_point()
+            self.assertAlmostEqual(px, 1000)
+            self.assertAlmostEqual(py, 1000)
+            self.move(1000, 1000)
+            self.assertEqual(self.ctx.settings.rgb, (1.0, 0.0, 0.0))   # no jump
+
+    def test_main_area_follows_the_mouse(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        self.move(sq.x0 + sq.width * 0.25, sq.y0 + sq.height * 0.5)
         self.assertAlmostEqual(self.ctx.state['sub_color_s'], 0.25)
+        self.assertAlmostEqual(self.ctx.state['sub_color_v'], 0.5)
+        self.assertTrue(self.picker.is_active)
 
-    def test_press_on_sheet_still_applies(self):
-        self.open(color_pick.ColorPickTool)
-        self.send('LEFTMOUSE', 'PRESS', 1000, 1000)
+    def test_click_on_main_area_applies_and_closes(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        x, y = sq.x0 + sq.width * 0.5, sq.y0 + sq.height * 0.5
+        self.move(x, y)
+        self.send('LEFTMOUSE', 'PRESS', x, y)
+        self.assertFalse(self.picker.is_active)
+        r, g, b = self.ctx.settings.rgb
+        self.assertAlmostEqual(r, 0.5)
+        self.assertAlmostEqual(g, 0.25)
+
+    def test_leaving_restores_the_rested_color(self):
+        self.open()
+        sq, hue = self.sel.parts['SQUARE'], self.sel.parts['HUE']
+        self.move(sq.x0 + sq.width * 0.5, sq.cy)              # pick, then pause
+        self.move(sq.x0 + sq.width * 0.6, sq.cy, dt=0.5)      # on the way to the hue bar
+        self.move(sq.x1 - 1, sq.cy)
+        self.move(hue.cx, hue.cy)                             # arrived: the paused color is back
+        self.assertAlmostEqual(self.ctx.state['sub_color_s'], 0.5)
+
+    def test_bar_click_and_drag(self):
+        self.open()
+        hue = self.sel.parts['HUE']
+        self.move(hue.cx, hue.cy)
+        self.send('LEFTMOUSE', 'PRESS', hue.cx, hue.y0 + hue.height * 0.25)
+        self.send('LEFTMOUSE', 'RELEASE', hue.cx, hue.y0 + hue.height * 0.25)
+        self.assertAlmostEqual(self.ctx.state['sub_color_h'], 0.25)
+        self.assertTrue(self.picker.is_active)
+        self.send('LEFTMOUSE', 'PRESS', hue.cx, hue.cy)
+        self.send('MOUSEMOVE', 'NOTHING', hue.cx, hue.cy + hue.height * 0.2)   # gain 0.5
+        self.send('LEFTMOUSE', 'RELEASE', hue.cx, hue.cy + hue.height * 0.2)
+        self.assertAlmostEqual(self.ctx.state['sub_color_h'], 0.35)
+
+    def test_wheel_over_main_area_sets_the_free_channel(self):
+        self.open('SHEET')
+        self.send('WHEELDOWNMOUSE', 'PRESS', 1000, 1000)
+        self.assertAlmostEqual(self.ctx.state['sub_color_s'], 0.95)   # sheet: saturation
+        self.open('WHEEL')
+        self.send('WHEELDOWNMOUSE', 'PRESS', 1000, 1000)
+        self.assertAlmostEqual(self.ctx.state['sub_color_v'], 0.95)   # wheel: value
+
+    def test_wheel_over_a_bar_sets_that_bar(self):
+        self.open('SHEET')
+        val = self.sel.parts['VALUE']
+        self.send('WHEELDOWNMOUSE', 'PRESS', val.cx, val.cy)
+        self.assertAlmostEqual(self.ctx.state['sub_color_v'], 0.95)
+        self.assertAlmostEqual(self.ctx.state['sub_color_s'], 1.0)
+
+    def test_click_outside_confirms(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        self.move(sq.cx, sq.cy)
+        self.send('LEFTMOUSE', 'PRESS', 3000, 3000)
         self.assertFalse(self.picker.is_active)
 
+    def test_cancel_restores(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        self.move(sq.cx, sq.cy)
+        self.send('RIGHTMOUSE', 'PRESS', sq.cx, sq.cy)
+        self.assertFalse(self.picker.is_active)
+        self.assertEqual(self.ctx.settings.rgb, (1.0, 0.0, 0.0))
+
+    def test_esc_during_bar_drag_only_discards_the_drag(self):
+        self.open()
+        hue = self.sel.parts['HUE']
+        self.send('LEFTMOUSE', 'PRESS', hue.cx, hue.cy)
+        self.send('MOUSEMOVE', 'NOTHING', hue.cx, hue.cy + 40)
+        self.send('ESC', 'PRESS', hue.cx, hue.cy + 40)
+        self.assertTrue(self.picker.is_active)
+        self.assertAlmostEqual(self.ctx.state['sub_color_h'], 0.0)
+
+    def test_e_toggles_target(self):
+        self.open()
+        self.send('E', 'PRESS', 1000, 1000)
+        self.assertEqual(self.ctx.state['sub_color_target'], 'SECONDARY')
+        self.assertAlmostEqual(self.ctx.state['sub_color_h'], 2 / 3)   # blue
+        self.assertEqual(self.picker.panel.title, "Secondary Color")
+
+    def shift_move(self, dx, dy):
+        """Move the mouse by ``dx``/``dy`` with Shift held, from where the OS cursor is
+        (after the picker's warps, as Blender reports it)."""
+        x, y = self.ctx.warps[-1] if self.ctx.warps else self.cursor
+        self.cursor = (x + dx, y + dy)
+        self.now[0] += 0.01
+        self.send('MOUSEMOVE', 'NOTHING', x + dx, y + dy, shift=True)
+
+    def test_shift_slows_the_mouse_on_the_main_area(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        self.cursor = (1000, 1000)                       # red: saturation 1 (right edge)
+        self.ctx.warps.clear()
+        for _ in range(5):
+            self.shift_move(-10, 0)                      # 50 px of mouse travel ...
+        travelled = 50 * color_pick.SLOW_FACTOR          # ... moves the pick 10 px
+        self.assertAlmostEqual(self.ctx.state['sub_color_s'], 1.0 - travelled / sq.width)
+        self.assertEqual(self.ctx.warps[-1], (990, 1000))   # the cursor itself crawls
+
+    def test_shift_slows_slider_drags(self):
+        self.open()
+        hue = self.sel.parts['HUE']
+        self.move(hue.cx, hue.cy)
+        self.cursor = (hue.cx, hue.cy)
+        self.ctx.warps.clear()
+        self.send('LEFTMOUSE', 'PRESS', hue.cx, hue.cy)
+        self.shift_move(0, 50)
+        x, y = self.ctx.warps[-1]
+        self.send('LEFTMOUSE', 'RELEASE', x, y)
+        # 50 px slowed to 10 px, times the swipe gain 0.5
+        self.assertAlmostEqual(self.ctx.state['sub_color_h'], 10 * 0.5 / hue.height)
+
+    def test_releasing_shift_moves_normally_again(self):
+        self.open()
+        sq = self.sel.parts['SQUARE']
+        self.cursor = (1000, 1000)
+        self.shift_move(-10, 0)
+        x, y = self.ctx.warps[-1]
+        self.move(x - 20, y)                             # no Shift: full speed, absolute
+        self.assertAlmostEqual(self.ctx.state['sub_color_s'], 1.0 - 22 / sq.width)
+
     def test_previous_color_is_remembered(self):
-        self.open(color_pick.ColorPickTool)
+        self.open()
         state = self.ctx.state
         self.assertEqual((state['sub_color_start_h'], state['sub_color_start_s'], state['sub_color_start_v']),
                          (0.0, 1.0, 1.0))
-
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +518,7 @@ class ColorPadTests(unittest.TestCase):
         for step in range(1, 6):
             self.ui.handle(move(x + step * 5, y))
         self.assertEqual(self.writes, 0)             # shown live, not written
-        self.assertAlmostEqual(self.pad.drag['hsv'][0], 0.75)
+        self.assertAlmostEqual(self.pad.drag['color'][0], 0.75)
         self.ui.handle(ev('LEFTMOUSE', 'RELEASE', x + 25, y))
         self.assertEqual(self.writes, 1)
         self.assertAlmostEqual(self.hsv[0], 0.75)

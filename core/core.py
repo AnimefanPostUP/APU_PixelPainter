@@ -202,6 +202,27 @@ def _register_draw_handler(space, context):
 # replaces the running one; the old modal sees the token change and exits.
 _session_counter = 0
 
+# Addon load generation, kept outside the addon's modules (driver_namespace
+# survives module reloads / re-imports). register() starts a new generation;
+# a modal session from an older one is stale code and shuts itself down
+# instead of running next to the new session (two tool managers, two pickers).
+_GENERATION_KEY = 'apu_pixel_painter_generation'
+
+
+def current_generation():
+    try:
+        return bpy.app.driver_namespace.get(_GENERATION_KEY)
+    except Exception:
+        return None
+
+
+def new_generation():
+    """Called by register(): sessions started before are stale from now on."""
+    try:
+        bpy.app.driver_namespace[_GENERATION_KEY] = time.perf_counter_ns()
+    except Exception:
+        pass
+
 # Built-in brush overlay settings to restore when the session ends. Module
 # level so a session that takes over keeps the original values.
 _brush_overlay_restore = []
@@ -448,8 +469,26 @@ class PixelPainterOperator(Operator):
             return {'RUNNING_MODAL'}
         return {'PASS_THROUGH'}
 
+    def _leave_if_stale(self, context):
+        """True when the addon was reloaded since this session started.
+
+        Same module re-executed (reload): the new load already cleaned up the
+        runtime -- just leave. Modules replaced (re-install / re-enable): these
+        globals are the old load's -- end that old session (its draw handler,
+        tool manager, timer) before leaving.
+        """
+        same_state = getattr(self, '_state_ref', None) is _state
+        if same_state and getattr(self, '_generation', None) == current_generation():
+            return False
+        if same_state and self._owns_session():
+            _end_session()
+        self._restore_modal_cursor(context)
+        return True
+
     def modal(self, context, event):
         try:
+            if self._leave_if_stale(context):
+                return {'CANCELLED', 'PASS_THROUGH'}
             if not self._owns_session():
                 # Replaced by a session in another editor: leave quietly
                 # (the new session owns the state, handlers and cursor).
@@ -512,6 +551,8 @@ class PixelPainterOperator(Operator):
         reset_session()
         _session_counter += 1
         self._token = _session_counter
+        self._state_ref = _state
+        self._generation = current_generation()
         _state['session_token'] = self._token
         _state['session_area'] = context.area.as_pointer()
         _state['running'] = True

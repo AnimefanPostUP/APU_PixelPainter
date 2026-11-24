@@ -21,8 +21,10 @@ everything here works with press, drag and release only:
 * **Resize handle**: the triangle in the bar's top corner on the canvas side.
   Drag it outward / up to enlarge the bar (with flyouts), inward / down to
   shrink it; 0.2x .. 2x of the default size, remembered.
-* **Color pad** (:class:`~.kit.ColorPad`): hue / value sheet plus hue,
-  value and saturation bars, all swiped like a touchpad; a tap jumps. It
+* **Color pad** (:class:`~.kit.ColorSelector`): layout (Sheet, Square,
+  Triangle, Wheel), model (HSV / HSL) and optional RGB / HSV / HSL sliders
+  come from the settings popup (Color Selector tab). Every part is swiped
+  like a touchpad; a tap jumps. It
   edits the color the pen paints (secondary with the RMB lock). The change
   applies when the pen is lifted; the color from before editing stays marked
   with a cross and shows in the old / new bubble until the bubble is tapped
@@ -40,7 +42,7 @@ layer). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
 
 import math
 
-from .kit import Button, ColorPad, Column, DragBubble, Label, Overlay, Panel, Rect, Row, RoundButton, Theme, Widget
+from .kit import Button, ColorBubble, ColorSelector, Column, DragBubble, Label, Overlay, Panel, Rect, Row, RoundButton, Theme, Widget
 from .kit import draw
 from .kit.events import PRESS, RUNNING
 from .kit.theme import with_alpha
@@ -144,48 +146,6 @@ class ColorChips(Widget):
             draw.circle_outline(x, y, chip, with_alpha(ring, alpha), width=theme.px(2.0 if active else 1.0))
         border = theme.accent if self.hover_t > 0.5 else theme.border
         draw.circle_outline(cx, cy, r, with_alpha(border, alpha), width=theme.px(1.0))
-
-
-class ColorBubble(Widget):
-    """Old / new color bubble (new on top). Tap accepts the new color as reference.
-
-    Keeps its size while hidden (``shown`` false) so its row does not shift.
-    """
-
-    interactive = True
-
-    def __init__(self, colors, shown, changed, *, radius=_BUTTON_RADIUS, **kwargs):
-        super().__init__(**kwargs)
-        self.colors = colors      # () -> (old_rgb, new_rgb)
-        self.shown = shown        # () -> bool
-        self.changed = changed    # () -> bool: new differs from old
-        self.radius = radius
-
-    @property
-    def is_shown(self):
-        return bool(_resolve(self.shown, False))
-
-    def measure(self, theme):
-        d = theme.px(self.radius) * 2.0
-        return d, d
-
-    def contains(self, x, y):
-        return self.is_shown and math.hypot(x - self.rect.cx, y - self.rect.cy) <= self.rect.width * 0.5
-
-    def draw_self(self, dc):
-        if not self.is_shown:
-            return
-        theme = dc.theme
-        cx, cy = self.rect.cx, self.rect.cy
-        r = self.rect.width * 0.5
-        alpha = dc.alpha
-        old, new = _resolve(self.colors, ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
-        draw.sector(cx, cy, r, 0.0, math.pi, (new[0], new[1], new[2], alpha))
-        draw.sector(cx, cy, r, math.pi, math.tau, (old[0], old[1], old[2], alpha))
-        if bool(_resolve(self.changed, False)):
-            draw.circle_outline(cx, cy, r, with_alpha(theme.accent_light, alpha), width=theme.px(2.0))
-        else:
-            draw.circle_outline(cx, cy, r, with_alpha(theme.border, alpha), width=theme.px(1.0))
 
 
 class _Spacer(Widget):
@@ -430,8 +390,10 @@ class PenBar:
         self.knobs = {}
         self.arm_buttons = {}
 
-        self.color_pad = ColorPad(actions.pen_hsv, actions.set_pen_hsv, original=actions.original_hsv,
-                                  live=actions.color_preview, key='COLOR_PAD')  # part of the bar
+        self.color_pad = ColorSelector(actions.pen_hsv, actions.set_pen_hsv, original=actions.original_hsv,
+                                       live=actions.color_preview, layout=actions.color_layout,
+                                       model=actions.color_model, sliders=actions.color_sliders,
+                                       key='COLOR_PAD')  # part of the bar
         bar, tab = self._build_bar(), RoundButton("Pen", radius=17.0, on_click=lambda: self.set_collapsed(False))
         self.blend_flyout = self._build_blend_flyout()
         self.blend_flyout.visible = False
@@ -532,7 +494,7 @@ class PenBar:
         color = self._button("Color", a.toggle_color_panel, a.color_panel_open)
         settings = self._button("Settings", a.open_settings)
         settings.font_size = 8.0
-        self.color_bubble = ColorBubble(a.preview_colors, True, a.has_color_change,
+        self.color_bubble = ColorBubble(a.preview_colors, True, a.has_color_change, radius=_BUTTON_RADIUS,
                                         on_click=a.accept_color_change, key='COLOR_BUBBLE')
         self.color_row = Row([chips, picker, color, settings, self.color_bubble], gap=6.0)
 

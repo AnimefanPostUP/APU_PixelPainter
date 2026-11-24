@@ -1,4 +1,4 @@
-"""Ready-made widgets: Label, Button, BubbleButton, RoundButton, DragBubble, Panel."""
+"""Ready-made widgets: Label, Button, BubbleButton, RoundButton, DragBubble, ColorBubble, Panel."""
 
 import math
 
@@ -374,3 +374,45 @@ class Panel(Widget):
             tx, ty = dc.reveal(self.rect.cx, self._title_y)
             draw.text_centered(self.title, tx, ty, theme.px(theme.font_size),
                                with_alpha(theme.text, 0.95 * alpha), theme.font_id)
+
+
+class ColorBubble(Widget):
+    """Old / new color bubble (new on top). Tap accepts the new color as reference.
+
+    Keeps its size while hidden (``shown`` false) so its row does not shift.
+    """
+
+    interactive = True
+
+    def __init__(self, colors, shown, changed, *, radius=19.0, **kwargs):
+        super().__init__(**kwargs)
+        self.colors = colors      # () -> (old_rgb, new_rgb)
+        self.shown = shown        # () -> bool
+        self.changed = changed    # () -> bool: new differs from old
+        self.radius = radius
+
+    @property
+    def is_shown(self):
+        return bool(_resolve(self.shown, False))
+
+    def measure(self, theme):
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        return self.is_shown and math.hypot(x - self.rect.cx, y - self.rect.cy) <= self.rect.width * 0.5
+
+    def draw_self(self, dc):
+        if not self.is_shown:
+            return
+        theme = dc.theme
+        cx, cy = self.rect.cx, self.rect.cy
+        r = self.rect.width * 0.5
+        alpha = dc.alpha
+        old, new = _resolve(self.colors, ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
+        draw.sector(cx, cy, r, 0.0, math.pi, (new[0], new[1], new[2], alpha))
+        draw.sector(cx, cy, r, math.pi, math.tau, (old[0], old[1], old[2], alpha))
+        if bool(_resolve(self.changed, False)):
+            draw.circle_outline(cx, cy, r, with_alpha(theme.accent_light, alpha), width=theme.px(2.0))
+        else:
+            draw.circle_outline(cx, cy, r, with_alpha(theme.border, alpha), width=theme.px(1.0))

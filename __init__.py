@@ -50,6 +50,8 @@ _MODULES = (
     'ui.kit.draw',
     'ui.kit.widget',
     'ui.kit.widgets',
+    'ui.kit.color_models',
+    'ui.kit.color_selector',
     'ui.kit.color_pad',
     'ui.kit.radial',
     'ui.kit.overlay',
@@ -60,7 +62,6 @@ _MODULES = (
     'tools.draw_blending',
     'tools.draw_functions',
     'tools.draw_gridoverlay',
-    'tools.draw_menu_colorpick',
     'tools.draw_tool_smooth',
     'tools.overlays',
     'tools.overlays_selectmode',
@@ -153,6 +154,7 @@ def _classes():
 def register():
     _cleanup_runtime()
     _reload_modules()
+    _module('core.core').new_generation()   # sessions from before this load shut down
 
     import bmesh
     faces_uv = _module('ui.paint_selected_faces_uv')

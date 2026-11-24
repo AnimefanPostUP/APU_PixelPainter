@@ -1,22 +1,47 @@
-"""Color-pick subtool (E): drag to pick hue/value; saturation via the slider or the wheel.
+"""Color-pick subtool (E): the color selector at the cursor.
 
-The saturation slider right of the sheet is grabbed anywhere and swiped like a
-wheel (relative, no jump); a tap without dragging jumps to the tapped spot.
-While the pointer is in the slider's column, hue / value hold still.
+Shows the same :class:`~ui.kit.ColorSelector` as the pen bar, with the layout
+(Sheet / Square / Triangle / Wheel), model (HSV / HSL) and sliders chosen in
+the settings popup (Color Selector tab). It opens with the current color's
+spot under the cursor.
+
+* Main area (sheet / square / triangle / disc): follows the mouse -- the color
+  under the cursor applies instantly; a click applies it and closes.
+  Leaving the main area (e.g. on the way to a bar) restores the color from
+  where the mouse last paused.
+* Hold Shift: the mouse moves slower (``SLOW_FACTOR``) over the whole selector --
+  the cursor itself crawls, for precise picking, bar / slider drags and taps.
+* Bars / sliders: click to jump, press and drag to swipe (relative) -- also
+  how pens without hover use the whole selector.
+* Mouse wheel: over a bar / slider changes that channel; elsewhere the channel
+  the main area does not set (Sheet: saturation, Square / Triangle: hue,
+  Wheel: value / lightness). Shift: fine steps.
+* E: switch between the primary and secondary color.
+* Click outside the selector / Enter / Space: done.
+* Right-click / Esc: restore the colors from before and close (during a drag:
+  only discard that drag).
 """
 
 import colorsys
+import time
 
-from ...core.framework import HoldTool, Shortcut, ToolFrame
+from ...core.framework import Shortcut, ToolFrame
+from ...ui.kit import ColorBubble, ColorSelector, Column, Overlay, Panel, Row, Theme, UIEvent
+from ...ui.kit.events import PASS_THROUGH
 from . import helpers
 
 
-_COLOR_PICK_SHIFT_FACTOR = 10.0
 _SATURATION_EPS = 0.01
+SLOW_FACTOR = 0.2          # Shift: the mouse moves this much slower over the selector
+_WHEEL_STEP = 0.05
+_WHEEL_STEP_FINE = 0.01
+SELECTOR_WIDTH = 300.0     # unscaled px
+_GAIN = 0.5
 
 
 class ColorPickTool(ToolFrame):
-    """Modal HSV picker. LMB confirms, RMB / Esc cancel, E toggles primary/secondary."""
+    """Color selector at the cursor. Click outside / Enter confirm, RMB / Esc cancel,
+    E toggles primary / secondary."""
 
     label = "Color Pick"
     mode_name = 'COLOR_PICK'
@@ -29,30 +54,29 @@ class ColorPickTool(ToolFrame):
         'sub_orig_color':     None,
         'sub_orig_color_secondary': None,
         'sub_color_target':   'PRIMARY',
-        'sub_color_h':        None,
+        'sub_color_h':        None,   # the edited color (kept as HSV: hue survives grey)
         'sub_color_s':        None,
         'sub_color_v':        None,
-        'sub_color_start_h':  None,
+        'sub_color_start_h':  None,   # the color from before (marked on the selector)
+        'sub_color_start_s':  None,
         'sub_color_start_v':  None,
-        'sub_color_start_s':  None,   # previous color (marked on sheet + slider)
-        'sub_color_sat_drag': None,   # {'travel': px} while the slider is held
-        'sub_color_sat_hover': False,
-        'sub_color_total_dx': 0.0,
-        'sub_color_total_dy': 0.0,
     }
 
-    def on_register(self):
-        # Hold Shift = precision movement. A subtool backed by two methods of this object.
-        self.precision = self.add_subtool(HoldTool(
-            'SHIFT', on_hold=self._sync_cursor_to_hv, on_release=self._sync_cursor_to_hv))
+    clock = staticmethod(time.perf_counter)
 
-        self.bind(Shortcut('MOUSEMOVE', None), self._on_mouse_move)
-        self.bind(Shortcut('LEFTMOUSE'), self._on_press)
-        self.bind(Shortcut('LEFTMOUSE', 'RELEASE'), self._on_release)
-        self.bind(Shortcut(('RIGHTMOUSE', 'ESC')), self._cancel)
-        self.bind(Shortcut('WHEELUPMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, +1))
-        self.bind(Shortcut('WHEELDOWNMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, -1))
+    def __init__(self):
+        super().__init__()
+        self.overlay = None
+        self.selector = None
+        self.panel = None
+        self._pointer = (0.0, 0.0)    # region point the selector sees (slowed while Shift is held)
+        self._last_real = (0, 0)      # where the OS cursor is (after our warps)
+
+    def on_register(self):
         self.bind(Shortcut('E'), self._toggle_target)
+        self.bind(Shortcut('WHEELUPMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, ev, +1))
+        self.bind(Shortcut('WHEELDOWNMOUSE', None), lambda ctx, ev: self._adjust_saturation(ctx, ev, -1))
+        self.bind(Shortcut(('RET', 'NUMPAD_ENTER', 'SPACE')), self._confirm)
 
     # ---- lifecycle ---------------------------------------------------------------
 
@@ -60,70 +84,190 @@ class ColorPickTool(ToolFrame):
         state, settings = ctx.state, ctx.settings
         rgb = settings.get_brush_rgb(ctx.context)
         sec_rgb = settings.get_brush_secondary_rgb(ctx.context)
-        h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
-
-        if state.get('sub_color_s') is None:
-            state['sub_color_h'] = h_new
-            state['sub_color_s'] = s_new
-            state['sub_color_v'] = v_new
-        else:
-            if s_new > _SATURATION_EPS:
-                state['sub_color_h'] = h_new
-            state['sub_color_v'] = v_new
-
         state['sub_mode'] = self.mode_name
         state['sub_color_target'] = 'PRIMARY'
-        state['sub_orig_color'] = rgb
-        state['sub_orig_color_secondary'] = sec_rgb
-        state['sub_color_start_h'] = state['sub_color_h']
-        state['sub_color_start_v'] = state['sub_color_v']
-        state['sub_color_start_s'] = state['sub_color_s']
-        state['sub_color_sat_drag'] = None
-        state['sub_color_sat_hover'] = False
-
-        # Center the picker at the cursor and move the mouse onto the current color's spot.
+        state['sub_orig_color'] = tuple(rgb)
+        state['sub_orig_color_secondary'] = tuple(sec_rgb) if sec_rgb is not None else None
+        self._load_color(state, rgb)
         helpers.set_sub_start_to_event(state, event)
-        helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'], warp=True)
-        state['sub_fake_cursor_x'] = state.get('sub_last_x')
-        state['sub_fake_cursor_y'] = state.get('sub_last_y')
+        self._build(ctx, event)
         ctx.redraw()
 
     def on_deactivate(self, ctx):
-        ctx.state['sub_color_sat_drag'] = None
-        ctx.state['sub_color_sat_hover'] = False
+        if self.overlay is not None and self.overlay.dragging is not None:
+            self.overlay.end_drag()
+        self.overlay = self.selector = self.panel = None
         if ctx.state.get('sub_mode') == self.mode_name:
             ctx.state['sub_mode'] = None
         ctx.redraw()
 
+    def on_interrupt(self, ctx):
+        if self.overlay is not None and self.overlay.dragging is not None:
+            self.overlay.end_drag()
+
     def draw_overlay(self, ctx):
         from .. import draw_functions
         draw_functions.draw_sub_mode_overlay(ctx.context, ctx.state)
+        if self.overlay is not None:
+            self.overlay.draw()
 
-    # ---- actions -------------------------------------------------------------------
+    # ---- building --------------------------------------------------------------------
+
+    @staticmethod
+    def _setting(ctx, name, default):
+        try:
+            return getattr(ctx.wm, f'pixel_painter_color_selector_{name}', default)
+        except Exception:
+            return default
+
+    def _build(self, ctx, event):
+        state = ctx.state
+        self.selector = ColorSelector(
+            lambda: (state['sub_color_h'], state['sub_color_s'], state['sub_color_v']),
+            lambda h, s, v: self._set_hsv(ctx, h, s, v),
+            original=lambda: (state['sub_color_start_h'], state['sub_color_start_s'], state['sub_color_start_v']),
+            live=True,
+            layout=self._setting(ctx, 'layout', 'SHEET'),
+            model=self._setting(ctx, 'model', 'HSV'),
+            sliders=set(self._setting(ctx, 'sliders', set()) or ()),
+            gain=_GAIN, key='COLOR_SELECTOR')
+        bubble = ColorBubble(lambda: self._bubble_colors(ctx), True, lambda: True, radius=13.0)
+        bubble.interactive = False
+        self.panel = Panel(Column([Row([bubble]), self.selector], gap=6.0),
+                           title=self._title(state), padding=8.0)
+        theme = Theme.for_context(ctx.context)
+        self.selector.fit_width = theme.px(SELECTOR_WIDTH)
+        mx, my = event.mouse_region_x, event.mouse_region_y
+        self._set_pointer(mx, my)
+        self.overlay = Overlay(self.panel, theme=theme, origin=(mx, my), modal=False, animate=False)
+        # The current color's spot under the cursor: nothing changes until the mouse moves.
+        px, py = self.selector.main_point()
+        self.overlay.move_origin(mx - px, my - py)
+        region = getattr(ctx, 'region', None)
+        if region is not None:
+            dx, dy = self.overlay.fit_inside(region.width, region.height)
+            if dx or dy:   # pushed inside the editor: the cursor moves along
+                self._warp(ctx, event, mx + dx, my + dy)
+                self._set_pointer(mx + dx, my + dy)
+        self.selector.follow_begin(self.clock())
+
+    @staticmethod
+    def _warp(ctx, event, x, y):
+        """Move the OS cursor to region point ``x``/``y``."""
+        try:
+            ox, oy = event.mouse_x - event.mouse_region_x, event.mouse_y - event.mouse_region_y
+            ctx.context.window.cursor_warp(int(round(x + ox)), int(round(y + oy)))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _title(state):
+        return "Secondary Color" if state.get('sub_color_target') == 'SECONDARY' else "Primary Color"
+
+    def _bubble_colors(self, ctx):
+        """(old, new) RGB of the color being edited."""
+        state = ctx.state
+        if state.get('sub_color_target') == 'SECONDARY':
+            old = state.get('sub_orig_color_secondary')
+            new = ctx.settings.get_brush_secondary_rgb(ctx.context)
+        else:
+            old = state.get('sub_orig_color')
+            new = ctx.settings.get_brush_rgb(ctx.context)
+        return tuple(old or new), tuple(new)
+
+    # ---- color -----------------------------------------------------------------------
+
+    @staticmethod
+    def _load_color(state, rgb):
+        """Edit ``rgb``; hue survives when it is grey (kept from the last edit)."""
+        h, s, v = colorsys.rgb_to_hsv(*rgb)
+        if state.get('sub_color_s') is not None and s <= _SATURATION_EPS:
+            h = state.get('sub_color_h') or 0.0
+        state['sub_color_h'], state['sub_color_s'], state['sub_color_v'] = h, s, v
+        state['sub_color_start_h'], state['sub_color_start_s'], state['sub_color_start_v'] = h, s, v
+
+    def _set_hsv(self, ctx, h, s, v):
+        state = ctx.state
+        state['sub_color_h'], state['sub_color_s'], state['sub_color_v'] = h, s, v
+        rgb = colorsys.hsv_to_rgb(h, s, v)
+        if state.get('sub_color_target') == 'SECONDARY':
+            ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
+        else:
+            ctx.settings.set_brush_rgb(ctx.context, *rgb)
+
+    # ---- slow pointer (Shift) ------------------------------------------------------------
+
+    def _set_pointer(self, x, y):
+        """The selector's pointer (region px) and where the OS cursor is now."""
+        self._pointer = (float(x), float(y))
+        self._last_real = (x, y)
+
+    def _track(self, ctx, event):
+        """Region point the selector sees for ``event``.
+
+        While Shift is held the mouse is slowed down: movement is scaled by
+        ``SLOW_FACTOR`` and the OS cursor is moved back to the slowed point, so
+        the cursor itself crawls -- precise picking on the main area, precise
+        bar / slider drags and taps alike. The slowed point keeps sub-pixel
+        precision (the cursor can only sit on whole pixels).
+        """
+        rx, ry = event.mouse_region_x, event.mouse_region_y
+        if not event.shift:
+            self._set_pointer(rx, ry)
+            return self._pointer
+        if event.type != 'MOUSEMOVE':
+            return self._pointer       # clicks / wheel land on the slowed point
+        lx, ly = self._last_real
+        px, py = self._pointer
+        px += (rx - lx) * SLOW_FACTOR
+        py += (ry - ly) * SLOW_FACTOR
+        self._pointer = (px, py)
+        tx, ty = int(round(px)), int(round(py))
+        if (tx, ty) != (rx, ry):
+            self._warp(ctx, event, tx, ty)
+        self._last_real = (tx, ty)
+        return self._pointer
+
+    # ---- events ----------------------------------------------------------------------
+
+    def on_event(self, ctx, event):
+        overlay = self.overlay
+        if overlay is None:
+            return
+        x, y = self._track(ctx, event)
+        selector = self.selector
+        was_dragging = overlay.dragging is not None
+        if (not was_dragging and event.type == 'LEFTMOUSE' and event.value == 'PRESS'
+                and selector.shape.follows(x, y)):
+            event.consume()            # a click on the main area: take that color, done
+            selector.follow(x, y, self.clock())
+            self._confirm(ctx, event)
+            return
+        result = overlay.handle(UIEvent(type=event.type, value=event.value, x=x, y=y,
+                                        shift=event.shift, ctrl=event.ctrl, alt=event.alt))
+        if result != PASS_THROUGH or was_dragging:
+            event.consume()
+            ctx.redraw()
+            return
+        if event.type == 'MOUSEMOVE':
+            selector.follow(x, y, self.clock())   # the main area follows the mouse
+            event.consume()
+            ctx.redraw()
+            return
+        if event.value != 'PRESS':
+            return
+        if event.type == 'LEFTMOUSE':
+            event.consume()
+            if overlay.pointer_widget is None:   # outside the panel: done
+                self._confirm(ctx, event)
+        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            event.consume()
+            self._cancel(ctx, event)
+
+    # ---- actions ---------------------------------------------------------------------
 
     def _confirm(self, ctx, event):
         self.deactivate(ctx)
-
-    def _on_press(self, ctx, event):
-        x, y = event.mouse_region_x, event.mouse_region_y
-        if helpers.over_sat_bar(ctx.state, x, y):
-            ctx.state['sub_color_sat_drag'] = {'travel': 0.0}
-            self._track_pointer(ctx.state, x, y)
-            ctx.redraw()
-            return
-        self._confirm(ctx, event)
-
-    def _on_release(self, ctx, event):
-        state = ctx.state
-        drag = state.get('sub_color_sat_drag')
-        if drag is None:
-            return False  # not ours (the picker applies on press)
-        state['sub_color_sat_drag'] = None
-        if drag['travel'] < helpers.SAT_TAP_TRAVEL:  # a tap: jump to the spot
-            state['sub_color_s'] = helpers.sat_at(state, event.mouse_region_y)
-            self._write_color(ctx)
-        state['sub_color_sat_hover'] = helpers.over_sat_bar(state, event.mouse_region_x, event.mouse_region_y)
-        ctx.redraw()
 
     def _cancel(self, ctx, event):
         state, settings = ctx.state, ctx.settings
@@ -132,74 +276,18 @@ class ColorPickTool(ToolFrame):
             settings.set_brush_secondary_rgb(ctx.context, *state['sub_orig_color_secondary'])
         self.deactivate(ctx)
 
-    def _write_color(self, ctx):
-        state = ctx.state
-        rgb = colorsys.hsv_to_rgb(state['sub_color_h'], state['sub_color_s'], state['sub_color_v'])
-        if state.get('sub_color_target') == 'SECONDARY':
-            ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
-        else:
-            ctx.settings.set_brush_rgb(ctx.context, *rgb)
-
-    def _track_pointer(self, state, x, y):
-        """Follow the real pointer without changing hue / value (keeps the
-        position -> hue/value mapping consistent for when it moves on)."""
-        state['sub_last_x'], state['sub_last_y'] = x, y
-        state['sub_color_total_dx'] = x - state['sub_start_region_x']
-        state['sub_color_total_dy'] = y - state['sub_start_region_y']
-        state['sub_fake_cursor_x'], state['sub_fake_cursor_y'] = x, y
-
-    def _on_mouse_move(self, ctx, event):
-        state = ctx.state
-        x, y = event.mouse_region_x, event.mouse_region_y
-        dx = x - state['sub_last_x']
-        dy = y - state['sub_last_y']
-
-        drag = state.get('sub_color_sat_drag')
-        if drag is not None:  # swiping the slider: relative, like a wheel
-            drag['travel'] += abs(dx) + abs(dy)
-            scale = 1.0 / _COLOR_PICK_SHIFT_FACTOR if self.precision.is_active else 1.0
-            sat = (state.get('sub_color_s') or 0.0) + dy * scale / helpers.COLOR_PICK_V_DIV
-            state['sub_color_s'] = max(0.0, min(1.0, sat))
-            self._write_color(ctx)
-            self._track_pointer(state, x, y)
-            ctx.redraw()
+    def _adjust_saturation(self, ctx, event, direction):
+        if self.selector is None:
             return
-
-        state['sub_color_sat_hover'] = helpers.over_sat_bar(state, x, y)
-        if helpers.in_sat_column(state, x):  # on the way to / on the slider
-            self._track_pointer(state, x, y)
-            ctx.redraw()
-            return
-
-        state['sub_last_x'] = x
-        state['sub_last_y'] = y
-
-        sensitivity = _COLOR_PICK_SHIFT_FACTOR if self.precision.is_active else 1.0
-        state['sub_color_total_dx'] += dx / sensitivity
-        state['sub_color_total_dy'] += dy / sensitivity
-        state['sub_color_h'] = (0.5 + state['sub_color_total_dx'] / helpers.COLOR_PICK_H_DIV) % 1.0
-        state['sub_color_v'] = max(0.0, min(1.0, 0.5 + state['sub_color_total_dy'] / helpers.COLOR_PICK_V_DIV))
-        self._write_color(ctx)
-
-        if self.precision.is_active:
-            helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'])
-        state['sub_fake_cursor_x'] = state.get('sub_last_x')
-        state['sub_fake_cursor_y'] = state.get('sub_last_y')
-        ctx.redraw()
-
-    def _adjust_saturation(self, ctx, direction):
-        state = ctx.state
-        step = 0.01 if self.precision.is_active else 0.05
-        sat = state.get('sub_color_s') or 0.0
-        state['sub_color_s'] = max(0.0, min(1.0, sat + direction * step))
-        self._write_color(ctx)
-        if self.precision.is_active:
-            helpers.warp_cursor_to_color_pick_hv(state, ctx.context, state['sub_color_h'], state['sub_color_v'])
+        step = _WHEEL_STEP_FINE if event.shift else _WHEEL_STEP
+        self.selector.wheel(*self._track(ctx, event), direction * step)
         ctx.redraw()
 
     def _toggle_target(self, ctx, event):
         if event.shift:
             return  # swallowed: Shift+E must not open STRENGTH on top
+        if self.overlay is not None and self.overlay.dragging is not None:
+            return
         state, settings, context = ctx.state, ctx.settings, ctx.context
         if state.get('sub_color_target') == 'SECONDARY':
             if state.get('sub_orig_color_secondary') is not None:
@@ -211,24 +299,14 @@ class ColorPickTool(ToolFrame):
                 settings.set_brush_rgb(context, *state['sub_orig_color'])
             state['sub_color_target'] = 'SECONDARY'
             rgb = settings.get_brush_secondary_rgb(context)
-
-        h_new, s_new, v_new = colorsys.rgb_to_hsv(*rgb)
-        if s_new > _SATURATION_EPS:
-            state['sub_color_h'] = h_new
-        state['sub_color_s'] = s_new
-        state['sub_color_v'] = v_new
-        state['sub_color_start_h'] = state['sub_color_h']
-        state['sub_color_start_v'] = state['sub_color_v']
-        state['sub_color_start_s'] = state['sub_color_s']
-        helpers.warp_cursor_to_color_pick_hv(state, context, state['sub_color_h'], state['sub_color_v'], warp=True)
-        state['sub_fake_cursor_x'] = state.get('sub_last_x')
-        state['sub_fake_cursor_y'] = state.get('sub_last_y')
-        ctx.redraw()
-
-    def _sync_cursor_to_hv(self, ctx):
-        state = ctx.state
-        helpers.warp_cursor_to_color_pick_hv(
-            state, ctx.context, state.get('sub_color_h') or 0.5, state.get('sub_color_v') or 0.5)
-        state['sub_fake_cursor_x'] = state.get('sub_last_x')
-        state['sub_fake_cursor_y'] = state.get('sub_last_y')
+        self._load_color(state, rgb)
+        if self.panel is not None:
+            self.panel.title = self._title(state)
+        if self.selector is not None and self.selector.parts:
+            # The other color's spot under the cursor, so moving on starts from it.
+            px, py = self.selector.main_point()
+            self._warp(ctx, event, px, py)
+            self._pointer = (px, py)
+            self._last_real = (int(round(px)), int(round(py)))
+            self.selector.follow_begin(self.clock())
         ctx.redraw()

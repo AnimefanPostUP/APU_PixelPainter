@@ -136,9 +136,11 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | Module | Contents |
 |---|---|
 | `widget.py` | `Widget` base, `Row`, `Column`, `Grid`, `DrawContext` |
-| `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `Panel` |
+| `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `DragBubble`, `ColorBubble` (old / new), `Panel` |
 | `radial.py` | `RadialMenu` (arc or explicit directions, `attach_below`, number keys) |
-| `color_pad.py` | `ColorPad` — compact HSV selector, every part swiped like a touchpad (pure Python layout / input) |
+| `color_selector.py` | `ColorSelector` — pen-friendly color selector, every part swiped like a touchpad (pure Python layout / input). Layouts are `ColorShape` variants: `SheetShape`, `SquareShape`, `TriangleShape`, `WheelShape`; model HSV / HSL; optional RGB / HSV / HSL channel sliders underneath |
+| `color_models.py` | HSV / HSL / RGB conversions that keep hue / saturation through grey, black and white |
+| `color_pad.py` | `ColorPad` (the selector with the Sheet layout), `hsv_for_rgb` |
 | `overlay.py` | `Overlay` — interaction controller (pure Python, unit-tested) |
 | `modal.py` | `OverlayOperator` mixin — draw handler, timer, modal wiring |
 | `draw.py`, `icons.py`, `theme.py` | GPU primitives, image icons, colors/metrics/timings |
@@ -183,9 +185,19 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   wheel, so the bar uses only press / drag / release: `DragBubble` knobs
   (`draggable`), flyout openers (`activate_on_press`) and flyout entries
   (`drag_release`). The bar sits in the bottom corner. *Color* toggles the
-  `ColorPad` (inside the bar under the color row, stretched to its width): the
-  hue/value sheet and the hue, value and saturation bars all move relative to
-  the swipe (`gain` 0.5), a tap jumps; it commits once, on release. It edits
+  `ColorPad` (a `ColorSelector` inside the bar under the color row, stretched to its width):
+  every part moves relative to the swipe (`gain` 0.5), a tap jumps. Layout
+  (`pixel_painter_color_selector_layout`: Sheet / Square / Triangle / Wheel), model
+  (`..._model`: HSV / HSL) and sliders (`..._sliders`: RGB / HSV / HSL, any combination)
+  are set in the settings popup > Color Selector and apply immediately;
+  the E-key color pick subtool (`tools/subtools/color_pick.py`) shows the same
+  selector at the cursor (a non-modal `Overlay` layer) in hover mode
+  (`ColorSelector.follow`): the main area follows the mouse, a click on it applies and
+  closes; leaving it restores the color where the mouse last paused; bars / sliders are
+  clicked or swiped; the wheel (`ColorSelector.wheel`) changes the bar under the mouse or
+  the channel the main area does not set; Shift slows the mouse (the cursor is warped to
+  the slowed point, so picking, drags and taps all get precise); RMB / Esc restore,
+  E = primary / secondary; it commits once, on release. It edits
   the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
   settings popup > Color Selector) the pad is `live` (commits every step).
   *Settings* opens the settings popup. The color from before (`pen_color_original`) stays marked and

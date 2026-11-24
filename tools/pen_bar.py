@@ -133,7 +133,8 @@ class PenBarTool(ToolFrame):
         if event.type != 'LEFTMOUSE':
             return
         if event.is_press:
-            self._remap_release = bool(ctx.state.get('pen_rmb_lock'))
+            # Not while a sub-mode UI is open (E color selector, Shift+E): the pen operates it.
+            self._remap_release = bool(ctx.state.get('pen_rmb_lock')) and not ctx.state.get('sub_mode')
         if self._remap_release:
             event.type = 'RIGHTMOUSE'
             if event.is_release:
@@ -274,6 +275,15 @@ class PenBarTool(ToolFrame):
 
     def color_preview(self):
         return self._preview_on(self._c())
+
+    def color_layout(self):
+        return getattr(self._c().wm, 'pixel_painter_color_selector_layout', 'SHEET')
+
+    def color_model(self):
+        return getattr(self._c().wm, 'pixel_painter_color_selector_model', 'HSV')
+
+    def color_sliders(self):
+        return set(getattr(self._c().wm, 'pixel_painter_color_selector_sliders', set()))
 
     def open_settings(self):
         """The Settings button: the settings popup, opened outside the modal event handler."""

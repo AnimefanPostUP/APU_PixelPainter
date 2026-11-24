@@ -14,6 +14,7 @@ from .tools.registry import SETTING_CHANNELS
 from .utils import persistence_settings
 from .utils import settings_service
 from .ui import settings_menu
+from .ui.kit import color_selector
 
 
 PREFIX = 'pixel_painter_'
@@ -232,6 +233,19 @@ def _static_properties():
             description="Pen bar color pad only previews: the brush keeps its color until the "
                         "old / new bubble is tapped (off: the pad color applies when the pen is lifted)",
             default=False, update=_update_pen_color_preview),
+        # ---- color selector (pen bar color pad) ----
+        'color_selector_layout': bpy.props.EnumProperty(
+            name="Color Selector Layout", description="Shape of the pen bar color selector",
+            items=[(i, label, desc) for i, label, desc in color_selector.LAYOUTS],
+            default='SHEET', update=_persist),
+        'color_selector_model': bpy.props.EnumProperty(
+            name="Color Selector Model", description="Color model the color selector works in",
+            items=[(i, label, desc) for i, label, desc in color_selector.SELECTOR_MODELS],
+            default='HSV', update=_persist),
+        'color_selector_sliders': bpy.props.EnumProperty(
+            name="Color Selector Sliders", description="Channel sliders shown under the color selector",
+            items=[(i, label, desc) for i, label, desc in color_selector.SLIDER_SPACES],
+            options={'ENUM_FLAG'}, default=set(), update=_persist),
     }
 
 

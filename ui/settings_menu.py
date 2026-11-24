@@ -47,6 +47,26 @@ def _hints(layout, lines):
 
 def _draw_color(layout, context):
     wm = context.window_manager
+    layout.label(text="Layout")
+    row = layout.row(align=True)
+    row.scale_y = 1.2
+    row.prop(wm, "pixel_painter_color_selector_layout", expand=True)
+    row = layout.row(align=True)
+    row.label(text="Color Model")
+    row.prop(wm, "pixel_painter_color_selector_model", expand=True)
+    row = layout.row(align=True)
+    row.label(text="Sliders")
+    sliders = row.row(align=True)
+    sliders.operator("image.pixel_painter_color_sliders_none", text="None",
+                     depress=not wm.pixel_painter_color_selector_sliders)
+    sliders.prop(wm, "pixel_painter_color_selector_sliders", expand=True)
+    _hints(layout, (
+        "Used by the pen bar color pad and the E color selector.",
+        "Every part is swiped like a touchpad (pen friendly); a tap jumps.",
+        "Sliders: RGB / HSV / HSL channel bars under the selector (any combination).",
+    ))
+
+    layout.separator()
     layout.label(text="Pen Bar Color Pad")
     layout.prop(wm, "pixel_painter_pen_color_preview", text="Preview", toggle=True, icon='HIDE_OFF')
     _hints(layout, (
@@ -179,7 +199,7 @@ _SHORTCUTS = (
     ("Hold Alt", "Line draw while held"),
     ("Hold Ctrl", "Pick image color"),
     ("Shift+1..9", "Select tool"),
-    ("E", "Open color bubble"),
+    ("E", "Open color selector (selected layout)"),
     ("Shift+E", "Open strength/alpha bubble"),
     ("W", "Open brush type menu"),
     ("Shift+W", "Open blend mode pie"),
@@ -254,6 +274,17 @@ class PixelPainterOpenSettingsOperator(Operator):
         return {'FINISHED'}
 
 
+class PixelPainterColorSlidersNoneOperator(Operator):
+    """Hide all channel sliders under the color selector"""
+    bl_idname = "image.pixel_painter_color_sliders_none"
+    bl_label = "No Sliders"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        context.window_manager.pixel_painter_color_selector_sliders = set()
+        return {'FINISHED'}
+
+
 def draw_settings_button(layout, text="Settings"):
     """Button opening the settings popup (N-panel / header)."""
     layout.popover(panel=SETTINGS_PANEL_ID, text=text, icon='PREFERENCES')
@@ -262,4 +293,5 @@ def draw_settings_button(layout, text="Settings"):
 classes = (
     IMAGE_PT_pixel_painter_settings,
     PixelPainterOpenSettingsOperator,
+    PixelPainterColorSlidersNoneOperator,
 )

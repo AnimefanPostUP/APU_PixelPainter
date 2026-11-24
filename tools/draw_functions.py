@@ -481,8 +481,6 @@ def _draw_checker_circle(cx, cy, radius, cell=5):
 def _draw_sub_mode_cursor_dot(context, state):
     """Draw a 50px circle at the sub-mode start position.
 
-    COLOR_PICK: top half = current target color; bottom half = original
-                color of the active target (primary or secondary).
     STRENGTH:   left arc = strength, right arc = modifier,
                 center circle = canvas opacity.
     """
@@ -493,8 +491,6 @@ def _draw_sub_mode_cursor_dot(context, state):
     ry = state.get('sub_start_region_y')
     if rx is None or ry is None:
         return
-    origin_rx = rx
-    origin_ry = ry
 
     radius = 38  # ~75 px diameter (1.5×)
 
@@ -507,49 +503,7 @@ def _draw_sub_mode_cursor_dot(context, state):
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('NONE')
 
-    if sub == 'COLOR_PICK':
-        # Attach bubble to fake cursor with a slight upward offset.
-        cx = state.get('sub_last_x')
-        cy = state.get('sub_last_y')
-        if cx is None or cy is None:
-            cx, cy = origin_rx, origin_ry
-        rx = cx
-        ry = cy + 50
-
-        try:
-            target = state.get('sub_color_target') or 'PRIMARY'
-            curr = (
-                tuple(brush.secondary_color[:3]) if (brush and target == 'SECONDARY')
-                else (tuple(brush.color[:3]) if brush else (1.0, 1.0, 1.0))
-            )
-            orig_target = (
-                tuple(state.get('sub_orig_color_secondary') or curr)
-                if target == 'SECONDARY'
-                else tuple(state.get('sub_orig_color') or curr)
-            )
-        except Exception:
-            curr = (1.0, 1.0, 1.0)
-            orig_target = (1.0, 1.0, 1.0)
-
-        _draw_filled_half_circle(rx, ry, radius, (*orig_target, 1.0), top=False)
-        _draw_filled_half_circle(rx, ry, radius, (*curr, 1.0), top=True)
-
-        # Label above bubble: which target is being edited.
-        gpu.state.blend_set('NONE')
-        font_id = 0
-        label = "Secondary Color" if target == 'SECONDARY' else "Primary Color"
-        blf.size(font_id, 12)
-        tw, th = blf.dimensions(font_id, label)
-        sheet_w = 500.0
-        sheet_h = 300.0
-        sheet_x0 = origin_rx - sheet_w * 0.5
-        sheet_y0 = origin_ry - sheet_h * 0.5
-        blf.color(font_id, 1.0, 1.0, 1.0, 0.95)
-        blf.position(font_id, sheet_x0 + (sheet_w - tw) * 0.5, sheet_y0 + sheet_h + th + 6, 0)
-        blf.draw(font_id, label)
-        gpu.state.blend_set('ALPHA')
-
-    elif sub == 'STRENGTH':
+    if sub == 'STRENGTH':
         try:
             edit_btn = state.get('sub_edit_button', 'LMB')
             suffix = '_rmb' if edit_btn == 'RMB' else ''
@@ -680,21 +634,9 @@ def draw_sub_mode_overlay(context, state):
     if not sub:
         return
 
-    if sub == 'COLOR_PICK':
-        from . import draw_menu_colorpick
-
-        draw_menu_colorpick.draw_color_pick_sheet_overlay(state)
-        rx = state.get('sub_start_region_x')
-        ry = state.get('sub_start_region_y')
-        if rx is not None and ry is not None:
-            h = state.get('sub_color_h') or 0.0
-            s = state.get('sub_color_s') or 0.0
-            v = state.get('sub_color_v') or 0.0
-            draw_menu_colorpick.draw_color_pick_axes(rx, ry, h, s, v, 0.0)
-            draw_menu_colorpick.draw_color_pick_markers(state)
-
-    _draw_sub_mode_cursor_dot(context, state)
-    if sub in {'COLOR_PICK', 'STRENGTH'}:
+    # COLOR_PICK draws its selector itself (a UI-kit layer, see subtools.color_pick).
+    if sub == 'STRENGTH':
+        _draw_sub_mode_cursor_dot(context, state)
         _draw_fake_color_pick_cursor(state)
 
     area = context.area
@@ -748,7 +690,7 @@ def draw_sub_mode_overlay(context, state):
                 r, g, b = (brush.color if brush else (0, 0, 0))[:3]
             h, s, v = colorsys.rgb_to_hsv(r, g, b)
             line1 = f"Target {target}   H {h:.3f}   S {s:.3f}   V {v:.3f}"
-            line2 = "Mouse X Hue   Mouse Y Value   Sat: drag / tap the bar or scroll   E toggle target   LMB apply   RMB cancel"
+            line2 = "Move: pick   Shift: slow mouse   Click: apply   Bars: click / drag   Wheel: other channel (over a bar: that bar)   E toggle target   RMB / Esc cancel"
         else:
             return
     except Exception:
