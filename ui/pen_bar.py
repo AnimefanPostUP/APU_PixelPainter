@@ -34,16 +34,26 @@ everything here works with press, drag and release only.
   paints with it), the secondary and primary color (tap a color: the pen
   paints with it -- the secondary one sets the RMB lock) with *Pipette*
   (eyedropper: arms it for the next canvas press) and *Swap* between them;
-  bottom left the palette (12 slots in two bands along the circle) and *Color*
-  (hue ring around the pen's color: shows / hides the color selector);
+  bottom left the palette band (24 slots in two bands along the circle) and
+  *Palettes* (switches the band between the active palette's colors and the
+  project's 24 palettes), *Color* (hue ring around the pen's color: shows /
+  hides the color selector) and *Library* (the palette library window);
   bottom right the *curve* button on the Custom falloff's outer edge (opens
   the curve flyout, selects Custom) and *Settings* (gear: the settings popup).
-* **Drag & drop colors** (setting *Drag Colors*): drag the primary / secondary
-  color, a history color, a palette color or the color selector's old / new
-  bubble (a short press stays a tap). Drop it on a palette slot to store it
-  (palette onto palette: the two swap), on the primary / secondary color to
-  set it; drop a palette color off the menu to remove it. Tap an empty palette
-  slot to store the current color; tap a palette color to paint with it.
+* **Palettes** are stored per project (in the .blend); the library window
+  (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
+  clipboard -- project and library are not synced. *From image...* turns an
+  image file's pixel colors into a new project palette.
+* **Drag & drop** (setting *Drag Colors*): drag the primary / secondary color,
+  a history color, a palette color or the color selector's old / new bubble (a
+  short press stays a tap). Drop it on a palette slot to store it (palette onto
+  palette: the two swap), on the primary / secondary color to set it; drop a
+  palette color off the menu to remove it. In the palette view, palettes are
+  dragged the same way: onto another slot (swap), into the library list
+  (saved there), from the library onto a slot (loaded; replacing a palette
+  asks first); a project palette dropped off the menu is deleted after a
+  confirmation. Tap an empty palette slot to store the current color; tap a
+  palette color to paint with it.
 * **Curve flyout**: the custom falloff curve (the brush's falloff curve; x =
   distance from the center, y = weight). *Move*: drag anchors, drag one out of
   the box to remove it; *Add*: a tap adds an anchor; *Draw*: draw the falloff
@@ -79,7 +89,7 @@ from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial,
                   CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
 from .kit import draw
 from .kit.events import PRESS, RUNNING
-from .kit.geometry import clamp_box
+from .kit.geometry import clamp_box, ring_segment_points
 from .kit.theme import with_alpha
 from .kit.widget import _resolve
 from ..tools import blend_modes, color_history, color_palette, falloff
@@ -133,11 +143,12 @@ CUSTOM_TINT_AMOUNT = 0.45
 FALLOFF_RING_ORDER = ('SHARPEN', 'SPHERE', 'CUSTOM', 'LINEAR', 'SMOOTH', 'CONSTANT')
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + 8.0   # past the fading divider lines
-SQUARE_HALF = 160.0                  # half size of the enclosing square
+SQUARE_HALF = 172.0                  # half size of the enclosing square
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
 COLORS_ARC = (90.0, 180.0)           # top left: history band along the circle; secondary | Pipette | Swap | primary
 COLORS_WEIGHTS = (2.0, 1.0, 1.0, 2.0)
-COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle), the color selector button
+COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle); Palettes | Color | Library
+PALETTE_BUTTON_WEIGHTS = (1.0, 1.3, 1.0)
 HISTORY_DEPTH = 14.0                 # the color history band / each palette band
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
@@ -188,32 +199,39 @@ class FlyoutButton(Button):
 
 
 class _ColorDrag:
-    """Drag & drop for color widgets (mixin, before the widget class).
+    """Drag & drop for pen menu widgets (mixin, before the widget class).
 
-    ``drag_color()`` is the RGB a drag carries (None: nothing to drag). A press
-    that moves less than ``DRAG_THRESHOLD`` is a tap (``activate``); a longer
-    move carries the color, shown under the pen, and the release drops it
-    (:meth:`PenBar.drop_color`). Widgets taking drops define ``accept_drop(rgb, source)``.
-    Dragging is off with the *Drag Colors* setting (``pen_color_drag``)."""
+    A drag carries a payload: ``('color', rgb, origin)`` or ``('palette', palette,
+    origin)``; ``origin`` names where it came from (``('palette_color', i)``,
+    ``('project', i)``, ``('library', i)`` or None). ``drag_payload()`` gives it
+    (default: ``drag_color()`` as a color); None: nothing to drag. A press that
+    moves less than ``DRAG_THRESHOLD`` is a tap (``activate``); a longer move
+    carries the payload, shown under the pen, and the release drops it
+    (:meth:`PenBar.drop`). Targets define ``accepts(payload)`` and
+    ``accept_drop(payload, source)``. Off with the *Drag Colors* setting."""
 
     bar = None
 
     def drag_color(self):
         return None
 
+    def drag_payload(self):
+        rgb = self.drag_color()
+        return None if rgb is None else ('color', tuple(rgb), None)
+
     @property
     def draggable(self):
         try:
-            return self.bar.actions.color_drag_enabled() and self.drag_color() is not None
+            return self.bar.actions.color_drag_enabled() and self.drag_payload() is not None
         except Exception:
             return False
 
-    def accepts_drop(self):
-        return hasattr(self, 'accept_drop')
+    def accepts(self, payload):
+        return False
 
     def drag_begin(self, x, y):
         self._press = (x, y)
-        self._carry = self.drag_color()
+        self._carry = self.drag_payload()
         self._moved = False
 
     def drag_update(self, x, y):
@@ -228,7 +246,7 @@ class _ColorDrag:
         if cancelled:
             return
         if self._moved:
-            self.bar.drop_color(self._carry, x, y, self)
+            self.bar.drop(self._carry, x, y, self)
         else:
             self.activate()
 
@@ -247,8 +265,11 @@ class _ColorCorner(_ColorDrag, CornerSegment):
     def drag_color(self):
         return _resolve(self.rgb, None)
 
-    def accept_drop(self, rgb, source):
-        self.bar.actions.set_color(self.which, rgb)
+    def accepts(self, payload):
+        return payload[0] == 'color'
+
+    def accept_drop(self, payload, source):
+        self.bar.actions.set_color(self.which, payload[1])
 
     def draw_self(self, dc):
         theme = dc.theme
@@ -356,34 +377,21 @@ def _paint_curve(dc, x, y, size, alpha):
 
 
 class _Swatch(_ColorDrag, RingSegment):
-    """A color slot along the circle (history or palette). ``color()``: RGB or None
-    (empty). Tap: ``use(rgb)``, on an empty slot ``on_empty()``. Drag source; with
-    ``drop(rgb, source)`` also a drop target. ``palette_index``: its palette slot."""
+    """A history color along the circle (``color()``: RGB or None). Tap: ``use(rgb)``; drag source."""
 
-    def __init__(self, bar, color, use, *, drop=None, on_empty=None, palette_index=None, **kwargs):
+    def __init__(self, bar, color, use, **kwargs):
         super().__init__(on_click=self._tap, **kwargs)
         self.bar = bar
         self.color = color
         self.use = use
-        self.drop = drop
-        self.on_empty = on_empty
-        self.palette_index = palette_index
 
     def drag_color(self):
         return _resolve(self.color, None)
-
-    def accepts_drop(self):
-        return self.drop is not None
-
-    def accept_drop(self, rgb, source):
-        self.drop(rgb, source)
 
     def _tap(self):
         rgb = _resolve(self.color, None)
         if rgb is not None:
             self.use(rgb)
-        elif self.on_empty is not None:
-            self.on_empty()
 
     def draw_self(self, dc):
         theme = dc.theme
@@ -393,12 +401,104 @@ class _Swatch(_ColorDrag, RingSegment):
         rgb = _resolve(self.color, None)
         if rgb is None:
             draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
-            if self.drop is not None:   # an empty palette slot: show where it is
-                draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
         else:
             draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
         if self.hover_t > 0.5:
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _PaletteSlot(_ColorDrag, RingSegment):
+    """Slot ``index`` of the palette band. Color view: the active palette's color
+    ``index`` (tap: paint with it; empty: store the current color). Palette view
+    (``actions.palette_view()``): the project's palette ``index`` as a little grid of
+    its first colors, the active one outlined (tap: make it active, back to the color
+    view; empty: a new palette). Drag source and drop target in both views."""
+
+    def __init__(self, bar, index, **kwargs):
+        super().__init__(on_click=self._tap, **kwargs)
+        self.bar = bar
+        self.index = index
+
+    @property
+    def view(self):
+        try:
+            return self.bar.actions.palette_view()
+        except Exception:
+            return False
+
+    def color(self):
+        colors = self.bar.actions.palette() or []
+        return colors[self.index] if self.index < len(colors) else None
+
+    def palette(self):
+        return self.bar.actions.project_palette(self.index)
+
+    def drag_payload(self):
+        if self.view:
+            pal = self.palette()
+            return None if pal is None else ('palette', pal, ('project', self.index))
+        rgb = self.color()
+        return None if rgb is None else ('color', tuple(rgb), ('palette_color', self.index))
+
+    def accepts(self, payload):
+        return payload[0] == ('palette' if self.view else 'color')
+
+    def accept_drop(self, payload, source):
+        self.bar.drop_on_slot(self.index, payload)
+
+    def _tap(self):
+        a = self.bar.actions
+        if self.view:
+            a.select_palette(self.index)
+            a.set_palette_view(False)
+            return
+        rgb = self.color()
+        if rgb is not None:
+            a.use_history_color(rgb)
+        else:
+            a.set_palette_slot(self.index, a.pen_rgb())
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        inner, outer = self.points()
+        if not inner:
+            return
+        if self.view:
+            self._draw_palette(dc, inner, outer)
+        else:
+            rgb = self.color()
+            if rgb is None:
+                draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
+                draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
+            else:
+                draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+    def _draw_palette(self, dc, inner, outer):
+        """2 x 3 grid of the palette's first colors inside the slot."""
+        theme = dc.theme
+        pal = self.palette()
+        draw.ring_segment(inner, outer, with_alpha(theme.surface_dark if pal else theme.surface, 0.9 * dc.alpha))
+        colors = [c for c in (pal or {}).get("colors", []) if c][:6]
+        if colors:
+            r0, r1 = self.pr0 + 1.0, self.pr1 - 1.0
+            rm = (r0 + r1) * 0.5
+            a0, a1 = self.angles
+            b0 = a0 + (self.insets[0] + 1.0) / max(rm, 1.0)
+            b1 = a1 - (self.insets[1] + 1.0) / max(rm, 1.0)
+            for k, c in enumerate(colors):
+                row, col = divmod(k, 3)
+                ra, rb = (r0, rm - 0.5) if row == 0 else (rm + 0.5, r1)
+                aa = b0 + (b1 - b0) * col / 3.0
+                ab = b0 + (b1 - b0) * (col + 1) / 3.0
+                draw.ring_segment(*ring_segment_points(self.cx, self.cy, ra, rb, aa, ab), (c[0], c[1], c[2], dc.alpha))
+        if pal is not None and self.index == self.bar.actions.active_palette_index():
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.0))
+        elif pal is None:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
+        else:
+            draw.ring_segment_outline(inner, outer, theme.edge_for((0.5, 0.5, 0.5), dc.alpha), width=1.0)
 
 
 class _HintLabel(Label):
@@ -584,10 +684,11 @@ class _Window(Widget):
 class _MenuLayer(Widget):
     """Root of the pen menu's layer: the menu window and its flyouts (beside it, toward the canvas)."""
 
-    def __init__(self, window, flyouts):
+    def __init__(self, window, flyouts, dialog=None):
         super().__init__()
         self.window = self.add(window)
         self.flyouts = [self.add(flyout) for flyout in flyouts]
+        self.dialog = self.add(dialog) if dialog is not None else None   # last: drawn / picked on top
         self.openers = {}          # flyout -> the widget that opened it
         self.region = (0.0, 0.0)
 
@@ -610,6 +711,11 @@ class _MenuLayer(Widget):
             fx = win.x1 + gap if right else win.x0 - gap - fw
             fx, y0 = clamp_box(fx, fy - fh * 0.5, fw, fh, (margin, margin, width - margin, height - margin))
             flyout.arrange(Rect.from_size(fx, y0, fw, fh), theme)
+        if self.dialog is not None and self.dialog.visible:   # centered over the menu
+            dw, dh = self.dialog.measure(theme)
+            dx, dy = clamp_box(win.cx - dw * 0.5, win.cy - dh * 0.5, dw, dh,
+                               (margin, margin, width - margin, height - margin))
+            self.dialog.arrange(Rect.from_size(dx, dy, dw, dh), theme)
 
 
 def _is_inside(widget, ancestor):
@@ -720,11 +826,17 @@ class PenBar:
         self.settings_menu = SettingsMenu(self)
         self.settings_flyout = self.settings_menu.panel
         self.settings_flyout.visible = False
+        from .pen_palettes import ConfirmDialog, PaletteLibrary  # late import: they import this module
+        self.library_menu = PaletteLibrary(self)
+        self.library_flyout = self.library_menu.panel
+        self.library_flyout.visible = False
+        self.confirm_dialog = ConfirmDialog(self)
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         self.menu = self._window('bar', self._build_dial(),
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
                                  tab=tab)
-        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout])
+        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout,
+                                           self.library_flyout], self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
 
         # Color selector.
@@ -855,15 +967,20 @@ class PenBar:
         dial.add_corner([secondary, picker, swap, primary], COLOR_CORNER_INNER, SQUARE_HALF, *COLORS_ARC,
                         weights=COLORS_WEIGHTS, **corner)
 
+        from .pen_palettes import paint_library, paint_palettes
+        palettes = CornerSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
+                                 on_click=lambda: a.set_palette_view(not a.palette_view()))
         color = CornerSegment("Color", key='COLOR', painter=_paint_color_wheel(a.pen_rgb),
                               selected=a.color_panel_open, on_click=a.toggle_color_panel)
-        dial.add_corner([color], WHEEL_CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC, **corner)
+        library = CornerSegment("Library", key='LIBRARY', painter=paint_library,
+                                selected=lambda: self.flyout is self.library_flyout,
+                                on_click=lambda: self.open_library(library))
+        dial.add_corner([palettes, color, library], WHEEL_CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC,
+                        weights=PALETTE_BUTTON_WEIGHTS, **corner)
 
-        # Palette: bands along the circle in front of the color selector button, slot 0 at the left.
-        palette = [_Swatch(self, lambda i=i: self._palette(i), a.use_history_color, key=f"PALETTE_{i}",
-                           palette_index=i, drop=lambda rgb, source, i=i: self._drop_on_palette(i, rgb, source),
-                           on_empty=lambda i=i: a.set_palette_slot(i, a.pen_rgb()))
-                   for i in range(color_palette.PALETTE_SIZE)]
+        # Palette band in front of them: the active palette's colors, or (palette view) the
+        # project's palettes. Slot 0 at the left.
+        palette = [_PaletteSlot(self, i, key=f"PALETTE_{i}") for i in range(color_palette.PALETTE_SIZE)]
         per_row = (len(palette) + PALETTE_ROWS - 1) // PALETTE_ROWS
         for row in range(PALETTE_ROWS):
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
@@ -882,40 +999,72 @@ class PenBar:
                         weights=(custom.a1 - custom.a0, SETTINGS_END - custom.a1), **corner)
         curve.edge_extra = (0.0, 0.0)   # side edges in line with the Custom segment's
 
-    def _palette(self, index):
-        slots = self.actions.palette()
-        return slots[index] if index < len(slots) else None
+    def open_library(self, opener):
+        """The library flyout; the palette band switches to its palette view (drag targets)."""
+        if self.flyout is not self.library_flyout:
+            self.library_menu.opened()
+            self.actions.set_palette_view(True)
+        self.toggle_flyout(self.library_flyout, opener)
 
-    def _drop_on_palette(self, index, rgb, source):
-        """A palette color dropped on another slot swaps the two; any other color fills the slot."""
-        other = getattr(source, 'palette_index', None)
-        if other is not None:
-            self.actions.swap_palette_slots(other, index)
+    def confirm(self, lines, action, label="Delete"):
+        """Ask before ``action`` (deleting / replacing a palette): dialog over the menu."""
+        self.confirm_dialog.open(lines, action, label)
+        self.overlay.layout()
+
+    def drop_on_slot(self, index, payload):
+        """A payload dropped on palette slot ``index``."""
+        a = self.actions
+        kind, value, origin = payload
+        origin = origin or ('', None)
+        if kind == 'color':
+            if origin[0] == 'palette_color':
+                a.swap_palette_slots(origin[1], index)
+            else:
+                a.set_palette_slot(index, value)
+            return
+        if origin[0] == 'project':
+            if origin[1] != index:
+                a.swap_project_palettes(origin[1], index)
+            return
+        current = a.project_palette(index)          # from the library: load a copy
+        if current is None or color_palette.is_empty(current):
+            a.set_project_palette(index, value)
         else:
-            self.actions.set_palette_slot(index, rgb)
+            self.confirm([f"Replace “{current['name']}”", f"with “{value['name']}”?"],
+                         lambda: a.set_project_palette(index, value), "Replace")
 
-    def drop_color(self, rgb, x, y, source):
-        """End of a color drag at ``(x, y)``: the widget there takes it; a palette color
-        dropped off the menu and the color selector is removed from the palette."""
-        target = self._drop_target(x, y, source)
+    def drop(self, payload, x, y, source):
+        """End of a drag at ``(x, y)``: the widget there (or an ancestor) takes it. Off the
+        menu: a palette color is removed, a project palette deleted after a confirmation."""
+        target = self._drop_target(x, y, source, payload)
         if target is not None:
-            target.accept_drop(rgb, source)
-        elif self._removes(x, y, source):
-            self.actions.set_palette_slot(source.palette_index, None)
+            target.accept_drop(payload, source)
+            return
+        if not self._removes(x, y, payload):
+            return
+        kind, value, (place, index) = payload
+        if place == 'palette_color':
+            self.actions.set_palette_slot(index, None)
+        else:
+            self.confirm([f"Delete the palette “{value['name']}”", "from this project?"],
+                         lambda: self.actions.set_project_palette(index, None), "Delete")
 
-    def _removes(self, x, y, source):
-        """A palette color released here (off the menu and the color selector) is removed."""
-        return (getattr(source, 'palette_index', None) is not None and self.root.pick(x, y) is None
+    def _removes(self, x, y, payload):
+        """Released off the menu and the color selector: removes palette colors / project palettes."""
+        origin = payload[2] or ('', None)
+        return (origin[0] in ('palette_color', 'project') and self.root.pick(x, y) is None
                 and not self._over_color_window(x, y))
 
     def _over_color_window(self, x, y):
         return self.color_window.visible and self.color_window.pick(x, y) is not None
 
-    def _drop_target(self, x, y, source):
-        target = self.root.pick(x, y)
-        if target is not None and target is not source and hasattr(target, 'accept_drop') \
-                and target.accepts_drop():
-            return target
+    def _drop_target(self, x, y, source, payload):
+        """The widget under ``(x, y)`` -- or its nearest ancestor -- that accepts ``payload``."""
+        widget = self.root.pick(x, y)
+        while widget is not None:
+            if widget is not source and hasattr(widget, 'accept_drop') and widget.accepts(payload):
+                return widget
+            widget = widget.parent
         return None
 
     def _history(self, index):
@@ -1059,12 +1208,14 @@ class PenBar:
             self.close_flyout(relayout=False)
 
     def busy(self):
-        """A flyout is open or something is dragged."""
-        return self.flyout is not None or any(ov.dragging is not None for _w, ov in self.windows.values())
+        """A flyout or the confirmation is open, or something is dragged."""
+        return (self.flyout is not None or self.confirm_dialog.is_open
+                or any(ov.dragging is not None for _w, ov in self.windows.values()))
 
     def reset(self):
         """End drags, close flyouts, forget hover (session end / bar hidden)."""
         self.end_drag()
+        self.confirm_dialog.close()
         self.close_flyout()
         for _window, overlay in self.windows.values():
             overlay.hot = None
@@ -1191,7 +1342,7 @@ class PenBar:
 
     def _stack(self):
         """Overlays, top-most first: the menu while its flyout is open, else the color selector."""
-        if self.flyout is not None:
+        if self.flyout is not None or self.confirm_dialog.is_open:
             return [self.overlay, self.color_overlay]
         return [self.color_overlay, self.overlay]
 
@@ -1201,6 +1352,20 @@ class PenBar:
         for overlay in stack:
             if overlay.dragging is not None:
                 return overlay.handle(event) == RUNNING
+        if self.confirm_dialog.is_open:
+            # Modal: only the dialog reacts; a press elsewhere, ESC or right click cancel.
+            if event.value == PRESS and event.type in {'ESC', 'RIGHTMOUSE'}:
+                self.confirm_dialog.close()
+                self.overlay.layout()
+                return True
+            if event.value == PRESS and event.type == 'LEFTMOUSE':
+                hit = self.root.pick(event.x, event.y)
+                if not _is_inside(hit, self.confirm_dialog.panel):
+                    self.confirm_dialog.close()
+                    self.overlay.layout()
+                    return True
+            self.overlay.handle(event)
+            return event.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'ESC', 'MOUSEMOVE'}
         if self.flyout is not None and event.value == PRESS:
             if event.type in {'ESC', 'RIGHTMOUSE'}:
                 self.close_flyout()
@@ -1210,7 +1375,10 @@ class PenBar:
                 if hit is None:
                     self.close_flyout()
                     return True  # a tap outside only closes the flyout
-                if not _is_inside(hit, self.flyout) and hit is not self.flyout_opener:
+                in_menu = _is_inside(hit, self.menu)
+                if getattr(self.flyout, 'stays_open', False) and in_menu:
+                    pass   # e.g. the library: the menu's palette band is used together with it
+                elif not _is_inside(hit, self.flyout) and hit is not self.flyout_opener:
                     self.close_flyout()
         for overlay in stack:
             if overlay.handle(event) == RUNNING:
@@ -1289,26 +1457,37 @@ class PenBar:
             draw.circle_outline(cx, cy, half, (1.0, 1.0, 1.0, 0.95), width=theme.px(1.5))
 
     def _draw_color_drag(self):
-        """The carried color under the pen; the slot it would land in is outlined, and a
-        palette color about to be removed (off the menu) is crossed out."""
+        """The carried color / palette under the pen; the target it would land in is
+        outlined; something about to be removed (off the menu) is crossed out."""
         if self.drag_preview is None:
             return
-        rgb, x, y, source = self.drag_preview
+        payload, x, y, source = self.drag_preview
         theme = self.overlay.theme
-        target = self._drop_target(x, y, source)
-        if target is not None and hasattr(target, 'points'):
-            inner, outer = target.points()
+        target = self._drop_target(x, y, source, payload)
+        if target is not None:
+            inner, outer = target.points() if hasattr(target, 'points') else ([], [])
             if inner:
                 draw.ring_segment_outline(inner, outer, theme.accent_light, width=theme.px(2.5))
-        r = theme.px(13.0)
-        cy = y + r * 1.6      # above the pen tip, so it stays visible
-        draw.circle(x, cy, r, (rgb[0], rgb[1], rgb[2], 1.0), rim=theme.edge_for(rgb))
-        draw.circle_outline(x, cy, r + theme.px(1.0), theme.text, width=theme.px(1.5))
-        if target is None and self._removes(x, y, source):
+            else:
+                draw.rect_outline(target.rect, theme.accent_light, width=theme.px(2.5))
+        if payload[0] == 'palette':
+            w, h = theme.px(96.0), theme.px(18.0)
+            box = Rect.from_center(x, y + h * 1.6, w, h)
+            from .pen_palettes import draw_palette_cells
+            draw_palette_cells(box, payload[1], 1.0, theme)
+            draw.rect_outline(box, theme.text, width=theme.px(1.5))
+            cx, cy, r = box.cx, box.cy, h * 0.5
+        else:
+            rgb = payload[1]
+            r = theme.px(13.0)
+            cx, cy = x, y + r * 1.6      # above the pen tip, so it stays visible
+            draw.circle(cx, cy, r, (rgb[0], rgb[1], rgb[2], 1.0), rim=theme.edge_for(rgb))
+            draw.circle_outline(cx, cy, r + theme.px(1.0), theme.text, width=theme.px(1.5))
+        if target is None and self._removes(x, y, payload):
             arm = r * 0.55
             red = (0.95, 0.25, 0.25, 1.0)
-            draw.polyline([(x - arm, cy - arm), (x + arm, cy + arm)], red, theme.px(2.5))
-            draw.polyline([(x - arm, cy + arm), (x + arm, cy - arm)], red, theme.px(2.5))
+            draw.polyline([(cx - arm, cy - arm), (cx + arm, cy + arm)], red, theme.px(2.5))
+            draw.polyline([(cx - arm, cy + arm), (cx + arm, cy - arm)], red, theme.px(2.5))
 
     def _draw_arm_hint(self):
         kind = self.actions.armed()

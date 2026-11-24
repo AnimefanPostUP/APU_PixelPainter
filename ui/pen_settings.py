@@ -329,14 +329,21 @@ class SettingsMenu:
         preview = Column([self._toggle('pen_color_preview', "Preview only", size=(150.0, 28.0), painter=_icon_eye),
                           self._hint(("On: the selector only previews; tap the old / new",
                                       "bubble to apply. Off: applies when the pen lifts."))], gap=6.0)
+        def clear_active():
+            pal = a.active_palette()
+            if pal is None or not any(pal["colors"]):
+                return
+            self.bar.confirm([f"Remove all colors of “{pal['name']}”?"], a.clear_palette, "Clear")
+
         palette = Column([
             Row([self._toggle('pen_color_drag', "Drag & drop colors", size=(170.0, 28.0)),
                  IconButton("Clear palette", painter=_icon_reset, layout='row', size=(110.0, 28.0),
-                            key='SET_CLEAR_PALETTE', on_click=a.clear_palette)], gap=6.0),
-            self._hint(("Drag a color (primary / secondary, history, palette, the",
-                        "old / new bubble) onto a palette slot or a color.",
-                        "Tap an empty slot: store the current color.",
-                        "Drag a palette color off the menu: remove it.")),
+                            key='SET_CLEAR_PALETTE', on_click=clear_active)], gap=6.0),
+            self._hint(("Palettes are saved in the .blend (per project); the",
+                        "Library button imports / exports them (palettes.json).",
+                        "Drag colors onto palette slots or the primary / secondary",
+                        "color; in the palette view, drag whole palettes.",
+                        "Tap an empty slot: store the current color.")),
         ], gap=6.0)
         return [
             self._group("Layout", layouts, tint, _paint_color_wheel(None)),

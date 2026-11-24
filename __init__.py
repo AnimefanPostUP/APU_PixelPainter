@@ -91,6 +91,8 @@ _MODULES = (
     'tools.pen_pressure',
     'tools.color_history',
     'tools.color_palette',
+    'utils.palette_library',
+    'utils.palette_image',
     'tools.stroke',
     'tools.brushes',
     'tools.filters',
@@ -104,6 +106,7 @@ _MODULES = (
     # core operator (builds the tool manager from the catalog)
     'core.core',
     'ui.tool_settings_ui',
+    'ui.palette_ops',
     'ui.settings_menu',
     'properties',
     # addon UI
@@ -155,6 +158,7 @@ def _classes():
         *_module('ui.pie_menu').classes,
         *_module('ui.tool_settings_ui').classes,
         *_module('ui.settings_menu').classes,
+        *_module('ui.palette_ops').classes,
     )
 
 

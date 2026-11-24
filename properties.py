@@ -238,9 +238,6 @@ def _static_properties():
             description="Pen menu: drag colors (primary / secondary, history, palette, the old / new bubble) "
                         "onto palette slots or the primary / secondary color",
             default=True, update=_persist),
-        'pen_palette': bpy.props.StringProperty(
-            name="Pen Palette", description="Pen menu color palette (JSON)", default="",
-            options={'HIDDEN'}, update=_persist),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",
@@ -319,11 +316,21 @@ def persisted_property_names():
 _registered = []
 
 
+# Saved in the .blend file (per project), not in settings.json.
+SCENE_PROPERTIES = {
+    'palettes': lambda: bpy.props.StringProperty(
+        name="Pixel Painter Palettes", description="The project's color palettes (JSON, see tools/color_palette.py)",
+        default="", options={'HIDDEN'}),
+}
+
+
 def register():
     unregister()
     for name, prop in all_properties().items():
         setattr(bpy.types.WindowManager, PREFIX + name, prop)
         _registered.append(PREFIX + name)
+    for name, make in SCENE_PROPERTIES.items():
+        setattr(bpy.types.Scene, PREFIX + name, make())
 
 
 def unregister():
@@ -335,6 +342,12 @@ def unregister():
             except Exception:
                 pass
     _registered.clear()
+    for name in SCENE_PROPERTIES:
+        if hasattr(bpy.types.Scene, PREFIX + name):
+            try:
+                delattr(bpy.types.Scene, PREFIX + name)
+            except Exception:
+                pass
 
 
 def reset_tool_settings(wm):

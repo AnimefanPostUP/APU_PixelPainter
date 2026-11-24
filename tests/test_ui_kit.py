@@ -348,6 +348,15 @@ class DialTests(unittest.TestCase):
     def test_dividers_between_groups_only(self):
         self.assertEqual(sorted(self.dial.dividers), [0.0, 180.0])
 
+    def test_group_segments_are_drawn_equally_wide(self):
+        dial = Dial(gap=2.0, group_gap=14.0)
+        band = dial.add_band([RingSegment() for _ in range(6)], 100, 120, 180, 270)
+        dial.arrange(Rect.from_center(0, 0, 300, 300), Theme())
+        widths = [math.radians(s.a1 - s.a0) * 110 - sum(s.insets) for s in band]
+        for w in widths:
+            self.assertTrue(math.isclose(w, widths[0], rel_tol=1e-9), widths)
+        self.assertEqual((band[0].a0, band[-1].a1), (180, 270))
+
     def test_group_gap_widens_only_the_group_edges(self):
         dial = Dial(gap=4.0, group_gap=12.0)
         a, b = dial.add_arc([RingSegment(), RingSegment()], 20, 50, 0, 180, tint=(1.0, 0.0, 0.0))

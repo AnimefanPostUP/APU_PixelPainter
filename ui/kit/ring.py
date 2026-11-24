@@ -302,15 +302,32 @@ class Dial(Widget):
         self.segments.append(self.add(segment))
         return segment
 
+    def _split(self, count, r0, r1, a0, a1):
+        """``(extra, spans)``: ``a0 .. a1`` split between ``count`` segments of one
+        group so all of them are *drawn* equally wide. The two end segments lose
+        ``extra`` px more to the group gap than the others lose to the normal gap,
+        so they get that much more angle (measured at the middle radius)."""
+        extra = max(0.0, self.group_gap - self.gap) * 0.5
+        count = max(1, count)
+        mid = max(1e-6, (r0 + r1) * 0.5)
+        extra_deg = math.degrees(extra / mid) if count > 1 else 0.0
+        step = (a1 - a0 - 2.0 * extra_deg) / count
+        if step <= 0.0:              # not enough room: plain even split
+            step, extra_deg = (a1 - a0) / count, 0.0
+        edges = [a0]
+        for i in range(count):
+            edges.append(edges[-1] + step + (extra_deg if i in (0, count - 1) else 0.0))
+        edges[-1] = a1
+        return extra, list(zip(edges, edges[1:]))
+
     def add_band(self, segments, r0, r1, a0, a1, *, tint=None):
         """Like :meth:`add_arc`, but outside the rings (e.g. in the corners): no
         dividers, not counted in :attr:`radius`."""
         segments = list(segments)
-        step = (a1 - a0) / max(1, len(segments))
-        extra = max(0.0, self.group_gap - self.gap) * 0.5
-        for i, segment in enumerate(segments):
+        extra, spans = self._split(len(segments), r0, r1, a0, a1)
+        for i, (segment, (b0, b1)) in enumerate(zip(segments, spans)):
             segment.r0, segment.r1 = r0, r1
-            segment.a0, segment.a1 = a0 + step * i, a0 + step * (i + 1)
+            segment.a0, segment.a1 = b0, b1
             segment.edge_extra = (extra if i == 0 else 0.0, extra if i == len(segments) - 1 else 0.0)
             if tint is not None and segment.tint is None:
                 segment.tint = tint
@@ -318,13 +335,12 @@ class Dial(Widget):
         return segments
 
     def add_arc(self, segments, r0, r1, a0, a1, *, tint=None):
-        """A group: split ``a0 .. a1`` evenly between ``segments`` (listed from
-        ``a0``), with the group gap and a divider at both ends."""
+        """A group: split ``a0 .. a1`` between ``segments`` (listed from ``a0``) so
+        they are drawn equally wide, with the group gap and a divider at both ends."""
         segments = list(segments)
-        step = (a1 - a0) / max(1, len(segments))
-        extra = max(0.0, self.group_gap - self.gap) * 0.5
-        for i, segment in enumerate(segments):
-            self.add_segment(segment, r0, r1, a0 + step * i, a0 + step * (i + 1))
+        extra, spans = self._split(len(segments), r0, r1, a0, a1)
+        for i, (segment, (b0, b1)) in enumerate(zip(segments, spans)):
+            self.add_segment(segment, r0, r1, b0, b1)
             segment.edge_extra = (extra if i == 0 else 0.0, extra if i == len(segments) - 1 else 0.0)
             if tint is not None and segment.tint is None:
                 segment.tint = tint

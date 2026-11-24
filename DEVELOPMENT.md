@@ -207,10 +207,23 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   section -- the color history band (`tools/color_history.py`, recorded by
   `StrokeTool.begin_stroke` for tools with `paints_color`) and the secondary /
   primary color with Pipette / Swap between them; bottom left the palette
-  (`tools/color_palette.py`: 12 slots in `PALETTE_ROWS` bands, saved as JSON in
-  `pixel_painter_pen_palette`) and the color selector button. Colors are dragged
-  and dropped between them (`_ColorDrag` mixin: a short press stays a tap;
-  targets define `accept_drop`; `PenBar.drop_color`; setting `pen_color_drag`); the custom curve button (in line with the Custom
+  band (24 slots in `PALETTE_ROWS` bands) and Palettes / Color / Library.
+  Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
+  colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
+  the .blend); the band shows the active palette's colors or, in the palette view
+  (`pen_palette_view`), the palettes. The library (`utils/palette_library.py`,
+  `palettes.json` in the add-on folder) is not synced with projects: the Library
+  flyout (`ui/pen_palettes.py`) copies palettes in / out and to / from the
+  clipboard (JSON with hex colors; pasting also takes any `#rrggbb` list).
+  *From image* (`image.pixel_painter_palette_from_image`, `ui/palette_ops.py`):
+  an image's distinct pixel colors in reading order (more than 24: median cut,
+  `utils/palette_image.py`) become a new palette in the first empty project slot
+  (all taken: the library); messages go to state `pen_palette_status`.
+  Drag & drop (`_ColorDrag` mixin, setting `pen_color_drag`): payloads
+  `('color' | 'palette', value, origin)`; a short press stays a tap; targets
+  define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
+  take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
+  palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu); the custom curve button (in line with the Custom
   falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
   (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`).

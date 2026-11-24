@@ -25,6 +25,7 @@ framework = importlib.import_module(f'{_PACKAGE}.core.framework')
 pen_pressure = importlib.import_module(f'{_PACKAGE}.tools.pen_pressure')
 color_history = importlib.import_module(f'{_PACKAGE}.tools.color_history')
 color_palette = importlib.import_module(f'{_PACKAGE}.tools.color_palette')
+palette_image = importlib.import_module(f'{_PACKAGE}.utils.palette_image')
 
 
 def ev(type_, value='PRESS', x=0.0, y=0.0):
@@ -576,20 +577,96 @@ class ColorHistoryTests(unittest.TestCase):
 
 
 class ColorPaletteTests(unittest.TestCase):
-    def test_round_trip_keeps_empty_slots(self):
-        slots = color_palette.set_slot([None] * 12, 3, (1.0, 0.5, 0.25))
-        self.assertEqual(color_palette.decode(color_palette.encode(slots)), slots)
+    def setUp(self):
+        cp = color_palette
+        self.cp = cp
+        self.red = cp.with_color(cp.empty_palette("Reds"), 0, (1.0, 0.0, 0.0))
+
+    def test_sizes(self):
+        self.assertEqual((self.cp.PALETTE_SIZE, self.cp.PROJECT_SLOTS), (24, 24))
+
+    def test_project_round_trip(self):
+        cp = self.cp
+        project = cp.with_active(cp.with_palette(cp.empty_project(), 3, self.red), 3)
+        back = cp.decode_project(cp.encode_project(project))
+        self.assertEqual(back, project)
+        self.assertEqual(cp.active_palette(back)["colors"][0], (1.0, 0.0, 0.0))
 
     def test_decode_tolerates_bad_data(self):
-        self.assertEqual(color_palette.decode(""), [None] * 12)
-        self.assertEqual(color_palette.decode("not json"), [None] * 12)
-        self.assertEqual(color_palette.decode('[[2, -1, 0.5], "x", null]')[:3], [(1.0, 0.0, 0.5), None, None])
+        cp = self.cp
+        self.assertEqual(cp.decode_project(""), cp.empty_project())
+        self.assertEqual(cp.decode_project("not json"), cp.empty_project())
+        self.assertEqual(cp.decode_library('{"palettes": [null, 5, {"colors": ["#00ff00"]}]}')[0]["colors"][0],
+                         (0.0, 1.0, 0.0))
 
-    def test_swap_and_clear(self):
-        slots = color_palette.set_slot([None] * 12, 0, (1, 0, 0))
-        slots = color_palette.swap(slots, 0, 5)
-        self.assertEqual((slots[0], slots[5]), (None, (1.0, 0.0, 0.0)))
-        self.assertIsNone(color_palette.set_slot(slots, 5, None)[5])
+    def test_edit_active_creates_a_palette_in_an_empty_slot(self):
+        cp = self.cp
+        project = cp.edit_active(cp.empty_project(), lambda pal: cp.with_color(pal, 2, (0, 0, 1)))
+        self.assertEqual(cp.active_palette(project)["name"], "Palette 1")
+        self.assertEqual(cp.active_palette(project)["colors"][2], (0.0, 0.0, 1.0))
+
+    def test_swapping_palettes_keeps_the_active_one_active(self):
+        cp = self.cp
+        project = cp.with_active(cp.with_palette(cp.empty_project(), 0, self.red), 0)
+        swapped = cp.with_swapped_palettes(project, 0, 5)
+        self.assertEqual((swapped["active"], swapped["palettes"][5]["name"]), (5, "Reds"))
+
+    def test_inputs_are_not_modified(self):
+        cp = self.cp
+        project = cp.empty_project()
+        cp.with_palette(project, 0, self.red)
+        self.assertIsNone(project["palettes"][0])
+
+    def test_clipboard_round_trip(self):
+        cp = self.cp
+        back = cp.from_text(cp.to_text(self.red))
+        self.assertEqual((back["name"], back["colors"][0], back["colors"][1]), ("Reds", (1.0, 0.0, 0.0), None))
+
+    def test_paste_plain_hex_codes(self):
+        pal = self.cp.from_text("my palette: #FF0000, 00ff00 / #0000ff and junk")
+        self.assertEqual(self.cp.filled(pal), [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)])
+
+    def test_paste_without_colors_is_none(self):
+        self.assertIsNone(self.cp.from_text("hello"))
+        self.assertIsNone(self.cp.from_text('{"colors": []}'))
+
+    def test_library_round_trip(self):
+        cp = self.cp
+        self.assertEqual(cp.decode_library(cp.encode_library([self.red])), [self.red])
+
+
+class PaletteFromImageTests(unittest.TestCase):
+    @staticmethod
+    def image(rows):
+        """Blender-style flat RGBA buffer (bottom row first) from rows given top row first."""
+        flat = []
+        for row in reversed(rows):
+            for px in row:
+                flat += list(px)
+        return flat, len(rows[0]), len(rows)
+
+    R, G, B, W = (1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 1, 1)
+
+    def test_distinct_colors_in_reading_order(self):
+        buf, w, h = self.image([[self.B, self.R], [self.R, self.G]])
+        colors, distinct = palette_image.extract_colors(buf, w, h)
+        self.assertEqual(colors, [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)])
+        self.assertEqual(distinct, 3)
+
+    def test_transparent_pixels_are_ignored(self):
+        buf, w, h = self.image([[(1, 0, 0, 0.0), self.G]])
+        self.assertEqual(palette_image.extract_colors(buf, w, h)[0], [(0.0, 1.0, 0.0)])
+
+    def test_many_colors_are_reduced(self):
+        row = [(i / 99.0, (i * 7 % 100) / 99.0, 0.5, 1.0) for i in range(100)]
+        buf, w, h = self.image([row])
+        colors, distinct = palette_image.extract_colors(buf, w, h, max_colors=24)
+        self.assertEqual((len(colors), distinct), (24, 100))
+        for c in colors:
+            self.assertTrue(all(0.0 <= v <= 1.0 for v in c))
+
+    def test_empty_image(self):
+        self.assertEqual(palette_image.extract_colors([], 0, 0), ([], 0))
 
 
 if __name__ == '__main__':
