@@ -39,7 +39,7 @@ def _draw_view3d_mode_buttons(layout, wm, label=True):
 
 def _draw_falloff_preset_buttons(layout, wm, prop_name):
     grid = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
-    for preset in falloff.FALLOFF_PRESETS:
+    for preset in falloff.picker_presets():
         grid.prop_enum(wm, prop_name, preset.id, text=preset.label)
 
 

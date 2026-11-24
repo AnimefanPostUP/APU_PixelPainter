@@ -46,7 +46,7 @@ def _set_tool(tool_id):
 class FalloffPicker(Panel):
     """Falloff preset buttons, bound to the active tool's falloff property."""
 
-    def __init__(self, columns=3, button_size=46.0, **kwargs):
+    def __init__(self, columns=4, button_size=46.0, **kwargs):
         grid = Grid(columns=columns, gap=12.0)
         for preset in falloff.picker_presets():
             grid.add(Button(
@@ -79,15 +79,14 @@ class ToolPie(RadialMenu):
         self.attach_below(FalloffPicker())
 
 
-# left, right, bottom, top, top-left, top-right
-_FALLOFF_PIE_DIRECTIONS = ((-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-0.7, 0.7), (0.7, 0.7))
-
-
 class FalloffPie(RadialMenu):
-    """Falloff presets as a stand-alone pie."""
+    """Falloff presets as a stand-alone pie: all of them around the full circle,
+    in picker order clockwise from the top."""
 
     def __init__(self, **kwargs):
-        super().__init__(directions=_FALLOFF_PIE_DIRECTIONS, **kwargs)
+        n = len(falloff.PICKER_ORDER)
+        kwargs.setdefault('radius', 150.0)
+        super().__init__(arc=(90.0, 90.0 - 360.0 * (n - 1) / n), **kwargs)
         for preset in falloff.picker_presets():
             self.add_item(BubbleButton(
                 preset.label,

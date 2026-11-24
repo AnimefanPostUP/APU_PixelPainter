@@ -415,7 +415,7 @@ class SettingsMenu:
                             selected=lambda pr=prop, pid=p.id: a.wm_get(pr) == pid,
                             on_click=lambda pr=prop, pid=p.id: a.wm_set(pr, pid))
                      for p in presets]
-            rows.append(Row([head, Row(cells, gap=3.0)], gap=12.0))
+            rows.append(Row([head, Grid(cells, columns=6, gap=3.0)], gap=12.0))
         per_tool = Column(rows + [self._hint(("Left: the tool (tap selects it); right: its falloff.",))], gap=5.0)
         edit = IconButton("Edit Custom Curve", painter=_paint_curve, layout='row', size=(200.0, 30.0),
                           key='SET_EDIT_CURVE')

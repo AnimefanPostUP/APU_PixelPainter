@@ -55,6 +55,13 @@ def get_line_pixels(x0, y0, x1, y1):
 # Falloff
 # ---------------------------------------------------------------------------
 
+# Parameters of the shaped presets (normalized distance, 0 = centre, 1 = edge).
+PLATEAU_CORE = 0.5        # full strength up to here, then a smooth fade
+STEPPED_LEVELS = 4
+RING_CENTER = 0.65        # strongest here
+RING_WIDTH = 0.35         # fades to 0 this far on both sides
+
+
 def get_falloff(t, falloff_type, curve_sampler=None):
     """Return a weight in [0, 1] for a normalised distance t in [0, 1].
 
@@ -79,6 +86,27 @@ def get_falloff(t, falloff_type, curve_sampler=None):
     elif falloff_type == 'SHARPEN':
         # Quadratic: drops off quickly toward the edge
         return (1.0 - t) ** 2
+    elif falloff_type == 'PLATEAU':
+        # Full-strength core, then the Smooth fade over the rest
+        core = PLATEAU_CORE
+        if t <= core:
+            return 1.0
+        u = (t - core) / (1.0 - core)
+        return 1.0 - u * u * (3.0 - 2.0 * u)
+    elif falloff_type == 'ROOT':
+        return math.sqrt(1.0 - t)
+    elif falloff_type == 'SPIKE':
+        return (1.0 - t) ** 4
+    elif falloff_type == 'STEPPED':
+        # Linear, quantized: 1 at the centre, then (levels-1)/levels ... 1/levels, 0 at the edge
+        levels = STEPPED_LEVELS
+        return math.ceil((1.0 - t) * levels - 1e-9) / levels
+    elif falloff_type == 'RING':
+        u = min(1.0, abs(t - RING_CENTER) / RING_WIDTH)
+        return 1.0 - u * u * (3.0 - 2.0 * u)
+    elif falloff_type == 'INVERTED':
+        # Smooth, mirrored: 0 at the centre, 1 at the edge
+        return t * t * (3.0 - 2.0 * t)
     return 1.0
 
 

@@ -24,10 +24,19 @@ FALLOFF_PRESETS = (
     FalloffPreset('SPHERE', "Sphere", "Spherical dome-shaped falloff", 'ROUND'),
     FalloffPreset('SHARPEN', "Sharpen", "Quadratic — drops off quickly toward the edge", 'SHARP'),
     FalloffPreset('CUSTOM', "Custom", "Use the custom brush curve from Tool Settings", None),
+    FalloffPreset('PLATEAU', "Plateau", "Full-strength core with a smooth outer fade", None),
+    FalloffPreset('ROOT', "Root", "Square root — stays strong, drops steeply at the edge", 'ROOT'),
+    FalloffPreset('SPIKE', "Spike", "Fourth power — a sharp point in the centre", 'POW4'),
+    FalloffPreset('STEPPED', "Stepped", "Linear fade in hard steps (4 levels)", None),
+    FalloffPreset('RING', "Ring", "Hollow: strongest in a band near the edge", None),
+    FalloffPreset('INVERTED', "Inverted", "Inverted smooth: empty centre, full strength at the edge", None),
 )
 
-# Order of the 3x2 grid in the tool pie / settings panel.
-PICKER_ORDER = ('CONSTANT', 'SMOOTH', 'CUSTOM', 'LINEAR', 'SPHERE', 'SHARPEN')
+# Hard to soft to sharp, then the special shapes. Order of the grid in the tool
+# pie / settings panels (3 rows of 4).
+PICKER_ORDER = ('CONSTANT', 'PLATEAU', 'SPHERE', 'ROOT',
+                'SMOOTH', 'LINEAR', 'SHARPEN', 'SPIKE',
+                'STEPPED', 'RING', 'INVERTED', 'CUSTOM')
 
 # Anchors (x = distance from the center, y = weight) the custom curve resets to: a smooth fade.
 CUSTOM_DEFAULT_POINTS = ((0.0, 1.0), (0.5, 0.5), (1.0, 0.0))

@@ -223,8 +223,10 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `('color' | 'palette', value, origin)`; a short press stays a tap; targets
   define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
   take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
-  palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu); the custom curve button (in line with the Custom
-  falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
+  palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu); the falloff presets continue
+  in a second row along the circle bottom right (`FALLOFF_RING_ORDER` /
+  `FALLOFF_BAND_ORDER`); past it, around the diagonal, the custom curve button
+  (behind the Custom falloff) and Settings. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
   (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`).
   The Settings gear opens the settings flyout (`ui/pen_settings.py`): icon tabs

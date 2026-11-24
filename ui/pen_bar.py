@@ -25,8 +25,10 @@ everything here works with press, drag and release only.
   - bottom left: *Blend* (inner ring, opens the flyout; shows the mode),
     *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing),
     *RMB* (the pen tip paints like the right mouse button);
-  - bottom right: *Undo* / *Redo* arrows (inner ring), the falloff presets;
-    *Custom* in its own color.
+  - bottom right: *Undo* / *Redo* arrows (inner ring), the falloff presets
+    (outer ring, continued in a second row along the circle in the corner;
+    hard to soft to sharp from the top, then the special shapes); *Custom*
+    in its own color.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
@@ -38,8 +40,9 @@ everything here works with press, drag and release only.
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes), *Color* (hue ring around the pen's color: shows /
   hides the color selector) and *Library* (the palette library window);
-  bottom right the *curve* button on the Custom falloff's outer edge (opens
-  the curve flyout, selects Custom) and *Settings* (gear: the settings popup).
+  bottom right, past the second falloff row, the *curve* button behind the
+  Custom falloff (opens the curve flyout, selects Custom) and *Settings*
+  (gear: the settings popup).
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -147,9 +150,11 @@ TINT_HISTORY = (0.95, 0.40, 0.45)
 TINT_FALLOFF = (0.30, 0.85, 0.72)
 TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
 CUSTOM_TINT_AMOUNT = 0.45
-# Falloff presets in the outer ring, from the bottom (270 degrees) up: Custom near
-# the diagonal, where the corner has room for its curve button.
-FALLOFF_RING_ORDER = ('SHARPEN', 'SPHERE', 'CUSTOM', 'LINEAR', 'SMOOTH', 'CONSTANT')
+# Falloff presets, both rows listed from the bottom (270 degrees) up; read from the
+# top they go hard -> soft -> sharp (outer ring, then the band), then the special shapes.
+# Custom sits near the diagonal, in front of its curve button.
+FALLOFF_RING_ORDER = ('LINEAR', 'SMOOTH', 'ROOT', 'SPHERE', 'PLATEAU', 'CONSTANT')
+FALLOFF_BAND_ORDER = ('INVERTED', 'RING', 'CUSTOM', 'STEPPED', 'SPIKE', 'SHARPEN')
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
@@ -162,8 +167,10 @@ PALETTE_BUTTON_ARC = (200.0, 250.0)
 PALETTE_BUTTON_WEIGHTS = (1.2, 1.0, 1.2)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
+FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the second falloff row (bottom right), as deep as the palette
+FALLOFF_CORNER_INNER = CORNER_INNER + FALLOFF_BAND_DEPTH + DIAL_GAP
+CURVE_SETTINGS_ARC = (295.0, 335.0)  # bottom right past the band: Curve | Settings, around the diagonal
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
-SETTINGS_END = 360.0                 # bottom right: the curve button (Custom's angles), Settings up to here
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
 CURVE_HINTS = {'MOVE': "Drag anchors; drag out of the box: remove",
@@ -940,17 +947,19 @@ class PenBar:
             RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
             RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
         ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
-        # Falloff presets (FALLOFF_RING_ORDER, from the bottom up); Custom in its own color.
-        self.falloff_buttons = [
-            RingSegment(preset.label, key=f"FALLOFF_{preset.id}", icon=preset.icon_key, icons=self.icons,
-                        font_size=8.0, selected=lambda p=preset.id: a.active_falloff() == p,
-                        on_click=lambda p=preset.id: a.set_falloff(p))
-            for preset in (falloff.get(i) for i in FALLOFF_RING_ORDER)
-        ]
-        custom = self.falloff_buttons[FALLOFF_RING_ORDER.index('CUSTOM')]
+        # Falloff presets: the outer ring, then a band along the circle in the corner
+        # (both from the bottom up); Custom in its own color.
+        def falloff_button(preset):
+            return RingSegment(preset.label, key=f"FALLOFF_{preset.id}", icon=preset.icon_key, icons=self.icons,
+                               font_size=8.0, selected=lambda p=preset.id: a.active_falloff() == p,
+                               on_click=lambda p=preset.id: a.set_falloff(p))
+        ring = [falloff_button(falloff.get(i)) for i in FALLOFF_RING_ORDER]
+        band = [falloff_button(falloff.get(i)) for i in FALLOFF_BAND_ORDER]
+        self.falloff_buttons = ring + band
+        custom = self.falloff_buttons[(FALLOFF_RING_ORDER + FALLOFF_BAND_ORDER).index('CUSTOM')]
         custom.tint, custom.tint_amount = TINT_CUSTOM, CUSTOM_TINT_AMOUNT
-        dial.add_arc(self.falloff_buttons, *OUTER_RING, *HISTORY_ARC, tint=TINT_FALLOFF)
-        self.custom_falloff = custom
+        dial.add_arc(ring, *OUTER_RING, *HISTORY_ARC, tint=TINT_FALLOFF)
+        dial.add_band(band, CORNER_INNER, CORNER_INNER + FALLOFF_BAND_DEPTH, *HISTORY_ARC, tint=TINT_FALLOFF)
         self._add_corners(dial)
         return dial
 
@@ -995,8 +1004,8 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # The curve button sits on the Custom falloff's outer edge, in line with it.
-        custom = self.custom_falloff
+        # Past the second falloff row, around the diagonal: the curve button (behind
+        # the Custom falloff) and Settings.
         curve = CornerSegment("Curve", key='CURVE', painter=_paint_curve,
                               tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
                               selected=lambda: self.flyout is self.curve_flyout,
@@ -1004,9 +1013,7 @@ class PenBar:
         settings = CornerSegment("Settings", key='SETTINGS', painter=_paint_gear,
                                  selected=lambda: self.flyout is self.settings_flyout,
                                  on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
-        dial.add_corner([curve, settings], CORNER_INNER, SQUARE_HALF, custom.a0, SETTINGS_END,
-                        weights=(custom.a1 - custom.a0, SETTINGS_END - custom.a1), **corner)
-        curve.edge_extra = (0.0, 0.0)   # side edges in line with the Custom segment's
+        dial.add_corner([curve, settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *CURVE_SETTINGS_ARC, **corner)
 
     def open_library(self, opener):
         """The library flyout; the palette band switches to its palette view (drag targets)."""
