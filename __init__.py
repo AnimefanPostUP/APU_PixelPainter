@@ -90,6 +90,7 @@ _MODULES = (
     'tools.subtools.pen',
     'tools.pen_pressure',
     'tools.color_history',
+    'tools.color_palette',
     'tools.stroke',
     'tools.brushes',
     'tools.filters',

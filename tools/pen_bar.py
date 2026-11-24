@@ -26,7 +26,7 @@ from ..core.framework import ToolFrame
 from ..ui.kit import Theme, UIEvent, hsv_for_rgb
 from ..ui.pen_bar import LAYOUT_STATE, PenBar
 from ..utils import blender_utils
-from . import blend_modes, color_history, falloff
+from . import blend_modes, color_history, color_palette, falloff
 from .subtools.pen import PenEyedropperTool
 
 
@@ -425,6 +425,35 @@ class PenBarTool(ToolFrame):
         """Paint with ``rgb`` from the history (the secondary color with the RMB lock)."""
         ctx = self._c()
         if ctx.state.get('pen_rmb_lock'):
+            ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
+        else:
+            ctx.settings.set_brush_rgb(ctx.context, *rgb)
+        ctx.state['pen_color_pending'] = None
+
+    # ---- palette (drag & drop) ---------------------------------------------------------
+
+    def color_drag_enabled(self):
+        return bool(self.wm_get('pen_color_drag', True))
+
+    def palette(self):
+        return color_palette.decode(self.wm_get('pen_palette', ""))
+
+    def _store_palette(self, slots):
+        self.wm_set('pen_palette', color_palette.encode(slots))
+
+    def set_palette_slot(self, index, rgb):
+        self._store_palette(color_palette.set_slot(self.palette(), index, rgb))
+
+    def swap_palette_slots(self, i, j):
+        self._store_palette(color_palette.swap(self.palette(), i, j))
+
+    def clear_palette(self):
+        self._store_palette([None] * color_palette.PALETTE_SIZE)
+
+    def set_color(self, which, rgb):
+        """Set the primary ('PRIMARY') or secondary ('SECONDARY') color."""
+        ctx = self._c()
+        if which == 'SECONDARY':
             ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
         else:
             ctx.settings.set_brush_rgb(ctx.context, *rgb)

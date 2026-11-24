@@ -206,8 +206,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   extreme corners cut for the lock / X / resize triangle): top left the color
   section -- the color history band (`tools/color_history.py`, recorded by
   `StrokeTool.begin_stroke` for tools with `paints_color`) and the secondary /
-  primary color with Pipette / Swap between them; bottom left the color selector
-  button; the custom curve button (in line with the Custom
+  primary color with Pipette / Swap between them; bottom left the palette
+  (`tools/color_palette.py`: 12 slots in `PALETTE_ROWS` bands, saved as JSON in
+  `pixel_painter_pen_palette`) and the color selector button. Colors are dragged
+  and dropped between them (`_ColorDrag` mixin: a short press stays a tap;
+  targets define `accept_drop`; `PenBar.drop_color`; setting `pen_color_drag`); the custom curve button (in line with the Custom
   falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
   (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`).

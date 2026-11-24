@@ -233,6 +233,14 @@ def _static_properties():
             description="Pen bar color pad only previews: the brush keeps its color until the "
                         "old / new bubble is tapped (off: the pad color applies when the pen is lifted)",
             default=False, update=_update_pen_color_preview),
+        'pen_color_drag': bpy.props.BoolProperty(
+            name="Drag Colors",
+            description="Pen menu: drag colors (primary / secondary, history, palette, the old / new bubble) "
+                        "onto palette slots or the primary / secondary color",
+            default=True, update=_persist),
+        'pen_palette': bpy.props.StringProperty(
+            name="Pen Palette", description="Pen menu color palette (JSON)", default="",
+            options={'HIDDEN'}, update=_persist),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",

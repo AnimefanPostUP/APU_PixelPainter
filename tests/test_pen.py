@@ -24,6 +24,7 @@ from ui.kit.events import PASS_THROUGH, RUNNING  # noqa: E402
 framework = importlib.import_module(f'{_PACKAGE}.core.framework')
 pen_pressure = importlib.import_module(f'{_PACKAGE}.tools.pen_pressure')
 color_history = importlib.import_module(f'{_PACKAGE}.tools.color_history')
+color_palette = importlib.import_module(f'{_PACKAGE}.tools.color_palette')
 
 
 def ev(type_, value='PRESS', x=0.0, y=0.0):
@@ -572,6 +573,23 @@ class ColorHistoryTests(unittest.TestCase):
             color_history.record(state, (i / 12, 0, 0), size=8)
         self.assertEqual(len(color_history.colors(state)), 8)
         self.assertEqual(color_history.colors(state)[0][0], round(11 / 12, 4))
+
+
+class ColorPaletteTests(unittest.TestCase):
+    def test_round_trip_keeps_empty_slots(self):
+        slots = color_palette.set_slot([None] * 12, 3, (1.0, 0.5, 0.25))
+        self.assertEqual(color_palette.decode(color_palette.encode(slots)), slots)
+
+    def test_decode_tolerates_bad_data(self):
+        self.assertEqual(color_palette.decode(""), [None] * 12)
+        self.assertEqual(color_palette.decode("not json"), [None] * 12)
+        self.assertEqual(color_palette.decode('[[2, -1, 0.5], "x", null]')[:3], [(1.0, 0.0, 0.5), None, None])
+
+    def test_swap_and_clear(self):
+        slots = color_palette.set_slot([None] * 12, 0, (1, 0, 0))
+        slots = color_palette.swap(slots, 0, 5)
+        self.assertEqual((slots[0], slots[5]), (None, (1.0, 0.0, 0.0)))
+        self.assertIsNone(color_palette.set_slot(slots, 5, None)[5])
 
 
 if __name__ == '__main__':

@@ -34,10 +34,16 @@ everything here works with press, drag and release only.
   paints with it), the secondary and primary color (tap a color: the pen
   paints with it -- the secondary one sets the RMB lock) with *Pipette*
   (eyedropper: arms it for the next canvas press) and *Swap* between them;
-  bottom left *Color* (hue ring around the pen's color: shows / hides the
-  color selector);
+  bottom left the palette (12 slots in two bands along the circle) and *Color*
+  (hue ring around the pen's color: shows / hides the color selector);
   bottom right the *curve* button on the Custom falloff's outer edge (opens
   the curve flyout, selects Custom) and *Settings* (gear: the settings popup).
+* **Drag & drop colors** (setting *Drag Colors*): drag the primary / secondary
+  color, a history color, a palette color or the color selector's old / new
+  bubble (a short press stays a tap). Drop it on a palette slot to store it
+  (palette onto palette: the two swap), on the primary / secondary color to
+  set it; drop a palette color off the menu to remove it. Tap an empty palette
+  slot to store the current color; tap a palette color to paint with it.
 * **Curve flyout**: the custom falloff curve (the brush's falloff curve; x =
   distance from the center, y = weight). *Move*: drag anchors, drag one out of
   the box to remove it; *Add*: a tap adds an anchor; *Draw*: draw the falloff
@@ -76,7 +82,7 @@ from .kit.events import PRESS, RUNNING
 from .kit.geometry import clamp_box
 from .kit.theme import with_alpha
 from .kit.widget import _resolve
-from ..tools import blend_modes, color_history, falloff
+from ..tools import blend_modes, color_history, color_palette, falloff
 
 
 BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
@@ -127,13 +133,16 @@ CUSTOM_TINT_AMOUNT = 0.45
 FALLOFF_RING_ORDER = ('SHARPEN', 'SPHERE', 'CUSTOM', 'LINEAR', 'SMOOTH', 'CONSTANT')
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + 8.0   # past the fading divider lines
-SQUARE_HALF = 150.0                  # half size of the enclosing square
+SQUARE_HALF = 160.0                  # half size of the enclosing square
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
 COLORS_ARC = (90.0, 180.0)           # top left: history band along the circle; secondary | Pipette | Swap | primary
 COLORS_WEIGHTS = (2.0, 1.0, 1.0, 2.0)
-COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the color selector button
-HISTORY_DEPTH = 14.0                 # the color history band
+COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle), the color selector button
+HISTORY_DEPTH = 14.0                 # the color history band / each palette band
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
+PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
+WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_ROWS * (HISTORY_DEPTH + DIAL_GAP)
+DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 SETTINGS_END = 360.0                 # bottom right: the curve button (Custom's angles), Settings up to here
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
@@ -178,13 +187,68 @@ class FlyoutButton(Button):
 
 
 
-class _ColorCorner(CornerSegment):
-    """Corner segment filled with a color; the active one (the color the pen paints) is ringed."""
+class _ColorDrag:
+    """Drag & drop for color widgets (mixin, before the widget class).
 
-    def __init__(self, rgb, active, **kwargs):
+    ``drag_color()`` is the RGB a drag carries (None: nothing to drag). A press
+    that moves less than ``DRAG_THRESHOLD`` is a tap (``activate``); a longer
+    move carries the color, shown under the pen, and the release drops it
+    (:meth:`PenBar.drop_color`). Widgets taking drops define ``accept_drop(rgb, source)``.
+    Dragging is off with the *Drag Colors* setting (``pen_color_drag``)."""
+
+    bar = None
+
+    def drag_color(self):
+        return None
+
+    @property
+    def draggable(self):
+        try:
+            return self.bar.actions.color_drag_enabled() and self.drag_color() is not None
+        except Exception:
+            return False
+
+    def accepts_drop(self):
+        return hasattr(self, 'accept_drop')
+
+    def drag_begin(self, x, y):
+        self._press = (x, y)
+        self._carry = self.drag_color()
+        self._moved = False
+
+    def drag_update(self, x, y):
+        if not self._moved:
+            reach = self.bar.overlay.theme.px(DRAG_THRESHOLD)
+            self._moved = math.hypot(x - self._press[0], y - self._press[1]) >= reach
+        if self._moved:
+            self.bar.drag_preview = (self._carry, x, y, self)
+
+    def drag_end(self, x, y, cancelled=False):
+        self.bar.drag_preview = None
+        if cancelled:
+            return
+        if self._moved:
+            self.bar.drop_color(self._carry, x, y, self)
+        else:
+            self.activate()
+
+
+class _ColorCorner(_ColorDrag, CornerSegment):
+    """The primary or secondary color (``which``) as a corner segment; the active one
+    (the color the pen paints) is ringed. Drag source and drop target."""
+
+    def __init__(self, bar, which, rgb, active, **kwargs):
         super().__init__(**kwargs)
+        self.bar = bar
+        self.which = which      # 'PRIMARY' / 'SECONDARY'
         self.rgb = rgb          # () -> (r, g, b)
         self.active = active    # () -> bool
+
+    def drag_color(self):
+        return _resolve(self.rgb, None)
+
+    def accept_drop(self, rgb, source):
+        self.bar.actions.set_color(self.which, rgb)
 
     def draw_self(self, dc):
         theme = dc.theme
@@ -197,6 +261,20 @@ class _ColorCorner(CornerSegment):
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
         elif self.hover_t > 0.5:
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _BubbleDrag(_ColorDrag, ColorBubble):
+    """The color selector's old / new bubble: tap accepts, dragging carries the new color."""
+
+    def __init__(self, bar, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bar = bar
+
+    def drag_color(self):
+        try:
+            return tuple(self.bar.actions.preview_colors()[1])
+        except Exception:
+            return None
 
 
 def _paint_swap(dc, x, y, size, alpha):
@@ -277,18 +355,35 @@ def _paint_curve(dc, x, y, size, alpha):
         draw.circle(pts[i][0], pts[i][1], max(1.5, s * 0.08), with_alpha(theme.text, alpha), segments=12)
 
 
-class _HistorySwatch(RingSegment):
-    """A recently painted color (``color()``: RGB, or None for an empty slot); tap paints with it."""
+class _Swatch(_ColorDrag, RingSegment):
+    """A color slot along the circle (history or palette). ``color()``: RGB or None
+    (empty). Tap: ``use(rgb)``, on an empty slot ``on_empty()``. Drag source; with
+    ``drop(rgb, source)`` also a drop target. ``palette_index``: its palette slot."""
 
-    def __init__(self, color, use, **kwargs):
-        super().__init__(on_click=self._use, **kwargs)
+    def __init__(self, bar, color, use, *, drop=None, on_empty=None, palette_index=None, **kwargs):
+        super().__init__(on_click=self._tap, **kwargs)
+        self.bar = bar
         self.color = color
         self.use = use
+        self.drop = drop
+        self.on_empty = on_empty
+        self.palette_index = palette_index
 
-    def _use(self):
+    def drag_color(self):
+        return _resolve(self.color, None)
+
+    def accepts_drop(self):
+        return self.drop is not None
+
+    def accept_drop(self, rgb, source):
+        self.drop(rgb, source)
+
+    def _tap(self):
         rgb = _resolve(self.color, None)
         if rgb is not None:
             self.use(rgb)
+        elif self.on_empty is not None:
+            self.on_empty()
 
     def draw_self(self, dc):
         theme = dc.theme
@@ -298,8 +393,10 @@ class _HistorySwatch(RingSegment):
         rgb = _resolve(self.color, None)
         if rgb is None:
             draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
-            return
-        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+            if self.drop is not None:   # an empty palette slot: show where it is
+                draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
+        else:
+            draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
         if self.hover_t > 0.5:
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
@@ -608,6 +705,7 @@ class PenBar:
         self._move = None           # (element, stored pos, top-left, size) while an element is moved
         self._resize = None         # (element, scale, width, height, top-left, stored pos) while resized
         self._args = None           # the last layout() arguments
+        self.drag_preview = None    # (rgb, x, y, source) while a color is dragged
         self.bounds = (0.0, 0.0, 0.0, 0.0)
         self.knobs = {}
         self.arm_buttons = {}
@@ -634,7 +732,7 @@ class PenBar:
         self.color_pad = ColorSelector(a.pen_hsv, a.set_pen_hsv, original=a.original_hsv,
                                        live=a.color_preview, layout=a.color_layout,
                                        model=a.color_model, sliders=a.color_sliders, key='COLOR_PAD')
-        self.color_bubble = ColorBubble(a.preview_colors, True, a.has_color_change, radius=12.0,
+        self.color_bubble = _BubbleDrag(self, a.preview_colors, True, a.has_color_change, radius=12.0,
                                         on_click=a.accept_color_change, key='COLOR_BUBBLE')
         content = Column([Row([self.color_bubble]), self.color_pad], gap=6.0)
         self.color_window = self._window('color', content,
@@ -743,23 +841,33 @@ class PenBar:
         corner = dict(chamfer=CORNER_CHAMFER)
 
         # Color history along the circle, newest at the left end (next to the primary color).
-        swatches = [_HistorySwatch(lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
+        swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
-        primary = _ColorCorner(lambda: a.colors()[0], lambda: not a.rmb_lock(), key='PRIMARY',
+        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], lambda: not a.rmb_lock(), key='PRIMARY',
                                on_click=lambda: a.set_rmb_lock(False))
         swap = CornerSegment("Swap", key='SWAP', painter=_paint_swap, on_click=a.swap_colors)
         picker = CornerSegment("Picker", key='PICKER', painter=_paint_eyedropper,
                                selected=lambda: a.armed() == 'EYEDROPPER', on_click=lambda: a.toggle_arm('EYEDROPPER'))
         self.arm_buttons = {'EYEDROPPER': picker}
-        secondary = _ColorCorner(lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
+        secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
                                  on_click=lambda: a.set_rmb_lock(True))
         dial.add_corner([secondary, picker, swap, primary], COLOR_CORNER_INNER, SQUARE_HALF, *COLORS_ARC,
                         weights=COLORS_WEIGHTS, **corner)
 
         color = CornerSegment("Color", key='COLOR', painter=_paint_color_wheel(a.pen_rgb),
                               selected=a.color_panel_open, on_click=a.toggle_color_panel)
-        dial.add_corner([color], CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC, **corner)
+        dial.add_corner([color], WHEEL_CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC, **corner)
+
+        # Palette: bands along the circle in front of the color selector button, slot 0 at the left.
+        palette = [_Swatch(self, lambda i=i: self._palette(i), a.use_history_color, key=f"PALETTE_{i}",
+                           palette_index=i, drop=lambda rgb, source, i=i: self._drop_on_palette(i, rgb, source),
+                           on_empty=lambda i=i: a.set_palette_slot(i, a.pen_rgb()))
+                   for i in range(color_palette.PALETTE_SIZE)]
+        per_row = (len(palette) + PALETTE_ROWS - 1) // PALETTE_ROWS
+        for row in range(PALETTE_ROWS):
+            r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
+            dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
         # The curve button sits on the Custom falloff's outer edge, in line with it.
         custom = self.custom_falloff
@@ -773,6 +881,42 @@ class PenBar:
         dial.add_corner([curve, settings], CORNER_INNER, SQUARE_HALF, custom.a0, SETTINGS_END,
                         weights=(custom.a1 - custom.a0, SETTINGS_END - custom.a1), **corner)
         curve.edge_extra = (0.0, 0.0)   # side edges in line with the Custom segment's
+
+    def _palette(self, index):
+        slots = self.actions.palette()
+        return slots[index] if index < len(slots) else None
+
+    def _drop_on_palette(self, index, rgb, source):
+        """A palette color dropped on another slot swaps the two; any other color fills the slot."""
+        other = getattr(source, 'palette_index', None)
+        if other is not None:
+            self.actions.swap_palette_slots(other, index)
+        else:
+            self.actions.set_palette_slot(index, rgb)
+
+    def drop_color(self, rgb, x, y, source):
+        """End of a color drag at ``(x, y)``: the widget there takes it; a palette color
+        dropped off the menu and the color selector is removed from the palette."""
+        target = self._drop_target(x, y, source)
+        if target is not None:
+            target.accept_drop(rgb, source)
+        elif self._removes(x, y, source):
+            self.actions.set_palette_slot(source.palette_index, None)
+
+    def _removes(self, x, y, source):
+        """A palette color released here (off the menu and the color selector) is removed."""
+        return (getattr(source, 'palette_index', None) is not None and self.root.pick(x, y) is None
+                and not self._over_color_window(x, y))
+
+    def _over_color_window(self, x, y):
+        return self.color_window.visible and self.color_window.pick(x, y) is not None
+
+    def _drop_target(self, x, y, source):
+        target = self.root.pick(x, y)
+        if target is not None and target is not source and hasattr(target, 'accept_drop') \
+                and target.accepts_drop():
+            return target
+        return None
 
     def _history(self, index):
         colors = self.actions.color_history()
@@ -928,7 +1072,8 @@ class PenBar:
             overlay.pointer_widget = None
 
     def end_drag(self):
-        """The host lost the pointer: keep the dragged value."""
+        """The host lost the pointer: keep the dragged value (a carried color is dropped nowhere)."""
+        self.drag_preview = None
         for _window, overlay in self.windows.values():
             if overlay.dragging is not None:
                 overlay.end_drag()
@@ -1081,6 +1226,7 @@ class PenBar:
         with draw.blend_mode('ALPHA'):
             self._draw_drag_readout()
             self._draw_arm_hint()
+            self._draw_color_drag()
 
     def _beside(self, rect, width):
         """x0 of a box ``width`` wide beside ``rect``, toward the middle of the editor."""
@@ -1141,6 +1287,28 @@ class PenBar:
         else:
             draw.circle_outline(cx, cy, half, (0.0, 0.0, 0.0, 0.8), width=theme.px(3.0))
             draw.circle_outline(cx, cy, half, (1.0, 1.0, 1.0, 0.95), width=theme.px(1.5))
+
+    def _draw_color_drag(self):
+        """The carried color under the pen; the slot it would land in is outlined, and a
+        palette color about to be removed (off the menu) is crossed out."""
+        if self.drag_preview is None:
+            return
+        rgb, x, y, source = self.drag_preview
+        theme = self.overlay.theme
+        target = self._drop_target(x, y, source)
+        if target is not None and hasattr(target, 'points'):
+            inner, outer = target.points()
+            if inner:
+                draw.ring_segment_outline(inner, outer, theme.accent_light, width=theme.px(2.5))
+        r = theme.px(13.0)
+        cy = y + r * 1.6      # above the pen tip, so it stays visible
+        draw.circle(x, cy, r, (rgb[0], rgb[1], rgb[2], 1.0), rim=theme.edge_for(rgb))
+        draw.circle_outline(x, cy, r + theme.px(1.0), theme.text, width=theme.px(1.5))
+        if target is None and self._removes(x, y, source):
+            arm = r * 0.55
+            red = (0.95, 0.25, 0.25, 1.0)
+            draw.polyline([(x - arm, cy - arm), (x + arm, cy + arm)], red, theme.px(2.5))
+            draw.polyline([(x - arm, cy + arm), (x + arm, cy - arm)], red, theme.px(2.5))
 
     def _draw_arm_hint(self):
         kind = self.actions.armed()
