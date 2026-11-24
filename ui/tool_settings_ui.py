@@ -169,7 +169,7 @@ def _draw_pen_settings(layout, wm):
         "Knobs: press and drag up/down",
         "Color: color pad under the bar",
         "Color pad: swipe like a touchpad, tap jumps",
-        "Preview: color changes live while swiping",
+        "Preview: pad color applies on bubble tap",
         "Bubble: old/new color (tap: accept new)",
         "Picker: arm, then tap the canvas",
         "Corner triangle: drag to resize the bar",

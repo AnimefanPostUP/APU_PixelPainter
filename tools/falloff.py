@@ -1,4 +1,4 @@
-"""Brush falloff presets (single source for enum items, curve presets and icons)."""
+"""Brush falloff presets (single source for enum items, curve presets and icon keys)."""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -10,21 +10,19 @@ class FalloffPreset:
     label: str
     description: str
     curve_preset: Optional[str]   # Blender brush.curve_preset to apply, None = keep curve
-    icon_key: Optional[str] = None
-    icon_file: Optional[str] = None
+
+    @property
+    def icon_key(self):
+        """Key of the generated falloff icon (see ``ui/falloff_icons.py``)."""
+        return f"FALLOFF_ICON_{self.id}"
 
 
 FALLOFF_PRESETS = (
-    FalloffPreset('CONSTANT', "Constant", "Uniform strength across the brush", 'MAX',
-                  'CONSTANT', "Falloff_Const.png"),
-    FalloffPreset('LINEAR', "Linear", "Linearly fades from centre to edge", 'LINE',
-                  'LINEAR', "Falloff_Linea.png"),
-    FalloffPreset('SMOOTH', "Smooth", "Smooth ease-in/out fade", 'SMOOTH',
-                  'SMOOTH_FALLOFF', "Falloff_Smooth.png"),
-    FalloffPreset('SPHERE', "Sphere", "Spherical dome-shaped falloff", 'ROUND',
-                  'SPHERE', "Falloff_Sphere.png"),
-    FalloffPreset('SHARPEN', "Sharpen", "Quadratic — drops off quickly toward the edge", 'SHARP',
-                  'SHARPEN', "Falloff_Sharpen.png"),
+    FalloffPreset('CONSTANT', "Constant", "Uniform strength across the brush", 'MAX'),
+    FalloffPreset('LINEAR', "Linear", "Linearly fades from centre to edge", 'LINE'),
+    FalloffPreset('SMOOTH', "Smooth", "Smooth ease-in/out fade", 'SMOOTH'),
+    FalloffPreset('SPHERE', "Sphere", "Spherical dome-shaped falloff", 'ROUND'),
+    FalloffPreset('SHARPEN', "Sharpen", "Quadratic — drops off quickly toward the edge", 'SHARP'),
     FalloffPreset('CUSTOM', "Custom", "Use the custom brush curve from Tool Settings", None),
 )
 
@@ -47,7 +45,3 @@ def enum_items():
 
 def picker_presets():
     return [_BY_ID[i] for i in PICKER_ORDER]
-
-
-def icon_files():
-    return {p.icon_key: p.icon_file for p in FALLOFF_PRESETS if p.icon_key and p.icon_file}

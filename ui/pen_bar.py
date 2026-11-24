@@ -23,10 +23,11 @@ everything here works with press, drag and release only:
 * **Color pad** (:class:`~.kit.ColorPad`): hue / value sheet plus hue,
   value and saturation bars, all swiped like a touchpad; a tap jumps. It
   edits the color the pen paints (secondary with the RMB lock). The change
-  applies when the pen is lifted -- or, with *Preview* on, live while the
-  pen is down. The color from before editing stays marked with a cross and
-  shows in the old / new bubble until the bubble is tapped (accept: the new
-  color becomes the reference).
+  applies when the pen is lifted; the color from before editing stays marked
+  with a cross and shows in the old / new bubble until the bubble is tapped
+  (accept: the new color becomes the reference). With *Preview* on the pad
+  only previews: the brush keeps its color (marked with the cross) and the
+  picked one shows in the bubble until the bubble is tapped, which applies it.
 * **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
   onto an entry and lift -- or lift anywhere and tap an entry. A tap outside
   closes the flyout.

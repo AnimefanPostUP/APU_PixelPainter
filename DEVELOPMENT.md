@@ -22,7 +22,7 @@ tools/
   selection_ops.py     selection box geometry and pixel-region operations
   subtools/            color_pick (E), strength (Shift+E), eyedropper (hold Ctrl),
                        tool_switch (hold Alt -> Line, hold Shift -> Smooth/Eraser, Shift+1..9)
-  falloff.py           falloff presets (enum, curve preset, icons)
+  falloff.py           falloff presets (enum, curve preset, icon keys)
   blend_modes.py       blend modes (enum, groups, favorites)
   draw_*.py, overlays*.py  pixel writing and canvas overlays
 ui/
@@ -30,7 +30,8 @@ ui/
   pie_menu.py          ToolPie / FalloffPie / FalloffPicker + W-key operator
   selection_actions.py Copy / Apply / Stencil buttons under the selection box
   native_menus.py      Blender-native blend pie and mode pie
-  icons.py             ICONS (tool + falloff icons)
+  icons.py             ICONS (tool icons + generated falloff icons)
+  falloff_icons.py     procedural falloff icons (white disc, alpha = falloff)
   tool_settings_ui.py  header / N-panel settings
 tests/                 pure-Python unit tests (UI kit, tool framework)
 ```

@@ -21,13 +21,22 @@ class IconSet:
 
     Both caches rebuild themselves lazily if Blender invalidated them
     (addon reload, file load), so callers never need to care.
+
+    ``generators`` maps keys to procedural icons: objects with ``signature()``
+    (cheap, changes when the icon would change) and ``render(size)`` returning
+    a flat list of straight-alpha RGBA floats. They re-render on signature change.
     """
 
-    def __init__(self, directory, files):
+    GENERATED_SIZE = 64
+
+    def __init__(self, directory, files, generators=None):
         self.directory = directory
         self.files = dict(files)   # key -> filename
+        self.generators = dict(generators or {})
         self._previews = None
+        self._preview_signatures = {}
         self._textures = {}
+        self._texture_signatures = {}
 
     def path(self, key):
         filename = self.files.get(key)
@@ -46,6 +55,9 @@ class IconSet:
             if path:
                 pcoll.load(key, path, 'IMAGE')
         self._previews = pcoll
+        self._preview_signatures.clear()
+        for key in self.generators:
+            self._update_generated_preview(key)
 
     def unregister(self):
         if self._previews is not None:
@@ -54,16 +66,75 @@ class IconSet:
             except Exception:
                 pass
             self._previews = None
-        self._textures.clear()
+        self._preview_signatures.clear()
+        self.clear_gpu_cache()
 
     def clear_gpu_cache(self):
         self._textures.clear()
+        self._texture_signatures.clear()
+
+    # ---- generated icons -----------------------------------------------------
+
+    def _signature(self, key):
+        try:
+            return self.generators[key].signature()
+        except Exception:
+            return None
+
+    def _render(self, key):
+        try:
+            return self.generators[key].render(self.GENERATED_SIZE)
+        except Exception:
+            return None
+
+    def _update_generated_preview(self, key):
+        pcoll = self._previews
+        if pcoll is None:
+            return
+        sig = self._signature(key)
+        if key in pcoll and self._preview_signatures.get(key) == sig:
+            return
+        pixels = self._render(key)
+        if pixels is None:
+            return
+        preview = pcoll[key] if key in pcoll else pcoll.new(key)
+        size = self.GENERATED_SIZE
+        preview.image_size = (size, size)
+        preview.image_pixels_float.foreach_set(pixels)
+        preview.icon_size = (size, size)
+        preview.icon_pixels_float.foreach_set(pixels)
+        self._preview_signatures[key] = sig
+
+    def _generated_texture(self, key):
+        sig = self._signature(key)
+        tex = self._textures.get(key)
+        if tex is not None and self._texture_signatures.get(key) == sig:
+            return tex
+        pixels = self._render(key)
+        if pixels is None:
+            return tex
+        # The overlay blends with ALPHA_PREMULT: premultiply the white disc.
+        premul = list(pixels)
+        for i in range(0, len(premul), 4):
+            a = premul[i + 3]
+            premul[i] *= a
+            premul[i + 1] *= a
+            premul[i + 2] *= a
+        size = self.GENERATED_SIZE
+        try:
+            buf = gpu.types.Buffer('FLOAT', len(premul), premul)
+            tex = gpu.types.GPUTexture((size, size), format='RGBA16F', data=buf)
+        except Exception:
+            return None
+        self._textures[key] = tex
+        self._texture_signatures[key] = sig
+        return tex
 
     # ---- Blender layout icons ---------------------------------------------
 
     def icon_id(self, key):
         """``icon_value`` for ``key`` (0 when missing)."""
-        if key not in self.files:
+        if key not in self.files and key not in self.generators:
             return 0
         for _attempt in range(2):
             if self._previews is None:
@@ -71,6 +142,12 @@ class IconSet:
                     self.register()
                 except Exception:
                     return 0
+            if key in self.generators:
+                try:
+                    self._update_generated_preview(key)
+                except Exception:
+                    self._previews = None
+                    continue
             icon = self._previews.get(key) if self._previews is not None else None
             if icon is not None:
                 return icon.icon_id
@@ -82,6 +159,8 @@ class IconSet:
     def texture(self, key, refresh=False):
         if refresh:
             self._textures.pop(key, None)
+        if key in self.generators:
+            return self._generated_texture(key)
         if key in self._textures:
             return self._textures[key]
         path = self.path(key)
