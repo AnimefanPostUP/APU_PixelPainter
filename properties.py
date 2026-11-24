@@ -73,7 +73,7 @@ def _update_pen_color_preview(self, context):
 
 
 def _redraw_mask(self, context):
-    """Mask settings: redraw the editors (the overlay changes); persist."""
+    """Mask / grid settings: redraw the editors (the overlay changes); persist."""
     try:
         for window in context.window_manager.windows:
             for area in window.screen.areas:
@@ -213,7 +213,10 @@ def _static_properties():
             items=settings_menu.tab_enum_items(), default=settings_menu.SETTINGS_TABS[0][0], update=_persist),
         'grid_opacity': _factor(
             "Grid Opacity", 0.0, description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
-            update=_persist),
+            update=_redraw_mask),
+        'grid_show': bpy.props.BoolProperty(
+            name="Show Grid", description="Show the pixel grid overlay (at Grid Opacity)", default=True,
+            update=_redraw_mask),
         # ---- pen / tablet ----
         'pen_pressure_size': bpy.props.BoolProperty(
             name="Pressure Size", description="Pen pressure scales the brush size", default=False,
@@ -423,6 +426,7 @@ def reset_tool_settings(wm):
     wm.pixel_painter_protect_transparent = False
     wm.pixel_painter_view3d_mode = 'UV'
     wm.pixel_painter_grid_opacity = 0.0
+    wm.pixel_painter_grid_show = True
     for channel in ('size', 'strength', 'alpha', 'modifier'):
         setattr(wm, f'pixel_painter_pen_pressure_{channel}', False)
     wm.pixel_painter_pen_pressure_min = 0.0

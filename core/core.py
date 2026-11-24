@@ -183,7 +183,9 @@ def _register_draw_handler(space, context):
             else:
                 tctx = ToolContext(ctx, MANAGER)
                 mask.draw_2d(ctx, tctx.v2d, tctx.image)
-                draw_gridoverlay.draw_pixel_grid_overlay(ctx, ctx.window_manager.pixel_painter_grid_opacity)
+                wm = ctx.window_manager
+                if wm.pixel_painter_grid_show:
+                    draw_gridoverlay.draw_pixel_grid_overlay(ctx, wm.pixel_painter_grid_opacity)
                 draw_functions.draw_test_tool_shape_outline(ctx, _state)
             draw_functions.draw_test_corner_label(ctx)
             MANAGER.draw(ToolContext(ctx, MANAGER))
@@ -192,7 +194,11 @@ def _register_draw_handler(space, context):
     def _view_callback(ctx):
         try:
             if _in_session_area(ctx):
-                mask.draw_3d(ctx, blender_utils.get_paint_image(ctx))
+                image = blender_utils.get_paint_image(ctx)
+                wm = ctx.window_manager
+                if wm.pixel_painter_grid_show:
+                    draw_gridoverlay.draw_pixel_grid_overlay_3d(ctx, image, wm.pixel_painter_grid_opacity)
+                mask.draw_3d(ctx, image)
                 overlays_view3d.draw_brush_outline_3d(ctx, _state)
         except Exception:
             traceback.print_exc()

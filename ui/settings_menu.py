@@ -233,7 +233,9 @@ def _draw_pen(layout, context):
 
 def _draw_display(layout, context):
     wm = context.window_manager
-    layout.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_grid_show", text="", icon='MESH_GRID')
+    row.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
 
 
 _SHORTCUTS = (

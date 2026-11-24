@@ -494,8 +494,11 @@ class SettingsMenu:
         return Column([methods, blend, TextBlock(hint, size=9.0, width=PAGE_WIDTH - 20.0)], gap=6.0)
 
     def _page_display(self, tint):
-        grid = self._slider('grid_opacity', "Grid opacity", fill_color=(*TINT_DISPLAY, 1.0))
-        return [self._group("Pixel Grid", Column([grid, self._hint(("0: hidden, 100%: fully opaque.",))], gap=6.0),
+        show = self._toggle('grid_show', "Show")
+        grid = self._slider('grid_opacity', "Grid opacity", size=(PAGE_WIDTH - 90.0, 24.0),
+                            fill_color=(*TINT_DISPLAY, 1.0))
+        hint = self._hint(("Pen menu (top right): tap the % to toggle, drag up / down to adjust.",))
+        return [self._group("Pixel Grid", Column([Row([show, grid], gap=6.0), hint], gap=6.0),
                             tint, _icon_grid)]
 
     def _page_shortcuts(self, tint):

@@ -258,7 +258,13 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   Pen > Save Image: `pixel_painter_save_image_method` (`AUTO`: repack packed,
   save to its file, else pack / `PACK` / `FILE`: write a file, images without
   one go to `pixel_painter_save_image_folder`/`<name>.png`) and
-  `pixel_painter_save_image_blend` (save the .blend afterwards). The color from before (`pen_color_original`) stays marked and
+  `pixel_painter_save_image_blend` (save the .blend afterwards).
+  *Grid* (`GRID_ARC`, `_GridCorner`) shows `pixel_painter_grid_opacity` in percent:
+  a tap toggles `pixel_painter_grid_show` (a grid at 0 % comes on at
+  `GRID_DEFAULT_OPACITY`), a vertical drag sets the opacity (`GRID_DRAG_PX` for
+  0 -> 100 %, ESC restores it). In the 3D Viewport `draw_pixel_grid_overlay_3d`
+  (`tools/draw_gridoverlay.py`) draws the cached mesh with a texel-border shader
+  (lines via `fwidth`, faded out below ~2-5 px per texel, small clip-space depth bias). The color from before (`pen_color_original`) stays marked and
   shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`

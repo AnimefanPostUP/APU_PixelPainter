@@ -29,6 +29,7 @@ from ..utils import blender_utils, palette_library
 from . import blend_modes, color_history, color_palette, falloff, mask
 from .subtools.pen import PenEyedropperTool
 
+GRID_DEFAULT_OPACITY = 0.5     # a grid toggled on at 0 % starts here
 
 
 def _side_insets(area, region):
@@ -662,6 +663,29 @@ class PenBarTool(ToolFrame):
 
     def set_state(self, key, value):
         self._c().state[key] = value
+
+    # ---- pixel grid overlay ----------------------------------------------------------
+
+    def grid_shown(self):
+        return bool(self.wm_get('grid_show', True)) and self.grid_opacity() > 0.0
+
+    def grid_opacity(self):
+        return float(self.wm_get('grid_opacity', 0.0) or 0.0)
+
+    def toggle_grid(self):
+        """On / off; turning on a grid at 0 % brings it to GRID_DEFAULT_OPACITY."""
+        if self.grid_shown():
+            self.wm_set('grid_show', False)
+            return
+        if self.grid_opacity() <= 0.0:
+            self.wm_set('grid_opacity', GRID_DEFAULT_OPACITY)
+        self.wm_set('grid_show', True)
+
+    def set_grid_opacity(self, value):
+        """Adjust (also shows the grid)."""
+        self.wm_set('grid_opacity', max(0.0, min(1.0, value)))
+        if not self.wm_get('grid_show', True):
+            self.wm_set('grid_show', True)
 
     # ---- paint mask (tools/mask.py) ---------------------------------------------------
 
