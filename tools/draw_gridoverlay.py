@@ -31,8 +31,10 @@ def draw_pixel_grid_overlay(context, grid_opacity):
     if not v2d:
         return
 
-    corner_00 = v2d.view_to_region(0.0, 0.0)
-    corner_11 = v2d.view_to_region(1.0, 1.0)
+    # clip=False: with the default clip=True, off-screen corners return the
+    # (12000, 12000) sentinel, which breaks the grid when zoomed past the edges.
+    corner_00 = v2d.view_to_region(0.0, 0.0, clip=False)
+    corner_11 = v2d.view_to_region(1.0, 1.0, clip=False)
     if corner_00 is None or corner_11 is None:
         return
 
