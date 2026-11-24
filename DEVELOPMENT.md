@@ -138,6 +138,7 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `widget.py` | `Widget` base, `Row`, `Column`, `Grid`, `DrawContext` |
 | `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `DragBubble`, `ColorBubble` (old / new), `Panel` |
 | `radial.py` | `RadialMenu` (arc or explicit directions, `attach_below`, number keys) |
+| `form.py` | `Group` (titled, tinted block of controls), `Slider`, `IconButton` (painted icon + label), `TextBlock`, `Spacer` |
 | `curve.py` | `CurveEditor` (anchors of a 0..1 curve: Move / Add / Draw by pen; `stroke_to_curve` fits a freehand stroke) |
 | `ring.py` | `Dial` (center widget + rings of pie segments; each `add_arc` is a category with its own `tint`, separated by `group_gap` and a divider line; `gap` between segments; `add_corner` fills the enclosing square's corners with `CornerSegment`s), `RingSegment` (icon / label / painter), `RingSlider` (radial slider: press / drag sets the value from the distance to the center) |
 | `color_selector.py` | `ColorSelector` — pen-friendly color selector, every part swiped like a touchpad (pure Python layout / input). Layouts are `ColorShape` variants: `SheetShape`, `SquareShape`, `TriangleShape`, `WheelShape`; model HSV / HSL; optional RGB / HSV / HSL channel sliders underneath |
@@ -208,7 +209,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   button; the custom curve button (in line with the Custom
   falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
-  (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`). *Color* toggles the
+  (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`).
+  The Settings gear opens the settings flyout (`ui/pen_settings.py`): icon tabs
+  and the tab's page of `kit.Group`s (one tint per tab), the same settings and
+  remembered tab as the Blender settings popup, read / written through
+  `PenBarTool.wm_get` / `wm_set` / `wm_toggle_flag` / `wm_range`. *Color* toggles the
   color selector element (a `ColorSelector` with the old / new bubble above it, `COLOR_WIDTH` wide):
   every part moves relative to the swipe (`gain` 0.5), a tap jumps. Layout
   (`pixel_painter_color_selector_layout`: Sheet / Square / Triangle / Wheel), model
@@ -238,8 +243,9 @@ The N-panel / tool header keep only the controls used while painting; options
 that are set once and rarely touched live in the settings popup, a popover
 panel (`IMAGE_PT_pixel_painter_settings`) with a header bar of categories
 (`pixel_painter_settings_tab`, remembered). Open it with
-`image.pixel_painter_open_settings` (optional `tab=`), the pen bar's
-*Settings* button or the Settings button in the N-panel / header.
+`image.pixel_painter_open_settings` (optional `tab=`) or the Settings button in
+the N-panel / header; the pen menu has its own version of it (`ui/pen_settings.py`):
+a setting added here should be added there too.
 To add a category, add an entry to `SETTINGS_TABS` and a drawer to `_TAB_DRAWERS`.
 
 ## Undo

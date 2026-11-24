@@ -619,11 +619,15 @@ class PenBar:
         self.curve_mode = 'MOVE'
         self.curve_flyout = self._build_curve_flyout()
         self.curve_flyout.visible = False
+        from .pen_settings import SettingsMenu  # late import: it imports this module
+        self.settings_menu = SettingsMenu(self)
+        self.settings_flyout = self.settings_menu.panel
+        self.settings_flyout.visible = False
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         self.menu = self._window('bar', self._build_dial(),
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
                                  tab=tab)
-        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout])
+        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout])
         self.overlay = Overlay(self.root, modal=False, animate=False)
 
         # Color selector.
@@ -764,7 +768,9 @@ class PenBar:
                               tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
                               selected=lambda: self.flyout is self.curve_flyout,
                               on_click=lambda: self._open_curve(curve))
-        settings = CornerSegment("Settings", key='SETTINGS', painter=_paint_gear, on_click=a.open_settings)
+        settings = CornerSegment("Settings", key='SETTINGS', painter=_paint_gear,
+                                 selected=lambda: self.flyout is self.settings_flyout,
+                                 on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
         dial.add_corner([curve, settings], CORNER_INNER, SQUARE_HALF, custom.a0, SETTINGS_END,
                         weights=(custom.a1 - custom.a0, SETTINGS_END - custom.a1), **corner)
         curve.edge_extra = (0.0, 0.0)   # side edges in line with the Custom segment's
