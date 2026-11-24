@@ -1,0 +1,37 @@
+"""Paint mask operators (settings popup; the pen menu calls tools/mask.py directly).
+
+* ``image.pixel_painter_mask_pick``: start / stop choosing islands / parts on
+  the canvas (needs a running Pixel Painter session; turns the mask on).
+* ``image.pixel_painter_mask_clear``: forget the chosen islands / parts.
+"""
+
+from bpy.types import Operator
+
+from ..core.state import STATE
+from ..tools import mask
+
+
+class PixelPainterMaskPickOperator(Operator):
+    """Start / stop choosing UV islands or mesh parts on the canvas (tap to toggle, Esc: done)"""
+    bl_idname = "image.pixel_painter_mask_pick"
+    bl_label = "Pick Mask"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        mask.set_picking(STATE, context, not STATE.get('mask_picking'))
+        return {'FINISHED'}
+
+
+class PixelPainterMaskClearOperator(Operator):
+    """Forget the chosen UV islands / mesh parts of this project"""
+    bl_idname = "image.pixel_painter_mask_clear"
+    bl_label = "Clear Mask"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        mask.clear(context)
+        mask._redraw_editors(context)
+        return {'FINISHED'}
+
+
+classes = (PixelPainterMaskPickOperator, PixelPainterMaskClearOperator)

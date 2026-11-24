@@ -72,6 +72,18 @@ def _update_pen_color_preview(self, context):
     _persist(self, context)
 
 
+def _redraw_mask(self, context):
+    """Mask settings: redraw the editors (the overlay changes); persist."""
+    try:
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type in {'IMAGE_EDITOR', 'VIEW_3D'}:
+                    area.tag_redraw()
+    except Exception:
+        pass
+    _persist(self, context)
+
+
 # ---------------------------------------------------------------------------
 # "Active" proxies: read/write whichever value (global or per-tool) is in effect
 # ---------------------------------------------------------------------------
@@ -255,6 +267,25 @@ def _static_properties():
             name="Also Save .blend",
             description="Save the .blend file after the image (packed pixels only reach the disk with the .blend)",
             default=False, update=_persist),
+        # ---- paint mask (tools/mask.py) ----
+        'mask_enabled': bpy.props.BoolProperty(
+            name="Mask", description="Only paint on the chosen UV islands / mesh parts",
+            default=False, update=_redraw_mask),
+        'mask_source': bpy.props.EnumProperty(
+            name="Mask Source", description="What the mask chooses",
+            items=[
+                ('UV_ISLAND', "UV Islands", "Choose UV islands (faces connected in the UV map)"),
+                ('MESH_PART', "Mesh Parts", "Choose connected mesh parts (loose parts are separate)"),
+            ],
+            default='UV_ISLAND', update=_redraw_mask),
+        'mask_invert': bpy.props.BoolProperty(
+            name="Invert Mask", description="Protect the chosen islands / parts instead of painting only on them",
+            default=False, update=_redraw_mask),
+        'mask_grow': bpy.props.IntProperty(
+            name="Mask Grow", description="Pixels added around every island / part (covers partly covered edge pixels)",
+            min=0, max=8, default=0, update=_redraw_mask),
+        'mask_show': bpy.props.BoolProperty(
+            name="Show Mask", description="Show red stripes over the protected area", default=True, update=_redraw_mask),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",
@@ -319,6 +350,7 @@ def all_properties():
 NON_PERSISTED = {
     'temp_smooth_force_global', 'active_size', 'active_strength', 'active_modifier',
     'active_alpha', 'selection_has_pending', 'selection_stencil_mode',
+    'mask_enabled',   # starts off: a forgotten mask must not block painting after a restart
 }
 
 
@@ -337,6 +369,9 @@ _registered = []
 SCENE_PROPERTIES = {
     'palettes': lambda: bpy.props.StringProperty(
         name="Pixel Painter Palettes", description="The project's color palettes (JSON, see tools/color_palette.py)",
+        default="", options={'HIDDEN'}),
+    'mask_selection': lambda: bpy.props.StringProperty(
+        name="Pixel Painter Mask", description="Chosen mask islands / parts (JSON, see tools/mask.py)",
         default="", options={'HIDDEN'}),
 }
 

@@ -105,6 +105,33 @@ def _draw_tools(layout, context):
     layout.separator()
     layout.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')
 
+    layout.separator()
+    _draw_mask(layout, context)
+
+
+def _draw_mask(layout, context):
+    from ..core.state import STATE
+    wm = context.window_manager
+    layout.label(text="Paint Mask (pen menu, top right)", icon='MOD_MASK')
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_mask_enabled", text="Mask", toggle=True)
+    row.prop(wm, "pixel_painter_mask_invert", text="Invert", toggle=True, icon='ARROW_LEFTRIGHT')
+    row.prop(wm, "pixel_painter_mask_show", text="Show", toggle=True, icon='HIDE_OFF')
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_mask_source", expand=True)
+    layout.prop(wm, "pixel_painter_mask_grow", text="Grow (px)")
+    row = layout.row(align=True)
+    picking = bool(STATE.get('mask_picking'))
+    row.operator("image.pixel_painter_mask_pick", text="Done Picking" if picking else "Pick on Canvas",
+                 icon='RESTRICT_SELECT_OFF', depress=picking)
+    row.operator("image.pixel_painter_mask_clear", text="Clear", icon='X')
+    _hints(layout, (
+        "Pick: tap islands / parts on the canvas to toggle them (drag: several).",
+        "Only the chosen ones are painted; Invert protects them instead.",
+        "Uses the active and the selected mesh objects. Chosen parts are saved",
+        "in the .blend. Grow: extra pixels around each island (edge pixels).",
+    ))
+
 
 def _draw_blending(layout, context):
     wm = context.window_manager

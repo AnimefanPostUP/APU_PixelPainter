@@ -266,6 +266,32 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   pen-tip LMB events to RMB for every tool after the bar.
   Each element renders at `BAR_SCALE` x the UI scale x its own scale.
 
+## Paint mask (`tools/mask.py`, `tools/mask_geometry.py`)
+
+Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
+/ `_source` `UV_ISLAND` | `MESH_PART` / `_invert` / `_grow` / `_show`).
+
+* `mask_geometry` (pure numpy, `tests/test_mask.py`): faces -> islands (edge
+  with equal UVs on both sides) or parts (vertex-connected), rasterized by
+  pixel center (`grow` pushes the edges out) into sorted flat pixel indices.
+* `mask.refresh()` builds the elements from the active + selected mesh
+  objects (base mesh, the paint UV map). It syncs edit-mode meshes, so it is
+  only called from modal code (stroke start, picking, hover; mesh changes
+  checked every `CHECK_INTERVAL`); draw callbacks read the cache only.
+* Chosen elements: scene property `pixel_painter_mask_selection` (JSON, one
+  face index per element). `mask.allowed()` = chosen pixels (inverted with
+  *invert*); with no mesh / UVs there is no masking.
+* Enforcement: `StrokeTool.paint` snapshots the image before `on_draw` and
+  `mask.restore_blocked()` puts protected pixels back, so every tool is masked
+  without knowing about it. (Selection paste is not masked.)
+* `MaskTool` (global, priority 150): while state `mask_picking` is on, a
+  canvas press toggles the element under the cursor, a drag sets the ones it
+  passes to the same state; Esc / RMB end it. The pen bar does not remap the
+  RMB lock while picking.
+* Overlay: `mask.draw_2d` (red / light red stripes at 15% opacity, a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
+  before tool overlays) and `mask.draw_3d` (POST_VIEW, triangles whose UV
+  center is blocked).
+
 ## Settings popup (`ui/settings_menu.py`)
 
 The N-panel / tool header keep only the controls used while painting; options

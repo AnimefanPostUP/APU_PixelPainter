@@ -26,7 +26,7 @@ from ..core.framework import ToolFrame
 from ..ui.kit import Theme, UIEvent, hsv_for_rgb
 from ..ui.pen_bar import LAYOUT_STATE, PenBar
 from ..utils import blender_utils, palette_library
-from . import blend_modes, color_history, color_palette, falloff
+from . import blend_modes, color_history, color_palette, falloff, mask
 from .subtools.pen import PenEyedropperTool
 
 
@@ -142,8 +142,10 @@ class PenBarTool(ToolFrame):
         if event.type != 'LEFTMOUSE':
             return
         if event.is_press:
-            # Not while a sub-mode UI is open (E color selector, Shift+E): the pen operates it.
-            self._remap_release = bool(ctx.state.get('pen_rmb_lock')) and not ctx.state.get('sub_mode')
+            # Not while a sub-mode UI is open (E color selector, Shift+E): the pen operates it;
+            # not while picking mask islands (a tap toggles, RMB would end picking).
+            self._remap_release = (bool(ctx.state.get('pen_rmb_lock')) and not ctx.state.get('sub_mode')
+                                   and not ctx.state.get('mask_picking'))
         if self._remap_release:
             event.type = 'RIGHTMOUSE'
             if event.is_release:
@@ -660,6 +662,39 @@ class PenBarTool(ToolFrame):
 
     def set_state(self, key, value):
         self._c().state[key] = value
+
+    # ---- paint mask (tools/mask.py) ---------------------------------------------------
+
+    def mask_enabled(self):
+        return bool(self.wm_get('mask_enabled', False))
+
+    def toggle_mask(self):
+        on = not self.mask_enabled()
+        self.wm_set('mask_enabled', on)
+        if not on and self.mask_picking():
+            mask.set_picking(self._c().state, self._c().context, False)
+
+    def mask_source(self):
+        return self.wm_get('mask_source', 'UV_ISLAND')
+
+    def toggle_mask_source(self):
+        self.wm_set('mask_source', 'MESH_PART' if self.mask_source() == 'UV_ISLAND' else 'UV_ISLAND')
+
+    def mask_inverted(self):
+        return bool(self.wm_get('mask_invert', False))
+
+    def toggle_mask_invert(self):
+        self.wm_set('mask_invert', not self.mask_inverted())
+
+    def mask_picking(self):
+        return bool(self._c().state.get('mask_picking'))
+
+    def toggle_mask_pick(self):
+        ctx = self._c()
+        mask.set_picking(ctx.state, ctx.context, not self.mask_picking())
+
+    def clear_mask(self):
+        mask.clear(self._c().context)
 
     def save_image(self):
         """Save the painted image (how: settings > Pen > Save Image, ui/image_save_ops.py)."""

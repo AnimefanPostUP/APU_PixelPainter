@@ -19,6 +19,7 @@ from ..utils import blender_utils
 from ..tools import blend_modes
 from ..tools import draw_functions
 from ..tools import draw_gridoverlay
+from ..tools import mask
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
 from . import history, view3d
 from ..tools import overlays_view3d
@@ -180,6 +181,8 @@ def _register_draw_handler(space, context):
             if view3d.is_view3d(ctx):
                 draw_functions.draw_view3d_offmesh_cursor(ctx, _state)
             else:
+                tctx = ToolContext(ctx, MANAGER)
+                mask.draw_2d(ctx, tctx.v2d, tctx.image)
                 draw_gridoverlay.draw_pixel_grid_overlay(ctx, ctx.window_manager.pixel_painter_grid_opacity)
                 draw_functions.draw_test_tool_shape_outline(ctx, _state)
             draw_functions.draw_test_corner_label(ctx)
@@ -189,6 +192,7 @@ def _register_draw_handler(space, context):
     def _view_callback(ctx):
         try:
             if _in_session_area(ctx):
+                mask.draw_3d(ctx, blender_utils.get_paint_image(ctx))
                 overlays_view3d.draw_brush_outline_3d(ctx, _state)
         except Exception:
             traceback.print_exc()

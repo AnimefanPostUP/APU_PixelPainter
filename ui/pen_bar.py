@@ -45,9 +45,11 @@ everything here works with press, drag and release only.
   hides the color selector) and *Library* (the palette library window);
   bottom right, past the second falloff row, the *curve* button behind the
   Custom falloff (opens the curve flyout, selects Custom) and *Settings*
-  (gear: the settings popup); top right *Save* (saves / packs the painted
-  image as set in settings > Pen > Save Image; a green dot while it has
-  unsaved changes).
+  (gear: the settings popup); top right a small *Save* at the right side
+  (saves / packs the painted image as set in settings > Pen > Save Image; a
+  green dot while it has unsaved changes) and the paint mask up to the top
+  edge: *UV / Mesh* (islands or parts), *Mask* (on / off), *Invert* and
+  *Pick* (tap islands / parts on the canvas to toggle them).
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -181,8 +183,14 @@ WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
 FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the second falloff row (bottom right), as deep as the palette
 FALLOFF_CORNER_INNER = CORNER_INNER + FALLOFF_BAND_DEPTH + DIAL_GAP
 CURVE_SETTINGS_ARC = (295.0, 335.0)  # bottom right past the band: Curve | Settings, around the diagonal
-SAVE_ARC = (25.0, 65.0)              # top right, around the diagonal: Save (the X sits in the cut corner)
+# Top right, past the S / A / M sliders (the X sits in the cut corner): a small Save at the
+# right side, then the mask buttons Source | Mask | Invert | Pick up to the top edge.
+SAVE_ARC = (17.0, 29.0)
+MASK_ARC = (32.0, 88.0)
+MASK_WEIGHTS = (1.0, 1.35, 1.0, 1.0)
 TINT_SAVE = (0.45, 0.80, 0.45)
+TINT_MASK = (0.78, 0.52, 1.00)
+MASK_PICK_HINT = "Tap islands / parts to toggle them (Pick again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
@@ -431,11 +439,11 @@ def _paint_gear(dc, x, y, size, alpha):
     draw.circle(x, y, r * 0.32, with_alpha(theme.surface_dark, alpha), segments=16)
 
 
-def _paint_save(unsaved):
+def _paint_save(unsaved, caption=True):
     """Save icon: a floppy disk; a dot in the accent color while ``unsaved()``."""
     def paint(dc, x, y, size, alpha):
         theme = dc.theme
-        s = min(size * 0.5, theme.px(20.0))
+        s = min(size * 0.5, theme.px(20.0 if caption else 14.0))
         color = with_alpha(theme.text, 0.92 * alpha)
         body = Rect.from_center(x, y, s, s)
         draw.rect(body, color)
@@ -445,9 +453,62 @@ def _paint_save(unsaved):
         if _resolve(unsaved, False):
             dot = (*TINT_SAVE, alpha)
             draw.circle(body.x1, body.y1, max(2.5, s * 0.2), dot, rim=theme.edge_for(TINT_SAVE, alpha), segments=16)
-        draw.text_centered("Save", x, body.y0 - theme.px(7.0), theme.px(8.0),
-                           with_alpha(theme.text_muted, alpha), theme.font_id)
+        if caption:
+            draw.text_centered("Save", x, body.y0 - theme.px(7.0), theme.px(8.0),
+                               with_alpha(theme.text_muted, alpha), theme.font_id)
     return paint
+
+
+def _caption(dc, x, y, text, alpha):
+    theme = dc.theme
+    draw.text_centered(text, x, y, theme.px(7.5), with_alpha(theme.text_muted, alpha), theme.font_id)
+
+
+def _paint_mask(dc, x, y, size, alpha):
+    """Mask on / off: a square, half texture (light) and half protected (dark)."""
+    theme = dc.theme
+    s = min(size * 0.42, theme.px(16.0))
+    box = Rect.from_center(x, y + s * 0.2, s, s)
+    draw.rect(Rect(box.x0, box.y0, box.cx, box.y1), (0.85, 0.85, 0.85, alpha))
+    draw.rect(Rect(box.cx, box.y0, box.x1, box.y1), (0.12, 0.12, 0.12, alpha))
+    draw.rect_outline(box, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.2)))
+    _caption(dc, x, box.y0 - theme.px(6.0), "Mask", alpha)
+
+
+def _paint_mask_source(source):
+    """UV Islands / Mesh Parts: the source in big letters."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        uv = _resolve(source, 'UV_ISLAND') != 'MESH_PART'
+        draw.text_centered("UV" if uv else "Mesh", x, y + size * 0.1, theme.px(11.0 if uv else 9.0),
+                           with_alpha(theme.text, alpha), theme.font_id)
+        _caption(dc, x, y - size * 0.25, "Islands" if uv else "Parts", alpha)
+    return paint
+
+
+def _paint_mask_invert(dc, x, y, size, alpha):
+    """Invert: a disc, half light and half dark, with a curved arrow."""
+    theme = dc.theme
+    r = min(size * 0.22, theme.px(9.0))
+    cy = y + r * 0.45
+    draw.sector(x, cy, r, math.pi * 0.5, math.pi * 1.5, (0.85, 0.85, 0.85, alpha), segments=12)
+    draw.sector(x, cy, r, -math.pi * 0.5, math.pi * 0.5, (0.12, 0.12, 0.12, alpha), segments=12)
+    draw.circle_outline(x, cy, r, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.2)))
+    _caption(dc, x, cy - r - theme.px(6.0), "Invert", alpha)
+
+
+def _paint_mask_pick(dc, x, y, size, alpha):
+    """Pick: a pointer tapping an island."""
+    theme = dc.theme
+    s = min(size * 0.4, theme.px(15.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    cy = y + s * 0.25
+    draw.circle_outline(x, cy, s * 0.5, color, width=max(1.0, theme.px(1.2)))
+    draw.circle(x, cy, s * 0.16, color, segments=12)
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        draw.polyline([(x + dx * s * 0.55, cy + dy * s * 0.55), (x + dx * s * 0.8, cy + dy * s * 0.8)],
+                      color, max(1.0, theme.px(1.2)))
+    _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
 
 
 def _paint_curve(dc, x, y, size, alpha):
@@ -1105,10 +1166,24 @@ class PenBar:
                                  on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
         dial.add_corner([curve, settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *CURVE_SETTINGS_ARC, **corner)
 
-        # Top right, past the S / A / M sliders: Save the painted image.
-        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved),
+        # Top right, past the S / A / M sliders: a small Save at the right side, then the
+        # paint mask (Source | Mask | Invert | Pick) up to the top edge.
+        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
                              tint=TINT_SAVE, on_click=a.save_image)
         dial.add_corner([save], CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
+        mask_buttons = [
+            CornerSegment("Mask Source", key='MASK_SOURCE', painter=_paint_mask_source(a.mask_source),
+                          on_click=a.toggle_mask_source),
+            CornerSegment("Mask", key='MASK', painter=_paint_mask, selected=a.mask_enabled,
+                          on_click=a.toggle_mask),
+            CornerSegment("Invert Mask", key='MASK_INVERT', painter=_paint_mask_invert,
+                          selected=a.mask_inverted, on_click=a.toggle_mask_invert),
+            CornerSegment("Pick Mask", key='MASK_PICK', painter=_paint_mask_pick,
+                          selected=a.mask_picking, on_click=a.toggle_mask_pick),
+        ]
+        self.mask_pick_button = mask_buttons[-1]
+        dial.add_corner(mask_buttons, CORNER_INNER, SQUARE_HALF, *MASK_ARC,
+                        weights=MASK_WEIGHTS, tint=TINT_MASK, **corner)
 
     def open_library(self, opener):
         """The library flyout; the palette band switches to its palette view (drag targets)."""
@@ -1601,6 +1676,9 @@ class PenBar:
             draw.polyline([(cx - arm, cy + arm), (cx + arm, cy - arm)], red, theme.px(2.5))
 
     def _draw_arm_hint(self):
+        if self.actions.mask_picking() and not self.menu.collapsed:
+            self._pill(MASK_PICK_HINT, self.menu.rect, self.mask_pick_button.rect.cy, 12.0, (*TINT_MASK, 1.0))
+            return
         kind = self.actions.armed()
         button = self.arm_buttons.get(kind)
         if button is None or self.menu.collapsed:

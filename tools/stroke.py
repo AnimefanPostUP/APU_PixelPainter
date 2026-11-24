@@ -3,7 +3,7 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils
-from . import color_history, pen_pressure
+from . import color_history, mask, pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
@@ -248,7 +248,12 @@ class StrokeTool(ToolBase):
                 and cy == state['last_paint_cy']):
             return
 
+        # Paint mask: protected pixels are put back after the draw step (every tool alike).
+        allowed = mask.allowed(context, img)
+        before = mask.snapshot(img) if allowed is not None else None
         self.on_draw(env)
+        if before is not None:
+            mask.restore_blocked(img, before, allowed)
 
 
 class BrushTool(StrokeTool):

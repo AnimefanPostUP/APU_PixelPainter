@@ -93,6 +93,8 @@ _MODULES = (
     'tools.color_palette',
     'utils.palette_library',
     'utils.palette_image',
+    'tools.mask_geometry',
+    'tools.mask',
     'tools.stroke',
     'tools.brushes',
     'tools.filters',
@@ -108,6 +110,7 @@ _MODULES = (
     'ui.tool_settings_ui',
     'ui.palette_ops',
     'ui.image_save_ops',
+    'ui.mask_ops',
     'ui.settings_menu',
     'properties',
     # addon UI
@@ -161,6 +164,7 @@ def _classes():
         *_module('ui.settings_menu').classes,
         *_module('ui.palette_ops').classes,
         *_module('ui.image_save_ops').classes,
+        *_module('ui.mask_ops').classes,
     )
 
 
