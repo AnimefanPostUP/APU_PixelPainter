@@ -33,6 +33,8 @@ class Theme:
     border: Color = (0.30, 0.30, 0.30, 0.92)
     text: Color = (1.0, 1.0, 1.0, 1.0)
     text_muted: Color = (1.0, 1.0, 1.0, 0.72)
+    edge_darken: float = 0.6    # rim around filled shapes: the fill's own color times this ...
+    edge_alpha: float = 0.6     # ... at this opacity (see Theme.edge_for)
     disabled_alpha: float = 0.35
 
     # ---- typography (unscaled px) ------------------------------------------
@@ -50,6 +52,12 @@ class Theme:
 
     # ---- scale -------------------------------------------------------------
     scale: float = 1.0
+
+    def edge_for(self, fill, alpha=1.0):
+        """Rim color for a shape filled with ``fill``: a darker, semi-transparent
+        shade of the same color (not black), so every edge matches its shape."""
+        k = self.edge_darken
+        return (fill[0] * k, fill[1] * k, fill[2] * k, self.edge_alpha * alpha)
 
     def px(self, value):
         """Convert an unscaled pixel value to screen pixels."""

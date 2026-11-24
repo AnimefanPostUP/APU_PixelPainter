@@ -7,6 +7,8 @@ unit-tested outside Blender.
 
 import math
 
+from . import aa
+
 try:  # pragma: no cover - only unavailable outside Blender
     import blf
     import gpu
@@ -46,55 +48,29 @@ class blend_mode:
 
 
 # ---------------------------------------------------------------------------
-# Shapes
+# Shapes -- every fill gets a soft edge and every line is a soft-edged strip
+# (see .aa): overlays have no multisampling.
 # ---------------------------------------------------------------------------
 
-def rect(r, color):
-    """Filled rectangle; ``r`` is a :class:`geometry.Rect`."""
-    _draw('TRI_FAN', [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)], color)
+def _mesh(verts, colors):
+    if verts:
+        shaded_tris(verts, colors)
 
 
-def rect_outline(r, color, width=1.5):
-    verts = [
-        (r.x0, r.y0), (r.x1, r.y0),
-        (r.x1, r.y0), (r.x1, r.y1),
-        (r.x1, r.y1), (r.x0, r.y1),
-        (r.x0, r.y1), (r.x0, r.y0),
-    ]
-    gpu.state.line_width_set(width)
-    _draw('LINES', verts, color)
-    gpu.state.line_width_set(1.0)
+def _fill(points, color, rim=None):
+    """Convex polygon (or a fan around its first point): the solid part EDGE px
+    smaller, the coverage ramp across the edge, then the optional ``rim`` line."""
+    if len(points) < 3:
+        return
+    _draw('TRI_FAN', aa.offset_points(points, -aa.EDGE), color)
+    _mesh(*aa.fringe_mesh(points, color))
+    if rim is not None:
+        polyline(points, rim, 1.0, closed=True)
 
 
-def circle(cx, cy, radius, color, segments=36):
-    verts = [
-        (cx + math.cos(i / segments * math.tau) * radius,
-         cy + math.sin(i / segments * math.tau) * radius)
-        for i in range(segments)
-    ]
-    _draw('TRI_FAN', verts, color)
-
-
-def circle_outline(cx, cy, radius, color, width=1.5, segments=48):
-    verts = [
-        (cx + math.cos(i / segments * math.tau) * radius,
-         cy + math.sin(i / segments * math.tau) * radius)
-        for i in range(segments + 1)
-    ]
-    gpu.state.line_width_set(width)
-    _draw('LINE_STRIP', verts, color)
-    gpu.state.line_width_set(1.0)
-
-
-def arc(cx, cy, radius, a0, a1, color, width=1.5, segments=48):
-    """Circular arc from angle ``a0`` to ``a1`` (radians, counter-clockwise positive)."""
-    steps = max(2, int(segments * abs(a1 - a0) / math.tau) + 1)
-    verts = [
-        (cx + math.cos(a0 + (a1 - a0) * i / steps) * radius,
-         cy + math.sin(a0 + (a1 - a0) * i / steps) * radius)
-        for i in range(steps + 1)
-    ]
-    polyline(verts, color, width)
+def _snap(r):
+    """Rect on whole pixels: axis-aligned edges have no slopes to smooth, keep them crisp."""
+    return round(r.x0), round(r.y0), round(r.x1), round(r.y1)
 
 
 def shaded_tris(verts, colors):
@@ -103,50 +79,84 @@ def shaded_tris(verts, colors):
     batch_for_shader(shader, 'TRIS', {'pos': verts, 'color': colors}).draw(shader)
 
 
+def rect(r, color):
+    """Filled rectangle (``r``: :class:`geometry.Rect`), snapped to whole pixels."""
+    x0, y0, x1, y1 = _snap(r)
+    if x1 > x0 and y1 > y0:
+        _draw('TRI_FAN', [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], color)
+
+
+def rect_outline(r, color, width=1.5):
+    """Outline along the rect's edges; 1 px lines sit on pixel centers (crisp)."""
+    x0, y0, x1, y1 = _snap(r)
+    h = 0.5 if width <= 1.0 else 0.0
+    polyline([(x0 + h, y0 + h), (x1 - h, y0 + h), (x1 - h, y1 - h), (x0 + h, y1 - h)], color, width, closed=True)
+
+
+def circle(cx, cy, radius, color, segments=36, rim=None):
+    _fill(aa.circle_points(cx, cy, radius, max(segments, aa.segments_for(radius))), color, rim)
+
+
+def circle_outline(cx, cy, radius, color, width=1.5, segments=48):
+    pts = aa.circle_points(cx, cy, radius, max(segments, aa.segments_for(radius)))
+    polyline(pts, color, width, closed=True)
+
+
+def arc(cx, cy, radius, a0, a1, color, width=1.5, segments=48):
+    """Circular arc from angle ``a0`` to ``a1`` (radians, counter-clockwise positive)."""
+    full = max(segments, aa.segments_for(radius))
+    steps = max(2, int(full * abs(a1 - a0) / math.tau) + 1)
+    verts = [
+        (cx + math.cos(a0 + (a1 - a0) * i / steps) * radius,
+         cy + math.sin(a0 + (a1 - a0) * i / steps) * radius)
+        for i in range(steps + 1)
+    ]
+    polyline(verts, color, width)
+
+
 def gradient_quad(r, c00, c10, c11, c01):
-    """Rectangle ``r`` with corner colors (bottom-left, bottom-right, top-right, top-left)."""
+    """Rectangle ``r`` with corner colors (bottom-left, bottom-right, top-right, top-left).
+    Not snapped: neighbouring gradient cells must meet exactly."""
     a, b, c, d = (r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)
     shaded_tris([a, b, c, a, c, d], [c00, c10, c11, c00, c11, c01])
 
 
-def sector(cx, cy, radius, a0, a1, color, segments=24):
+def sector(cx, cy, radius, a0, a1, color, segments=24, rim=None):
     """Filled pie slice from angle ``a0`` to ``a1`` (radians, counter-clockwise from +x)."""
-    verts = []
-    for i in range(segments):
-        t0 = a0 + (a1 - a0) * i / segments
-        t1 = a0 + (a1 - a0) * (i + 1) / segments
-        verts += [(cx, cy),
-                  (cx + math.cos(t0) * radius, cy + math.sin(t0) * radius),
-                  (cx + math.cos(t1) * radius, cy + math.sin(t1) * radius)]
-    _draw('TRIS', verts, color)
+    full = aa.segments_for(radius)
+    segments = max(segments, int(full * abs(a1 - a0) / math.tau) + 1)
+    pts = [(cx, cy)] + [(cx + math.cos(a0 + (a1 - a0) * i / segments) * radius,
+                         cy + math.sin(a0 + (a1 - a0) * i / segments) * radius) for i in range(segments + 1)]
+    _fill(pts, color, rim)
 
 
-def ring_segment(inner, outer, color):
-    """Filled ring segment from :func:`geometry.ring_segment_points` outlines."""
-    if len(inner) < 2 or len(inner) != len(outer):
+def ring_segment(inner, outer, color, rim=None):
+    """Filled ring segment from :func:`geometry.ring_segment_points` outlines
+    (also corner segments); ``rim``: color of a 1 px line along its outline."""
+    n = len(inner)
+    if n < 2 or n != len(outer):
         return
+    outline = list(inner) + list(reversed(outer))
+    solid = aa.offset_points(outline, -aa.EDGE)
+    inner_s, outer_s = solid[:n], list(reversed(solid[n:]))
     verts = []
-    for i in range(len(inner) - 1):
-        verts += [inner[i], outer[i], outer[i + 1], inner[i], outer[i + 1], inner[i + 1]]
+    for i in range(n - 1):
+        verts += [inner_s[i], outer_s[i], outer_s[i + 1], inner_s[i], outer_s[i + 1], inner_s[i + 1]]
     _draw('TRIS', verts, color)
+    _mesh(*aa.fringe_mesh(outline, color))
+    if rim is not None:
+        polyline(outline, rim, 1.0, closed=True)
 
 
 def ring_segment_outline(inner, outer, color, width=1.5):
     if len(inner) < 2:
         return
-    polyline(list(inner) + list(reversed(outer)) + [inner[0]], color, width)
+    polyline(list(inner) + list(reversed(outer)), color, width, closed=True)
 
 
 def gradient_line(p0, p1, c0, c1, width=1.5):
     """Straight line ``width`` px wide, colored from ``c0`` at ``p0`` to ``c1`` at ``p1`` (e.g. a fade)."""
-    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-    length = math.hypot(dx, dy)
-    if length < 1e-6:
-        return
-    nx, ny = -dy / length * width * 0.5, dx / length * width * 0.5
-    a, b = (p0[0] + nx, p0[1] + ny), (p0[0] - nx, p0[1] - ny)
-    c, d = (p1[0] - nx, p1[1] - ny), (p1[0] + nx, p1[1] + ny)
-    shaded_tris([a, b, c, a, c, d], [c0, c0, c1, c0, c1, c1])
+    _mesh(*aa.stroke_mesh([p0, p1], c0, width, colors=[c0, c1]))
 
 
 def gradient_circle(cx, cy, radius, left, right, segments=36):
@@ -155,24 +165,24 @@ def gradient_circle(cx, cy, radius, left, right, segments=36):
         t = (x - (cx - radius)) / max(2.0 * radius, 1e-6)
         return tuple(left[i] + (right[i] - left[i]) * t for i in range(4))
 
-    pts = [(cx + math.cos(i / segments * math.tau) * radius,
-            cy + math.sin(i / segments * math.tau) * radius) for i in range(segments + 1)]
+    pts = aa.circle_points(cx, cy, radius, max(segments, aa.segments_for(radius)))
+    solid = aa.circle_points(cx, cy, max(0.0, radius - aa.EDGE), len(pts))
     verts, colors = [], []
-    for i in range(segments):
-        for p in ((cx, cy), pts[i], pts[i + 1]):
+    for i in range(len(solid)):
+        for p in ((cx, cy), solid[i], solid[(i + 1) % len(solid)]):
             verts.append(p)
             colors.append(_at(p[0]))
     shaded_tris(verts, colors)
+    _mesh(*aa.fringe_mesh(pts, [_at(p[0]) for p in pts]))
 
 
-def triangle(p0, p1, p2, color):
-    _draw('TRIS', [p0, p1, p2], color)
+def triangle(p0, p1, p2, color, rim=None):
+    _fill([p0, p1, p2], color, rim)
 
 
-def polyline(points, color, width=1.0):
-    gpu.state.line_width_set(width)
-    _draw('LINE_STRIP', list(points), color)
-    gpu.state.line_width_set(1.0)
+def polyline(points, color, width=1.0, closed=False):
+    """Line through ``points`` (``closed``: back to the first), ``width`` px, soft edges."""
+    _mesh(*aa.stroke_mesh(list(points), color, width, closed=closed))
 
 
 def bezier_points(p0, p1, p2, p3, segments=20):

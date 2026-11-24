@@ -147,6 +147,7 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `overlay.py` | `Overlay` — interaction controller (pure Python, unit-tested) |
 | `modal.py` | `OverlayOperator` mixin — draw handler, timer, modal wiring |
 | `draw.py`, `icons.py`, `theme.py` | GPU primitives, image icons, colors/metrics/timings |
+| `aa.py` | geometric anti-aliasing for `draw.py` (no MSAA in overlays): a coverage ramp centered on every fill edge (0.5 px in / out, the solid part shrunk to meet it: sloped edges smooth, grid-aligned ones crisp; rects snap to whole pixels), lines as soft-edged triangle strips (any width, any GPU backend), vertex counts by on-screen size; meshes are memoized. `ring_segment` / `circle` / `sector` / `triangle` take `rim=` (a 1 px line: `theme.edge_for(fill)`, a darker shade of the fill -- never plain black). Draw through `draw.py`, not raw `gpu` lines, to keep it |
 
 A modal pie is a subclass plus an operator:
 

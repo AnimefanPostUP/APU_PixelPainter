@@ -177,8 +177,8 @@ def ring_segment_points(cx, cy, r0, r1, a0, a1, inset=0.0, steps=None, inset1=No
     outer_edges = ring_edge_angles(r1, a0, a1, inset, inset1)
     if inner_edges is None or outer_edges is None:
         return [], []
-    if steps is None:
-        steps = max(2, int(abs(a1 - a0) / math.tau * 72) + 1)
+    if steps is None:   # a vertex about every 3 px along the outer arc
+        steps = max(2, int(abs(a1 - a0) * max(r0, r1) / 3.0) + 1)
 
     def _arc(r, b0, b1):
         return [(cx + math.cos(b0 + (b1 - b0) * i / steps) * r,
@@ -251,12 +251,13 @@ def _resample(points, count):
     return out
 
 
-def corner_segment_points(r0, half, a0, a1, inset0=0.0, inset1=0.0, chamfer=0.0, steps=24):
+def corner_segment_points(r0, half, a0, a1, inset0=0.0, inset1=0.0, chamfer=0.0, steps=None):
     """``(inner, outer)`` outline (relative to the center) of the part of the square
     outside the circle ``r0`` between angles ``a0 < a1`` (radians), its side edges
     moved inward ``inset0`` / ``inset1`` px parallel to their rays. Both lists run
     from the ``a0`` side to the ``a1`` side with the same length (a triangle strip).
-    Empty lists when nothing is left."""
+    Empty lists when nothing is left. ``steps`` (default: about one per 3 px of
+    the outer edge) = points per edge - 1."""
     angles = ring_edge_angles(r0, a0, a1, inset0, inset1)
     if angles is None:
         return [], []
@@ -275,6 +276,9 @@ def corner_segment_points(r0, half, a0, a1, inset0=0.0, inset1=0.0, chamfer=0.0,
     span = normalize_angle(math.atan2(p1[1], p1[0]), start) - start
     corners = sorted((normalize_angle(math.atan2(y, x), start) - start, (x, y)) for x, y in poly)
     outer = [p0] + [v for a, v in corners if 1e-9 < a < span - 1e-9] + [p1]
+    if steps is None:
+        length = sum(math.dist(a, b) for a, b in zip(outer, outer[1:]))
+        steps = max(8, int(max(length, (b1 - b0) * r0) / 3.0))
     outer = _resample(outer, steps + 1)
     inner = [(math.cos(b0 + (b1 - b0) * i / (len(outer) - 1)) * r0,
               math.sin(b0 + (b1 - b0) * i / (len(outer) - 1)) * r0) for i in range(len(outer))]

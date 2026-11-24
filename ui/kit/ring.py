@@ -126,7 +126,7 @@ class RingSegment(Widget):
         if not inner:
             return alpha
         fill, t = self._fill(dc, active)
-        draw.ring_segment(inner, outer, with_alpha(fill, alpha))
+        draw.ring_segment(inner, outer, with_alpha(fill, alpha), rim=theme.edge_for(fill, alpha))
         if self.is_selected:
             self.draw_selection(dc, alpha)
         if t > 0.01:

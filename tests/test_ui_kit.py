@@ -17,6 +17,7 @@ from ui.kit import (  # noqa: E402
 )
 from ui.kit.events import CANCELLED, FINISHED, PASS_THROUGH, RUNNING  # noqa: E402
 from ui.kit.geometry import clamp_box, corner_contains, corner_segment_points, fit_offset, ring_contains, ring_segment_points  # noqa: E402
+from ui.kit import aa  # noqa: E402
 from ui.kit.curve import CurveEditor, insert_anchor, move_anchor, simplify, stroke_to_curve  # noqa: E402
 from ui.kit.radial import Connector  # noqa: E402
 
@@ -436,6 +437,62 @@ class CurveEditorTests(unittest.TestCase):
         self.ov.handle(ev('LEFTMOUSE', 'RELEASE', *self.ed.to_screen(1.0, 1.0)))
         self.assertEqual(len(self.pts), 2)
         self.assertTrue(self.pts[0][1] < 0.1 and self.pts[-1][1] > 0.9)
+
+
+class AntiAliasTests(unittest.TestCase):
+    SQUARE = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+
+    def test_fringe_ramp_is_centered_on_the_edge(self):
+        # Full color 0.5 px inside the edge, transparent 0.5 px outside -- either winding.
+        for pts in (self.SQUARE, list(reversed(self.SQUARE))):
+            verts, colors = aa.fringe_mesh(pts, (1.0, 0.0, 0.0, 1.0))
+            outer = {v for v, c in zip(verts, colors) if c[3] == 0.0}
+            inner = {v for v, c in zip(verts, colors) if c[3] == 1.0}
+            self.assertEqual(outer, {(-0.5, -0.5), (10.5, -0.5), (10.5, 10.5), (-0.5, 10.5)})
+            self.assertEqual(inner, {(0.5, 0.5), (9.5, 0.5), (9.5, 9.5), (0.5, 9.5)})
+
+    def test_solid_fill_meets_the_ramp(self):
+        self.assertEqual(aa.offset_points(self.SQUARE, -aa.EDGE),
+                         [(0.5, 0.5), (9.5, 0.5), (9.5, 9.5), (0.5, 9.5)])
+
+    def test_offset_keeps_length_and_closing_point(self):
+        closed = self.SQUARE + [self.SQUARE[0]]
+        moved = aa.offset_points(closed, 1.0)
+        self.assertEqual(len(moved), 5)
+        self.assertEqual(moved[0], moved[-1])
+        self.assertEqual(moved[0], (-1.0, -1.0))
+
+    def test_fringe_keeps_per_point_colors(self):
+        cols = [(i / 4, 0.0, 0.0, 1.0) for i in range(4)]
+        verts, colors = aa.fringe_mesh(self.SQUARE, cols)
+        self.assertIn(((0.5, 0.5), cols[0]), list(zip(verts, colors)))
+        self.assertIn(((9.5, 9.5), cols[2]), list(zip(verts, colors)))
+
+    def test_stroke_width_and_soft_edges(self):
+        verts, colors = aa.stroke_mesh([(0.0, 0.0), (10.0, 0.0)], (1.0, 1.0, 1.0, 1.0), width=3.0)
+        solid = [v[1] for v, c in zip(verts, colors) if c[3] > 0.0]
+        soft = [v[1] for v, c in zip(verts, colors) if c[3] == 0.0]
+        self.assertEqual((min(solid), max(solid)), (-1.0, 1.0))       # core: width - AA
+        self.assertEqual((min(soft), max(soft)), (-2.0, 2.0))         # + AA fading rim
+
+    def test_thin_stroke_fades_instead_of_shrinking(self):
+        verts, colors = aa.stroke_mesh([(0.0, 0.0), (10.0, 0.0)], (1.0, 1.0, 1.0, 1.0), width=0.5)
+        self.assertEqual(max(c[3] for c in colors), 0.5)
+        self.assertEqual(max(abs(v[1]) for v in verts), 1.0)
+
+    def test_closed_stroke_has_a_segment_per_edge(self):
+        verts, _colors = aa.stroke_mesh(self.SQUARE, (1.0, 1.0, 1.0, 1.0), width=1.0, closed=True)
+        self.assertEqual(len(verts), 4 * 2 * 6)    # 4 edges x 2 rim quads (no core at 1 px)
+
+    def test_rim_is_a_darker_shade_of_the_fill_not_black(self):
+        theme = Theme()
+        rim = theme.edge_for((1.0, 0.5, 0.0, 1.0), alpha=0.5)
+        self.assertEqual(rim[:3], (theme.edge_darken, 0.5 * theme.edge_darken, 0.0))
+        self.assertEqual(rim[3], theme.edge_alpha * 0.5)
+
+    def test_segments_grow_with_radius(self):
+        self.assertEqual(aa.segments_for(1.0), 12)
+        self.assertGreater(aa.segments_for(200.0), aa.segments_for(50.0))
 
 
 if __name__ == '__main__':

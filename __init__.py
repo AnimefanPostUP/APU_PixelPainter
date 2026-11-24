@@ -47,6 +47,7 @@ _MODULES = (
     'ui.kit.anim',
     'ui.kit.theme',
     'ui.kit.events',
+    'ui.kit.aa',
     'ui.kit.draw',
     'ui.kit.widget',
     'ui.kit.widgets',

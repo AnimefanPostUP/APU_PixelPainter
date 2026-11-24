@@ -192,12 +192,11 @@ class _ColorCorner(CornerSegment):
         if not inner:
             return
         rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
-        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha))
+        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
         if _resolve(self.active, False):
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
-        else:
-            border = theme.accent if self.hover_t > 0.5 else theme.border
-            draw.ring_segment_outline(inner, outer, with_alpha(border, dc.alpha), width=theme.px(1.0))
+        elif self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
 def _paint_swap(dc, x, y, size, alpha):
@@ -300,9 +299,9 @@ class _HistorySwatch(RingSegment):
         if rgb is None:
             draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
             return
-        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha))
-        border = theme.accent if self.hover_t > 0.5 else theme.border
-        draw.ring_segment_outline(inner, outer, with_alpha(border, dc.alpha), width=theme.px(1.0))
+        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
 class _HintLabel(Label):
