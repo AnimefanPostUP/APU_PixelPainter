@@ -13,6 +13,7 @@ from .tools.catalog import TOOLS
 from .tools.registry import SETTING_CHANNELS
 from .utils import persistence_settings
 from .utils import settings_service
+from .ui import settings_menu
 
 
 PREFIX = 'pixel_painter_'
@@ -55,6 +56,16 @@ def _update_mode(self, context):
     try:
         from .core import core
         core.apply_active_tool_settings(context)
+    except Exception:
+        pass
+    _persist(self, context)
+
+
+def _update_pen_color_preview(self, context):
+    """Switching Preview discards a pad color that was not applied yet."""
+    try:
+        from .core.state import STATE
+        STATE['pen_color_pending'] = None
     except Exception:
         pass
     _persist(self, context)
@@ -184,10 +195,9 @@ def _static_properties():
             name="Blend Favorites", description="Select blend modes shown in the Favorites block",
             items=blend_modes.enum_items(), options={'ENUM_FLAG'}, default=set(blend_modes.DEFAULT_FAVORITES),
             update=_persist),
-        'ui_show_settings': bpy.props.BoolProperty(name="Show Settings", default=True, update=_persist),
-        'ui_show_blend_mode': bpy.props.BoolProperty(name="Show Blend Mode", default=False, update=_persist),
-        'ui_show_shortcuts': bpy.props.BoolProperty(name="Show Shortcuts", default=True, update=_persist),
-        'ui_show_tool_settings': bpy.props.BoolProperty(name="Show Tool Settings", default=False, update=_persist),
+        'settings_tab': bpy.props.EnumProperty(
+            name="Settings Category", description="Category shown in the settings popup",
+            items=settings_menu.tab_enum_items(), default=settings_menu.SETTINGS_TABS[0][0], update=_persist),
         'grid_opacity': _factor(
             "Grid Opacity", 0.0, description="Opacity of the pixel grid overlay (0 = hidden, 1 = fully opaque)",
             update=_persist),
@@ -217,7 +227,11 @@ def _static_properties():
             name="Pen Bar Side", description="Bottom corner of the editor the pen bar sits in",
             items=[('LEFT', "Left", "Left edge of the editor"), ('RIGHT', "Right", "Right edge of the editor")],
             default='LEFT', update=_persist),
-        'ui_show_pen': bpy.props.BoolProperty(name="Show Pen Settings", default=False, update=_persist),
+        'pen_color_preview': bpy.props.BoolProperty(
+            name="Color Pad Preview",
+            description="Pen bar color pad only previews: the brush keeps its color until the "
+                        "old / new bubble is tapped (off: the pad color applies when the pen is lifted)",
+            default=False, update=_update_pen_color_preview),
     }
 
 

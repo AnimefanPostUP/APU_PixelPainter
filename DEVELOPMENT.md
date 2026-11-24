@@ -32,7 +32,8 @@ ui/
   native_menus.py      Blender-native blend pie and mode pie
   icons.py             ICONS (tool icons + generated falloff icons)
   falloff_icons.py     procedural falloff icons (white disc, alpha = falloff)
-  tool_settings_ui.py  header / N-panel settings
+  tool_settings_ui.py  header / N-panel quick controls
+  settings_menu.py     settings popup (tabbed: Color Selector, Tools, Blending, Falloff, Pen, ...)
 tests/                 pure-Python unit tests (UI kit, tool framework)
 ```
 
@@ -185,8 +186,9 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `ColorPad` (inside the bar under the color row, stretched to its width): the
   hue/value sheet and the hue, value and saturation bars all move relative to
   the swipe (`gain` 0.5), a tap jumps; it commits once, on release. It edits
-  the color the pen paints. With *Preview* on the pad is `live` (commits
-  every step). The color from before (`pen_color_original`) stays marked and
+  the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
+  settings popup > Color Selector) the pad is `live` (commits every step).
+  *Settings* opens the settings popup. The color from before (`pen_color_original`) stays marked and
   shows in the always-visible old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`
@@ -194,6 +196,16 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   pen-tip LMB events to RMB for every tool after the bar.
   The whole bar renders at `BAR_SCALE` x the UI scale x `pen_bar_scale`
   (persistent, 0.2..2), set by dragging the triangle in its top corner.
+
+## Settings popup (`ui/settings_menu.py`)
+
+The N-panel / tool header keep only the controls used while painting; options
+that are set once and rarely touched live in the settings popup, a popover
+panel (`IMAGE_PT_pixel_painter_settings`) with a header bar of categories
+(`pixel_painter_settings_tab`, remembered). Open it with
+`image.pixel_painter_open_settings` (optional `tab=`), the pen bar's
+*Settings* button or the Settings button in the N-panel / header.
+To add a category, add an entry to `SETTINGS_TABS` and a drawer to `_TAB_DRAWERS`.
 
 ## Undo
 

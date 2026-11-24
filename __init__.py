@@ -95,12 +95,13 @@ _MODULES = (
     'tools.catalog',
     # core operator (builds the tool manager from the catalog)
     'core.core',
+    'ui.tool_settings_ui',
+    'ui.settings_menu',
     'properties',
     # addon UI
     'ui.icons',
     'ui.native_menus',
     'ui.pie_menu',
-    'ui.tool_settings_ui',
     'ui.user_interface',
     'ui.paint_selected_faces_uv',
 )
@@ -145,6 +146,7 @@ def _classes():
         *_module('ui.native_menus').classes,
         *_module('ui.pie_menu').classes,
         *_module('ui.tool_settings_ui').classes,
+        *_module('ui.settings_menu').classes,
     )
 
 

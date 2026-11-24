@@ -10,7 +10,8 @@ everything here works with press, drag and release only:
 * **Layout** (top to bottom): *X* in the top corner on the edge side
   (collapses the bar); the color row -- swap chips, *Picker* (arms the
   eyedropper for the next canvas press), *Color* (shows / hides the color
-  pad), *Preview*, the old / new bubble; the color pad, as wide as the bar;
+  pad), *Settings* (opens the settings popup), the old / new bubble; the
+  color pad, as wide as the bar;
   the tools (4 left, 4 right at the outer edges, icon buttons: tap selects)
   with *Undo* / *Redo*, the Size knob and Str / Alpha / Mod between them;
   *Blend* (flyout), *Free* / *Pixel* (spacing; the text shows the mode),
@@ -25,8 +26,8 @@ everything here works with press, drag and release only:
   edits the color the pen paints (secondary with the RMB lock). The change
   applies when the pen is lifted; the color from before editing stays marked
   with a cross and shows in the old / new bubble until the bubble is tapped
-  (accept: the new color becomes the reference). With *Preview* on the pad
-  only previews: the brush keeps its color (marked with the cross) and the
+  (accept: the new color becomes the reference). With *Preview* on (settings
+  popup, Color Selector tab) the pad only previews: the brush keeps its color (marked with the cross) and the
   picked one shows in the bubble until the bubble is tapped, which applies it.
 * **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
   onto an entry and lift -- or lift anywhere and tap an entry. A tap outside
@@ -523,17 +524,17 @@ class PenBar:
         ]
         falloffs = Row(self.falloff_buttons, gap=_FALLOFF_GAP)
 
-        # Color row: swap chips, eyedropper, color pad toggle, Preview + old / new bubble.
+        # Color row: swap chips, eyedropper, color pad toggle, Settings + old / new bubble.
         picker = self._button("Picker", arm('EYEDROPPER'), armed('EYEDROPPER'))
         picker.font_size = 8.0
         self.arm_buttons = {'EYEDROPPER': picker}
         chips = ColorChips(a.colors, a.rmb_lock, on_click=a.swap_colors, key='COLORS')
         color = self._button("Color", a.toggle_color_panel, a.color_panel_open)
-        preview = self._button("Preview", a.toggle_color_preview, a.color_preview)
-        preview.font_size = 8.0
+        settings = self._button("Settings", a.open_settings)
+        settings.font_size = 8.0
         self.color_bubble = ColorBubble(a.preview_colors, True, a.has_color_change,
                                         on_click=a.accept_color_change, key='COLOR_BUBBLE')
-        self.color_row = Row([chips, picker, color, preview, self.color_bubble], gap=6.0)
+        self.color_row = Row([chips, picker, color, settings, self.color_bubble], gap=6.0)
 
         # The color pad sits under the color row, stretched to the bar's width (layout()).
         content = Column([self.corner, self.color_row, self.color_pad, _Spacer(4.0),

@@ -8,7 +8,8 @@ widgets it
 * runs the armed eyedropper on the next canvas press,
 * edits the pen's color for the color pad (keeping hue / saturation through
   grey and black, where RGB has none) -- applied on release (the original
-  stays marked until the old / new bubble is tapped), or with Preview on kept
+  stays marked until the old / new bubble is tapped), or with Preview on
+  (``pixel_painter_pen_color_preview``, set in the settings popup) kept
   pending (the brush keeps its color) until the old / new bubble is tapped, and
 * with the RMB lock on, turns pen-tip (left button) presses into right
   button presses, so the pen paints with the secondary color / RMB settings.
@@ -57,14 +58,12 @@ class PenBarTool(ToolFrame):
         'pen_rmb_lock':      False,  # the pen tip paints like the right mouse button
         'pen_bar_collapsed': False,
         'pen_color_panel':   True,   # color pad shown in the bar (under the color row)
-        'pen_color_preview': False,  # pad edits stay pending until the bubble is tapped (else apply on release)
         'pen_bar_scale':     1.0,    # resize handle: 0.2 .. 2 x the default size
         'pen_hsv':           None,   # (rgb, hsv) last written by the color pad
         'pen_color_original': None,  # (target, hsv) before the pad edits: bubble + cross compare to it
         'pen_color_pending': None,   # (target, hsv) Preview: pad color not yet applied to the brush
     }
-    persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel', 'pen_color_preview',
-                        'pen_bar_scale')
+    persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel', 'pen_bar_scale')
 
     def __init__(self, registry):
         super().__init__()
@@ -215,7 +214,7 @@ class PenBarTool(ToolFrame):
     def _pending(self, ctx):
         """Preview: HSV picked on the pad but not yet applied to the pen's color, or None."""
         pending = ctx.state.get('pen_color_pending')
-        if not pending or not ctx.state.get('pen_color_preview'):
+        if not pending or not self._preview_on(ctx):
             return None
         target, hsv = pending
         return hsv if target == self._button(ctx) else None  # RMB lock switched: other color
@@ -230,7 +229,7 @@ class PenBarTool(ToolFrame):
 
         With Preview on the color is only kept pending; the bubble applies it."""
         ctx = self._c()
-        if ctx.state.get('pen_color_preview'):
+        if self._preview_on(ctx):
             ctx.state['pen_color_pending'] = (self._button(ctx), (h, s, v))
             return
         if self._original(ctx) is None:
@@ -268,13 +267,17 @@ class PenBarTool(ToolFrame):
         ctx.state['pen_color_pending'] = None
         ctx.state['pen_color_original'] = None
 
-    def color_preview(self):
-        return bool(self._c().state.get('pen_color_preview'))
+    @staticmethod
+    def _preview_on(ctx):
+        # Toggling the property discards a pending color (its update callback, properties.py).
+        return bool(getattr(ctx.wm, 'pixel_painter_pen_color_preview', False))
 
-    def toggle_color_preview(self):
-        state = self._c().state
-        state['pen_color_preview'] = not state.get('pen_color_preview')
-        state['pen_color_pending'] = None  # an unapplied Preview color is discarded
+    def color_preview(self):
+        return self._preview_on(self._c())
+
+    def open_settings(self):
+        """The Settings button: the settings popup, opened outside the modal event handler."""
+        self._run_deferred(lambda: bpy.ops.image.pixel_painter_open_settings('EXEC_DEFAULT'))
 
     def _apply_hsv(self, ctx, h, s, v):
         rgb = colorsys.hsv_to_rgb(h, s, v)
@@ -399,20 +402,20 @@ class PenBarTool(ToolFrame):
         self._c().state['pen_bar_scale'] = float(scale)
 
     def undo(self):
-        self._run_deferred('undo')
+        self._run_deferred(lambda: bpy.ops.ed.undo())
 
     def redo(self):
-        self._run_deferred('redo')
+        self._run_deferred(lambda: bpy.ops.ed.redo())
 
-    def _run_deferred(self, op_name):
-        """Run ``bpy.ops.ed.<op_name>`` on the next tick, outside the modal event handler."""
+    def _run_deferred(self, fn):
+        """Call ``fn`` (an operator call) on the next tick, outside the modal event handler."""
         ctx = self._c()
         window, area, region = ctx.context.window, ctx.area, ctx.region
 
         def _run():
             try:
                 with bpy.context.temp_override(window=window, area=area, region=region):
-                    getattr(bpy.ops.ed, op_name)()
+                    fn()
             except Exception:
                 traceback.print_exc()
             return None

@@ -1,0 +1,265 @@
+"""Settings popup: rarely changed options, grouped in tabs under a header bar.
+
+Opened by ``image.pixel_painter_open_settings`` (the pen bar's *Settings*
+button, the N-panel and the tool header). It is a popover panel, so it works
+in the Image Editor and the 3D Viewport alike and redraws when a tab changes.
+The selected tab is ``pixel_painter_settings_tab`` (remembered).
+
+To add a category: add an item to ``SETTINGS_TABS`` and a ``_draw_<id>``
+function to ``_TAB_DRAWERS``.
+"""
+
+import bpy
+from bpy.types import Operator, Panel
+
+from ..tools import blend_modes
+from ..tools.catalog import TOOLS, falloff_property_for
+from .tool_settings_ui import draw_falloff_section
+
+SETTINGS_PANEL_ID = "IMAGE_PT_pixel_painter_settings"
+
+# (id, label, icon) -- order = order in the header bar.
+SETTINGS_TABS = (
+    ('COLOR', "Color Selector", 'COLOR'),
+    ('TOOLS', "Tools", 'TOOL_SETTINGS'),
+    ('BLENDING', "Blending", 'OVERLAY'),
+    ('FALLOFF', "Falloff", 'SMOOTHCURVE'),
+    ('PEN', "Pen", 'GREASEPENCIL'),
+    ('DISPLAY', "Display", 'HIDE_OFF'),
+    ('SHORTCUTS', "Shortcuts", 'INFO'),
+)
+
+
+def tab_enum_items():
+    return [(tab_id, label, f"{label} settings", icon, i) for i, (tab_id, label, icon) in enumerate(SETTINGS_TABS)]
+
+
+def _hints(layout, lines):
+    col = layout.column(align=True)
+    col.scale_y = 0.8
+    for line in lines:
+        col.label(text=line)
+
+
+# ---------------------------------------------------------------------------
+# Tabs
+# ---------------------------------------------------------------------------
+
+def _draw_color(layout, context):
+    wm = context.window_manager
+    layout.label(text="Pen Bar Color Pad")
+    layout.prop(wm, "pixel_painter_pen_color_preview", text="Preview", toggle=True, icon='HIDE_OFF')
+    _hints(layout, (
+        "On: the pad only previews; the brush keeps its color",
+        "until the old / new bubble is tapped (applies it).",
+        "Off: the pad color applies when the pen is lifted;",
+        "tapping the bubble makes it the new reference.",
+    ))
+
+
+_CHANNELS = (("size", "Size", False), ("strength", "Strength", True),
+             ("alpha", "Alpha", True), ("modifier", "Modifier", True))
+
+
+def _draw_tools(layout, context):
+    wm = context.window_manager
+    mode = wm.pixel_painter_mode
+
+    layout.label(text="Tool")
+    grid = layout.grid_flow(row_major=True, columns=4, even_columns=True, align=True)
+    for tool in TOOLS:
+        grid.prop_enum(wm, "pixel_painter_mode", tool.tool_id)
+
+    layout.separator()
+    layout.label(text=f"Per-Tool Settings: {TOOLS.get(mode).label}")
+    box = layout.box().column(align=True)
+    for channel, label, slider in _CHANNELS:
+        row = box.row(align=True)
+        use_global = f'pixel_painter_{mode}_use_global_{channel}'
+        row.prop(wm, use_global, text=f"Global {label}", toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = not getattr(wm, use_global, True)
+        sub.prop(wm, f'pixel_painter_{mode}_{channel}', text=label, slider=slider)
+    _hints(layout, ("Global: the tool uses the shared value.",))
+
+    layout.separator()
+    layout.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')
+
+
+def _draw_blending(layout, context):
+    wm = context.window_manager
+    brush = context.tool_settings.image_paint.brush
+    if brush:
+        row = layout.row(align=True)
+        row.label(text="Blend Mode")
+        row.prop(brush, "blend", text="")
+        layout.separator()
+
+    layout.label(text="Favorites (Shift+W pie, pen bar Blend flyout)")
+    split = layout.box().split(factor=0.5, align=True)
+    columns = (
+        (split.column(align=True), (("Common", 'COMMON'), ("Contrast", 'CONTRAST'))),
+        (split.column(align=True), (("Math", 'MATH'), ("HSL/HSV", 'HSL'))),
+    )
+    for col, groups in columns:
+        for i, (title, group) in enumerate(groups):
+            if i:
+                col.separator()
+            col.label(text=title)
+            for blend in blend_modes.ids(group):
+                col.prop_enum(wm, "pixel_painter_blend_favorites", blend)
+
+
+def _draw_falloff(layout, context):
+    wm = context.window_manager
+    layout.label(text="Falloff per Tool")
+    box = layout.box().column(align=True)
+    for tool in TOOLS:
+        if not tool.falloff_property:
+            continue
+        row = box.split(factor=0.35, align=True)
+        row.label(text=tool.label)
+        row.prop(wm, tool.falloff_property, text="")
+
+    layout.separator()
+    prop_name = falloff_property_for(wm.pixel_painter_mode)
+    layout.label(text=f"Active Tool: {TOOLS.get(wm.pixel_painter_mode).label}")
+    draw_falloff_section(layout, context, prop_name)
+    if getattr(wm, prop_name) != 'CUSTOM':
+        _hints(layout, ("Pick 'Custom' to edit the falloff curve.",))
+
+
+_PRESSURE_CHANNELS = (("size", "Size"), ("strength", "Strength"), ("alpha", "Alpha"), ("modifier", "Modifier"))
+
+
+def _draw_pen(layout, context):
+    wm = context.window_manager
+    layout.prop(wm, "pixel_painter_pen_bar", text="Pen Bar", toggle=True, icon='GREASEPENCIL')
+    row = layout.row(align=True)
+    row.label(text="Pen Bar Side")
+    row.prop_enum(wm, "pixel_painter_pen_bar_side", 'LEFT', text="Left")
+    row.prop_enum(wm, "pixel_painter_pen_bar_side", 'RIGHT', text="Right")
+
+    layout.separator()
+    layout.label(text="Pen Pressure Affects", icon='STYLUS_PRESSURE')
+    row = layout.row(align=True)
+    for channel, text in _PRESSURE_CHANNELS:
+        row.prop(wm, f"pixel_painter_pen_pressure_{channel}", text=text, toggle=True)
+    layout.prop(wm, "pixel_painter_pen_pressure_min", text="Minimum Pressure", slider=True)
+
+    layout.separator()
+    layout.label(text="Pen Bar Usage")
+    _hints(layout.box(), (
+        "Knobs: press and drag up/down",
+        "Color: color pad under the bar",
+        "Color pad: swipe like a touchpad, tap jumps",
+        "Bubble: old/new color (tap: accept new)",
+        "Settings: opens this menu",
+        "Picker: arm, then tap the canvas",
+        "Corner triangle: drag to resize the bar",
+        "Tools: tap an icon beside the Size knob",
+        "Blend: press, drag onto entry, lift",
+        "RMB: pen paints the secondary color",
+    ))
+
+
+def _draw_display(layout, context):
+    wm = context.window_manager
+    layout.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
+
+
+_SHORTCUTS = (
+    ("LMB", "Paint with primary color"),
+    ("RMB", "Paint with secondary color"),
+    ("Select: Drag LMB", "Create or move selection"),
+    ("Select: Edge/Corner Drag", "Resize selection box"),
+    ("Select: RMB", "Clear selection box"),
+    ("Select: Ctrl+C / Ctrl+V", "Copy and paste selection"),
+    ("Hold Shift", "Smooth while held"),
+    ("Hold Alt", "Line draw while held"),
+    ("Hold Ctrl", "Pick image color"),
+    ("Shift+1..9", "Select tool"),
+    ("E", "Open color bubble"),
+    ("Shift+E", "Open strength/alpha bubble"),
+    ("W", "Open brush type menu"),
+    ("Shift+W", "Open blend mode pie"),
+    ("Ctrl+Z", "Undo"),
+    ("Ctrl+Shift+Z", "Redo"),
+    ("Q / Esc", "Exit tool"),
+)
+
+
+def _draw_shortcuts(layout, context):
+    col = layout.column(align=True)
+    for key_text, action_text in _SHORTCUTS:
+        row = col.split(factor=0.4, align=True)
+        row.label(text=key_text)
+        row.label(text=action_text)
+
+
+_TAB_DRAWERS = {
+    'COLOR': _draw_color,
+    'TOOLS': _draw_tools,
+    'BLENDING': _draw_blending,
+    'FALLOFF': _draw_falloff,
+    'PEN': _draw_pen,
+    'DISPLAY': _draw_display,
+    'SHORTCUTS': _draw_shortcuts,
+}
+
+
+# ---------------------------------------------------------------------------
+# Popup
+# ---------------------------------------------------------------------------
+
+class IMAGE_PT_pixel_painter_settings(Panel):
+    """Pixel Painter settings: header bar with categories, the selected one below."""
+    bl_idname = SETTINGS_PANEL_ID
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'HEADER'
+    bl_label = "Pixel Painter Settings"
+    bl_ui_units_x = 30
+
+    def draw(self, context):
+        wm = context.window_manager
+        layout = self.layout
+        layout.use_property_split = False
+        layout.use_property_decorate = False
+
+        layout.label(text="Pixel Painter Settings", icon='PREFERENCES')
+        header = layout.row(align=True)
+        header.scale_y = 1.25
+        header.prop(wm, "pixel_painter_settings_tab", expand=True)
+        layout.separator()
+
+        drawer = _TAB_DRAWERS.get(wm.pixel_painter_settings_tab)
+        if drawer is not None:
+            drawer(layout.column(), context)
+
+
+class PixelPainterOpenSettingsOperator(Operator):
+    """Open the Pixel Painter settings"""
+    bl_idname = "image.pixel_painter_open_settings"
+    bl_label = "Pixel Painter Settings"
+
+    tab: bpy.props.EnumProperty(
+        name="Tab", items=[('KEEP', "Keep", "Open the last used tab")]
+        + [(t, label, "") for t, label, _icon in SETTINGS_TABS],
+        default='KEEP', options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        if self.tab != 'KEEP':
+            context.window_manager.pixel_painter_settings_tab = self.tab
+        bpy.ops.wm.call_panel(name=SETTINGS_PANEL_ID, keep_open=True)
+        return {'FINISHED'}
+
+
+def draw_settings_button(layout, text="Settings"):
+    """Button opening the settings popup (N-panel / header)."""
+    layout.popover(panel=SETTINGS_PANEL_ID, text=text, icon='PREFERENCES')
+
+
+classes = (
+    IMAGE_PT_pixel_painter_settings,
+    PixelPainterOpenSettingsOperator,
+)
