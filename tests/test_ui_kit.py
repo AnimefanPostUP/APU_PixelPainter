@@ -13,10 +13,10 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from ui.kit import (  # noqa: E402
-    BubbleButton, Button, Grid, Overlay, Panel, RadialMenu, Rect, Theme, UIEvent,
+    BubbleButton, Button, Dial, Grid, Overlay, Panel, RadialMenu, Rect, RingSegment, RingSlider, Theme, UIEvent,
 )
 from ui.kit.events import CANCELLED, FINISHED, PASS_THROUGH, RUNNING  # noqa: E402
-from ui.kit.geometry import fit_offset  # noqa: E402
+from ui.kit.geometry import fit_offset, ring_contains, ring_segment_points  # noqa: E402
 from ui.kit.radial import Connector  # noqa: E402
 
 
@@ -267,6 +267,71 @@ class ConnectorTests(unittest.TestCase):
         self.assertTrue(math.isclose(point[1], 2.5))
         point, transition = c.update(5.0, (10, 10), 'b', 0.25)  # stalled frame: dt clamped
         self.assertTrue(math.isclose(transition, 0.35))
+
+
+class RingGeometryTests(unittest.TestCase):
+    def test_contains_wraps_past_full_turn(self):
+        a0, a1 = math.radians(270), math.radians(375)   # through 0 degrees
+        self.assertTrue(ring_contains(0, 0, 10, 20, a0, a1, 15, 0))
+        self.assertTrue(ring_contains(0, 0, 10, 20, a0, a1, 0, -15))
+        self.assertFalse(ring_contains(0, 0, 10, 20, a0, a1, 0, 15))
+        self.assertFalse(ring_contains(0, 0, 10, 20, a0, a1, 25, 0))   # beyond the outer radius
+        self.assertFalse(ring_contains(0, 0, 10, 20, a0, a1, 5, 0))    # inside the inner radius
+
+    def test_gap_is_equally_wide_at_every_radius(self):
+        # The side edge sits `inset` px from its radial line, at the inner and the outer radius.
+        inner, outer = ring_segment_points(0, 0, 30, 120, 0.0, math.radians(40), inset=2.0)
+        for x, y in (inner[0], outer[0]):        # a0 = 0: distance to the +x axis is y
+            self.assertTrue(math.isclose(y, 2.0, abs_tol=1e-9))
+
+    def test_segment_vanishes_when_inset_too_large(self):
+        self.assertEqual(ring_segment_points(0, 0, 2, 4, 0.0, 0.1, inset=3.0), ([], []))
+
+
+class DialTests(unittest.TestCase):
+    def setUp(self):
+        self.clicked = []
+        self.values = []
+        self.dial = Dial(Button("C", size=(20, 20), on_click=lambda: self.clicked.append('C')), gap=4.0)
+        self.dial.add_arc([RingSegment("a", key='A', on_click=lambda: self.clicked.append('A')),
+                           RingSegment("b", key='B', on_click=lambda: self.clicked.append('B'))],
+                          20, 50, 0, 180)
+        self.slider = self.dial.add_segment(
+            RingSlider("S", key='S', cap=10.0, on_value=self.values.append), 20, 50, 180, 360)
+        self.overlay = Overlay(self.dial, modal=False, animate=False, origin=(100.0, 100.0))
+
+    def tap(self, x, y):
+        self.overlay.handle(ev('LEFTMOUSE', 'PRESS', x, y))
+        self.overlay.handle(ev('LEFTMOUSE', 'RELEASE', x, y))
+
+    def test_measures_outer_diameter_plus_dividers_centered_on_origin(self):
+        self.assertEqual(self.dial.measure(Theme()), (112.0, 112.0))   # 2 x (50 + 6 overhang)
+        self.assertEqual((self.dial.rect.cx, self.dial.rect.cy), (100.0, 100.0))
+
+    def test_arc_split_evenly_and_picked_by_angle(self):
+        self.tap(135, 110)   # right, slightly up: A (0..90)
+        self.tap(65, 110)    # left, slightly up: B (90..180)
+        self.tap(100, 100)   # center widget
+        self.assertEqual(self.clicked, ['A', 'B', 'C'])
+
+    def test_dividers_between_groups_only(self):
+        self.assertEqual(sorted(self.dial.dividers), [0.0, 180.0])
+
+    def test_group_gap_widens_only_the_group_edges(self):
+        dial = Dial(gap=4.0, group_gap=12.0)
+        a, b = dial.add_arc([RingSegment(), RingSegment()], 20, 50, 0, 180, tint=(1.0, 0.0, 0.0))
+        self.assertEqual((a.edge_extra, b.edge_extra), ((4.0, 0.0), (0.0, 4.0)))
+        self.assertEqual(a.tint, (1.0, 0.0, 0.0))
+        dial.arrange(Rect.from_center(0, 0, 100, 100), Theme())
+        self.assertEqual(a.insets, (6.0, 2.0))   # group edge: 12 / 2, inside the group: 4 / 2
+
+    def test_slider_value_follows_distance(self):
+        self.overlay.handle(ev('LEFTMOUSE', 'PRESS', 100, 100 - 22))     # inner end of the track
+        self.overlay.handle(move(100, 100 - 40))                          # track end: 50 - cap
+        self.overlay.handle(ev('LEFTMOUSE', 'RELEASE', 100, 60))
+        self.assertTrue(math.isclose(self.values[0], 0.0, abs_tol=1e-9))
+        self.assertTrue(math.isclose(self.values[-1], 1.0))
+        self.assertFalse(self.slider.dragging)
 
 
 if __name__ == '__main__':

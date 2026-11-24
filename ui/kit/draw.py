@@ -121,6 +121,50 @@ def sector(cx, cy, radius, a0, a1, color, segments=24):
     _draw('TRIS', verts, color)
 
 
+def ring_segment(inner, outer, color):
+    """Filled ring segment from :func:`geometry.ring_segment_points` outlines."""
+    if len(inner) < 2 or len(inner) != len(outer):
+        return
+    verts = []
+    for i in range(len(inner) - 1):
+        verts += [inner[i], outer[i], outer[i + 1], inner[i], outer[i + 1], inner[i + 1]]
+    _draw('TRIS', verts, color)
+
+
+def ring_segment_outline(inner, outer, color, width=1.5):
+    if len(inner) < 2:
+        return
+    polyline(list(inner) + list(reversed(outer)) + [inner[0]], color, width)
+
+
+def gradient_line(p0, p1, c0, c1, width=1.5):
+    """Straight line ``width`` px wide, colored from ``c0`` at ``p0`` to ``c1`` at ``p1`` (e.g. a fade)."""
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return
+    nx, ny = -dy / length * width * 0.5, dx / length * width * 0.5
+    a, b = (p0[0] + nx, p0[1] + ny), (p0[0] - nx, p0[1] - ny)
+    c, d = (p1[0] - nx, p1[1] - ny), (p1[0] + nx, p1[1] + ny)
+    shaded_tris([a, b, c, a, c, d], [c0, c0, c1, c0, c1, c1])
+
+
+def gradient_circle(cx, cy, radius, left, right, segments=36):
+    """Disc shaded horizontally from color ``left`` to ``right`` (RGBA)."""
+    def _at(x):
+        t = (x - (cx - radius)) / max(2.0 * radius, 1e-6)
+        return tuple(left[i] + (right[i] - left[i]) * t for i in range(4))
+
+    pts = [(cx + math.cos(i / segments * math.tau) * radius,
+            cy + math.sin(i / segments * math.tau) * radius) for i in range(segments + 1)]
+    verts, colors = [], []
+    for i in range(segments):
+        for p in ((cx, cy), pts[i], pts[i + 1]):
+            verts.append(p)
+            colors.append(_at(p[0]))
+    shaded_tris(verts, colors)
+
+
 def triangle(p0, p1, p2, color):
     _draw('TRIS', [p0, p1, p2], color)
 

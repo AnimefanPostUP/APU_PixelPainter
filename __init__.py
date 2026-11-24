@@ -54,6 +54,7 @@ _MODULES = (
     'ui.kit.color_selector',
     'ui.kit.color_pad',
     'ui.kit.radial',
+    'ui.kit.ring',
     'ui.kit.overlay',
     'ui.kit.icons',
     'ui.kit.modal',

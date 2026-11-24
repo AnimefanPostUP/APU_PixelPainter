@@ -137,3 +137,51 @@ def fit_offset(bounds, width, height, margin=0.0):
     else:
         dy = _axis(bounds.y0, bounds.y1, height)
     return dx, dy
+
+
+# ---------------------------------------------------------------------------
+# Ring segments (annular sectors, e.g. the pen dial)
+# ---------------------------------------------------------------------------
+
+def normalize_angle(angle, start):
+    """``angle`` (radians) shifted into ``[start, start + tau)``."""
+    return start + (angle - start) % math.tau
+
+
+def ring_contains(cx, cy, r0, r1, a0, a1, x, y):
+    """Is ``(x, y)`` inside the ring segment ``r0..r1`` x ``a0..a1`` (radians, a0 < a1)?"""
+    r = math.hypot(x - cx, y - cy)
+    if not r0 <= r <= r1:
+        return False
+    return normalize_angle(math.atan2(y - cy, x - cx), a0) <= a1
+
+
+def ring_edge_angles(r, a0, a1, inset, inset1=None):
+    """Angles at radius ``r`` of the segment's side edges, each moved ``inset`` px
+    (the ``a1`` edge: ``inset1`` px, default the same) inward *parallel* to its
+    radial line -- so the gap between neighbours has the same width at every
+    radius. ``None`` when nothing is left at that radius."""
+    inset1 = inset if inset1 is None else inset1
+    if r <= max(inset, inset1):
+        return None
+    b0 = a0 + math.asin(min(1.0, inset / r))
+    b1 = a1 - math.asin(min(1.0, inset1 / r))
+    return (b0, b1) if b1 > b0 else None
+
+
+def ring_segment_points(cx, cy, r0, r1, a0, a1, inset=0.0, steps=None, inset1=None):
+    """``(inner, outer)`` outline points of a ring segment shrunk by ``inset`` px on
+    its side edges (``inset1``: the ``a1`` edge, default the same), both running
+    from the ``a0`` side to the ``a1`` side. Empty lists when the segment vanishes."""
+    inner_edges = ring_edge_angles(r0, a0, a1, inset, inset1) if r0 > 0.0 else (a0, a1)
+    outer_edges = ring_edge_angles(r1, a0, a1, inset, inset1)
+    if inner_edges is None or outer_edges is None:
+        return [], []
+    if steps is None:
+        steps = max(2, int(abs(a1 - a0) / math.tau * 72) + 1)
+
+    def _arc(r, b0, b1):
+        return [(cx + math.cos(b0 + (b1 - b0) * i / steps) * r,
+                 cy + math.sin(b0 + (b1 - b0) * i / steps) * r) for i in range(steps + 1)]
+
+    return _arc(r0, *inner_edges), _arc(r1, *outer_edges)

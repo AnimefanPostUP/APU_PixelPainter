@@ -3,21 +3,28 @@
 Pens often cannot move the pointer without touching (no reliable hover), so
 everything here works with press, drag and release only:
 
-* **Knobs** (Size, Strength, Alpha, Modifier): press and drag up / down;
-  the value changes relative to where the drag started. A readout -- and
-  for Size a preview of the brush footprint -- shows beside the bar
-  meanwhile. Pens cannot scroll, so the knobs stand in for the wheel.
 * **Layout** (top to bottom): *X* in the top corner on the edge side
   (collapses the bar); the color row -- swap chips, *Picker* (arms the
   eyedropper for the next canvas press), *Color* (shows / hides the color
   pad), *Settings* (opens the settings popup), the old / new bubble; the
-  color pad, as wide as the bar;
-  the tools (4 left, 4 right at the outer edges, icon buttons: tap selects)
-  with *Undo* / *Redo*, the Size knob and Str / Alpha / Mod between them;
-  *Blend* (flyout), *Free* / *Pixel* (spacing; the text shows the mode),
-  *Alphalock* (protect transparent pixels), *RMB* (the pen tip paints like
-  the right mouse button); the falloff presets. The bar sits in the bottom
+  color pad, as wide as the bar; the **dial**. The bar sits in the bottom
   corner of the editor.
+* **Dial** (:class:`~.kit.Dial`): everything around the *Size* knob in the
+  center, as pie segments in two rings with equal gaps between them:
+
+  - top right: *S* / *A* / *M* (Strength, Alpha, Modifier) radial sliders,
+    as deep as both rings: press sets the value from the distance to the
+    center, drag keeps setting it;
+  - top left: the tools (half in each ring; tap selects);
+  - bottom left: *Blend* (inner ring, opens the flyout; shows the mode),
+    *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing),
+    *RMB* (the pen tip paints like the right mouse button);
+  - bottom right: *Undo* / *Redo* arrows (inner ring), the falloff presets.
+
+* **Size knob**: press and drag up / down; the value changes relative to
+  where the drag started. A readout -- for Size with a preview of the brush
+  footprint -- shows beside the bar while a knob or slider is dragged. Pens
+  cannot scroll, so the knob and sliders stand in for the wheel.
 * **Resize handle**: the triangle in the bar's top corner on the canvas side.
   Drag it outward / up to enlarge the bar (with flyouts), inward / down to
   shrink it; 0.2x .. 2x of the default size, remembered.
@@ -42,7 +49,8 @@ layer). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
 
 import math
 
-from .kit import Button, ColorBubble, ColorSelector, Column, DragBubble, Label, Overlay, Panel, Rect, Row, RoundButton, Theme, Widget
+from .kit import (Button, ColorBubble, ColorSelector, Column, Dial, DragBubble, Label, Overlay, Panel, Rect,
+                  RingSegment, RingSlider, Row, RoundButton, Widget)
 from .kit import draw
 from .kit.events import PRESS, RUNNING
 from .kit.theme import with_alpha
@@ -60,19 +68,34 @@ VALUE_RANGE_PX = 240.0   # drag distance for the full 0..1 range of the other kn
 MAX_SIZE = 64
 
 CHANNEL_LABELS = {'size': "Size", 'strength': "Strength", 'alpha': "Alpha", 'modifier': "Modifier"}
-# Pens cannot scroll: these knobs replace the wheel controls of the strength bubble.
-SMALL_KNOBS = (('strength', "Str"), ('alpha', "Alpha"), ('modifier', "Mod"))
-_SMALL_KNOB_RADIUS = 17.0
+# Pens cannot scroll: these sliders replace the wheel controls of the strength bubble.
+# Listed counter-clockwise (Modifier lowest, Strength next to the top).
+SLIDERS = (('modifier', "M", (0.84, 0.95, 0.36, 1.0)),
+           ('alpha', "A", (0.80, 0.83, 0.90, 1.0)),
+           ('strength', "S", (0.96, 0.38, 0.47, 1.0)))
 ARM_HINTS = {'EYEDROPPER': "Tap canvas: pick color"}
 # Blend flyout columns after Favorites (titles as in the Shift+W pie).
 BLEND_GROUPS = (("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL/HSV", 'HSL'))
 
+# Dial (unscaled px; angles in degrees counter-clockwise from +x, 90 = up).
+DIAL_GAP = 2.5                 # spacing between segments of a category / rings / the Size knob
+GROUP_GAP = 14.0               # spacing between categories (a divider line runs through it)
+SIZE_RADIUS = 30.0
+INNER_RING = (32.5, 72.5)
+OUTER_RING = (75.0, 115.0)
+SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
+TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
+MODE_ARC = (210.0, 270.0)      # Blend | Alphalock, Pixel / Free, RMB
+HISTORY_ARC = (270.0, 375.0)   # Undo / Redo | falloff presets
+_INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
+# Category tints (mixed lightly into the segment fills).
+TINT_TOOLS = (0.35, 0.58, 1.00)
+TINT_MODES = (1.00, 0.62, 0.25)
+TINT_HISTORY = (0.95, 0.40, 0.45)
+TINT_FALLOFF = (0.30, 0.85, 0.72)
+
 _BUTTON_RADIUS = 19.0
-_TOOL_BUTTON = 37.5      # tool icon buttons at the bar's outer edges, beside the Size knob
-_FALLOFF_GAP = 4.0       # falloff buttons are sized in layout() to fill the bar's width
-_EDGE_LIFT = 12.0        # Blend / RMB sit this much higher than the toggles between them
-_TOGGLE_SIZE = (54.0, 30.0)   # Free / Pixel and Alphalock
-_CLOSE_RADIUS = _SMALL_KNOB_RADIUS * 0.25   # the X (drawn); taps hit a larger area
+_CLOSE_RADIUS = 17.0 * 0.25   # the X (drawn); taps hit a larger area
 _CLOSE_HIT = 10.0        # extra tap radius around the X, unscaled px
 _PANEL_PADDING = 4.0
 # The bar's buttons sit this far from the editor edge (or an overlapping sidebar):
@@ -198,18 +221,6 @@ class _ResizeHandle(Widget):
         draw.triangle(corner, a, b, with_alpha(fill, dc.alpha))
 
 
-class _TextToggle(Button):
-    """Square-cornered button whose label comes from ``text()`` (e.g. a mode name)."""
-
-    def __init__(self, text, **kwargs):
-        super().__init__("", **kwargs)
-        self.text = text
-
-    def draw_self(self, dc):
-        self.label = str(_resolve(self.text, ""))
-        super().draw_self(dc)
-
-
 class _CloseButton(Widget):
     """Small round X button. Its tap area is larger than the drawing (pens)."""
 
@@ -244,48 +255,74 @@ class _CloseButton(Widget):
         draw.polyline([(cx - arm, cy + arm), (cx + arm, cy - arm)], color, width)
 
 
-class _SpreadRow(Widget):
-    """Row whose first child hugs its column's left edge and last child the right
-    edge; the ones between are centered. Measures its natural (packed) width.
+# ---- dial segment content: painter(dc, x, y, size, alpha) --------------------------------
 
-    ``align``: 'center' or 'top' (vertical). ``edge_lift`` (unscaled px): the two
-    edge children sit that much higher than the middle ones.
-    """
+def _paint_arrow(direction, caption):
+    """Undo / Redo: a horizontal arrow with a caption under it."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        s = min(size * 0.55, theme.px(22.0))
+        color = with_alpha(theme.text, 0.92 * alpha)
+        d = 1.0 if direction == 'RIGHT' else -1.0
+        ay = y + s * 0.15
+        tip, tail = x + d * s * 0.5, x - d * s * 0.5
+        base = tip - d * s * 0.45
+        shaft = s * 0.13
+        draw.rect(Rect(min(tail, base), ay - shaft, max(tail, base), ay + shaft), color)
+        draw.triangle((tip, ay), (base, ay + s * 0.36), (base, ay - s * 0.36), color)
+        draw.text_centered(caption, x, ay - s * 0.75, theme.px(8.0),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
 
-    def __init__(self, children, gap=8.0, align='center', edge_lift=0.0):
-        super().__init__()
-        self.gap = gap
-        self.align = align
-        self.edge_lift = edge_lift
-        for child in children:
-            self.add(child)
 
-    def measure(self, theme):
-        sizes = [c.measure(theme) for c in self.children]
-        gap = theme.px(self.gap)
-        width = sum(w for w, _ in sizes) + gap * (len(sizes) - 1)
-        return width, max(h for _, h in sizes) + theme.px(self.edge_lift)
+def _paint_alpha_lock(dc, x, y, size, alpha):
+    """Checkerboard (transparency) with a padlock on it."""
+    theme = dc.theme
+    s = size * 0.62
+    half = s * 0.5
+    light, dark = (0.78, 0.78, 0.78, alpha), (0.48, 0.48, 0.48, alpha)
+    for i in range(2):
+        for j in range(2):
+            draw.rect(Rect.from_size(x - half + i * half, y - half + j * half, half, half),
+                      light if (i + j) % 2 else dark)
+    lock = (0.07, 0.07, 0.07, alpha)
+    bw, bh = s * 0.5, s * 0.36
+    body = Rect.from_size(x - bw * 0.5, y - s * 0.32, bw, bh)
+    draw.rect(body, lock)
+    draw.arc(x, body.y1, bw * 0.3, 0.0, math.pi, lock, width=max(1.0, theme.px(2.0)), segments=16)
 
-    def _place(self, child, x0, y0, y1, theme):
-        """Arrange ``child`` at ``x0`` inside the vertical band ``y0 .. y1``."""
-        w, h = child.measure(theme)
-        y = y1 - h if self.align == 'top' else (y0 + y1 - h) * 0.5
-        child.arrange(Rect.from_size(x0, y, w, h), theme)
 
-    def arrange(self, rect, theme):
-        col = self.parent.rect if self.parent is not None else rect
-        self.rect = Rect(col.x0, rect.y0, col.x1, rect.y1)
-        lift = theme.px(self.edge_lift)
-        first, *middle, last = self.children
-        self._place(first, col.x0, rect.y0 + lift, rect.y1, theme)
-        self._place(last, col.x1 - last.measure(theme)[0], rect.y0 + lift, rect.y1, theme)
-        gap = theme.px(self.gap)
-        sizes = [c.measure(theme) for c in middle]
-        total = sum(w for w, _ in sizes) + gap * max(0, len(sizes) - 1)
-        x = col.cx - total * 0.5
-        for child, (w, _h) in zip(middle, sizes):
-            self._place(child, x, rect.y0, rect.y1 - lift, theme)
-            x += w + gap
+def _paint_spacing(mode):
+    """Pixel / Free: the initial with a small square (solid for Pixel, fading for Free)."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        pixel = _resolve(mode, 'FREE') == 'PIXEL'
+        letter = theme.px(15.0)
+        draw.text_centered("P" if pixel else "F", x - letter * 0.12, y + size * 0.12, letter,
+                           with_alpha(theme.text, alpha), theme.font_id)
+        sq = letter * 0.32
+        box = Rect.from_size(x + letter * 0.22, y + size * 0.12 - letter * 0.42, sq, sq)
+        if pixel:
+            draw.rect(box, (1.0, 1.0, 1.0, alpha))
+        else:
+            draw.gradient_quad(box, (1.0, 1.0, 1.0, alpha), (1.0, 1.0, 1.0, 0.1 * alpha),
+                               (1.0, 1.0, 1.0, 0.1 * alpha), (1.0, 1.0, 1.0, alpha))
+        draw.text_centered("Pixel" if pixel else "Free", x, y - size * 0.3, theme.px(7.5),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
+
+
+def _paint_blend(label):
+    """Blend: a black-to-white disc with the active blend mode under it."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        r = min(size * 0.3, theme.px(15.0))
+        cy = y + r * 0.35
+        draw.gradient_circle(x, cy, r, (0.0, 0.0, 0.0, alpha), (1.0, 1.0, 1.0, alpha))
+        draw.circle_outline(x, cy, r, with_alpha(theme.border, alpha), width=theme.px(1.0))
+        draw.text_centered(str(_resolve(label, "")), x, cy - r - theme.px(7.0), theme.px(8.0),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
 
 
 class _CornerStrip(Widget):
@@ -429,10 +466,67 @@ class PenBar:
         button.activate_on_press = opener
         return button
 
+    def _slider(self, channel, label, color):
+        slider = RingSlider(
+            label, key=f"SLIDER_{channel}", font_size=11.0, fill_color=color,
+            value=lambda: self._value(channel),
+            on_drag_begin=lambda: self._begin_drag(channel),
+            on_value=lambda v: self.actions.set_value(channel, v),
+            on_drag_end=self._end_drag,
+        )
+        self.knobs[channel] = slider   # the drag readout sits beside it
+        return slider
+
+    def _build_dial(self):
+        """Size knob in the center, everything else in pie segments around it (see the module docs)."""
+        a = self.actions
+        dial = Dial(self._knob('size', "Size", SIZE_RADIUS, 11.0, 20.0), gap=DIAL_GAP, group_gap=GROUP_GAP)
+
+        dial.add_arc([self._slider(*spec) for spec in SLIDERS], INNER_RING[0], OUTER_RING[1], *SLIDER_ARC)
+
+        # Tools: the first half in the outer ring, listed from the bottom up.
+        all_tools = a.tools()
+        half = (len(all_tools) + 1) // 2
+        tools = [
+            RingSegment(tool.label, key=f"TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
+                        icons=self.icons, font_size=8.0, fill=_INNER_FILL if i >= half else None,
+                        selected=lambda t=tool.tool_id: a.active_tool() == t,
+                        on_click=lambda t=tool.tool_id: a.select_tool(t))
+            for i, tool in enumerate(all_tools)
+        ]
+        dial.add_arc(reversed(tools[:half]), *OUTER_RING, *TOOL_ARC, tint=TINT_TOOLS)
+        dial.add_arc(reversed(tools[half:]), *INNER_RING, *TOOL_ARC, tint=TINT_TOOLS)
+
+        blend = RingSegment("Blend", key='BLEND', fill=_INNER_FILL,
+                            painter=_paint_blend(lambda: blend_modes.label(a.active_blend())),
+                            on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
+                            selected=lambda: self.flyout is self.blend_flyout)
+        blend.activate_on_press = True
+        dial.add_arc([blend], *INNER_RING, *MODE_ARC, tint=TINT_MODES)
+        dial.add_arc([
+            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
+                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
+            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing),
+                        on_click=a.toggle_spacing),
+            RingSegment("RMB", key='RMB', font_size=9.0, selected=a.rmb_lock, on_click=a.toggle_rmb_lock),
+        ], *OUTER_RING, *MODE_ARC, tint=TINT_MODES)
+
+        dial.add_arc([
+            RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
+            RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
+        ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
+        # Falloff presets: the first one at the top.
+        self.falloff_buttons = [
+            RingSegment(preset.label, key=f"FALLOFF_{preset.id}", icon=preset.icon_key, icons=self.icons,
+                        font_size=8.0, selected=lambda p=preset.id: a.active_falloff() == p,
+                        on_click=lambda p=preset.id: a.set_falloff(p))
+            for preset in falloff.picker_presets()
+        ]
+        dial.add_arc(reversed(self.falloff_buttons), *OUTER_RING, *HISTORY_ARC, tint=TINT_FALLOFF)
+        return dial
+
     def _build_bar(self):
         a = self.actions
-        size = self._knob('size', "Size", 34.0, 11.0, 18.0)
-        small = Row([self._knob(ch, label, _SMALL_KNOB_RADIUS, 9.0, 11.0) for ch, label in SMALL_KNOBS], gap=5.0)
 
         def arm(kind):
             return lambda: a.toggle_arm(kind)
@@ -443,48 +537,7 @@ class PenBar:
         # Top corner (edge side): collapse.
         hide = _CloseButton(key='HIDE', on_click=lambda: self.set_collapsed(True))
         self.corner = _CornerStrip(hide)
-        undo = self._button("Undo", a.undo)
-        redo = self._button("Redo", a.redo)
-        history = Row([undo, redo], gap=6.0)
-
-        # Size knob between the tools: 4 on each side.
-        tool_buttons = [
-            Button(tool.label, key=f"TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
-                   icons=self.icons, size=(_TOOL_BUTTON, _TOOL_BUTTON), icon_only=True,
-                   selected=lambda t=tool.tool_id: a.active_tool() == t,
-                   on_click=lambda t=tool.tool_id: a.select_tool(t))
-            for tool in a.tools()
-        ]
-        half = (len(tool_buttons) + 1) // 2
-        # The tool columns sit at the bar's outer edges, their tops level with
-        # Undo / Redo; Undo / Redo, the Size knob and Str / Alpha / Mod right
-        # under it are centered between them.
-        center = Column([history, size, small], gap=8.0)
-        size_row = _SpreadRow([Column(tool_buttons[:half], gap=3.0), center,
-                               Column(tool_buttons[half:], gap=3.0)], gap=8.0, align='top')
-
-        # Blend and RMB (the knobs' size) at the outer edges, the toggles between.
-        blend = RoundButton("Blend", radius=_SMALL_KNOB_RADIUS, font_size=8.0, key='BLEND',
-                            on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
-                            selected=lambda: self.flyout is self.blend_flyout)
-        blend.activate_on_press = True
-        rmb = RoundButton("RMB", radius=_SMALL_KNOB_RADIUS, font_size=8.0, key='RMB',
-                          on_click=a.toggle_rmb_lock, selected=a.rmb_lock)
-        spacing = _TextToggle(lambda: "Pixel" if a.spacing() == 'PIXEL' else "Free", key='SPACING',
-                              size=_TOGGLE_SIZE, on_click=a.toggle_spacing)
-        alpha_lock = Button("Alphalock", key='ALPHA_LOCK', size=_TOGGLE_SIZE,
-                            selected=a.alpha_lock, on_click=a.toggle_alpha_lock)
-        # Blend / RMB a bit higher than the toggles (more room above the falloffs).
-        knob_row = _SpreadRow([blend, spacing, alpha_lock, rmb], gap=5.0, edge_lift=_EDGE_LIFT)
-
-        self.falloff_buttons = [
-            Button(preset.label, key=f"FALLOFF_{preset.id}", icon=preset.icon_key, icons=self.icons,
-                   size=(22.0, 22.0), icon_only=True,  # resized to fill the width in layout()
-                   selected=lambda p=preset.id: a.active_falloff() == p,
-                   on_click=lambda p=preset.id: a.set_falloff(p))
-            for preset in falloff.picker_presets()
-        ]
-        falloffs = Row(self.falloff_buttons, gap=_FALLOFF_GAP)
+        self.dial = self._build_dial()
 
         # Color row: swap chips, eyedropper, color pad toggle, Settings + old / new bubble.
         picker = self._button("Picker", arm('EYEDROPPER'), armed('EYEDROPPER'))
@@ -499,8 +552,7 @@ class PenBar:
         self.color_row = Row([chips, picker, color, settings, self.color_bubble], gap=6.0)
 
         # The color pad sits under the color row, stretched to the bar's width (layout()).
-        content = Column([self.corner, self.color_row, self.color_pad, _Spacer(4.0),
-                          size_row, knob_row, falloffs], gap=8.0)
+        content = Column([self.corner, self.color_row, self.color_pad, _Spacer(4.0), self.dial], gap=8.0)
         return Panel(content, padding=_PANEL_PADDING)
 
     def _flyout_action(self, fn):
@@ -658,12 +710,8 @@ class PenBar:
         self.root.side = side
         self.root.region_height = region_height
         self.corner.edge_left = side == 'LEFT'
-        width = self.color_row.measure(theme)[0]   # the bar's content width
-        self.color_pad.fit_width = width
-        count = len(self.falloff_buttons)
-        cell = (width - theme.px(_FALLOFF_GAP) * (count - 1)) / max(1, count) / max(1e-6, theme.scale)
-        for button in self.falloff_buttons:
-            button.size = (cell, cell)
+        # The bar's content width: the dial or the color row, whichever is wider.
+        self.color_pad.fit_width = max(self.color_row.measure(theme)[0], self.dial.measure(theme)[0])
         margin = theme.px(max(0.0, EDGE_GAP - _PANEL_PADDING))
         x = inset_left + margin if side == 'LEFT' else region_width - inset_right - margin
         self.overlay.origin = (x, margin)

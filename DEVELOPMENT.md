@@ -138,6 +138,7 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `widget.py` | `Widget` base, `Row`, `Column`, `Grid`, `DrawContext` |
 | `widgets.py` | `Label`, `Button`, `BubbleButton`, `RoundButton`, `DragBubble`, `ColorBubble` (old / new), `Panel` |
 | `radial.py` | `RadialMenu` (arc or explicit directions, `attach_below`, number keys) |
+| `ring.py` | `Dial` (center widget + rings of pie segments; each `add_arc` is a category with its own `tint`, separated by `group_gap` and a divider line; `gap` between segments), `RingSegment` (icon / label / painter), `RingSlider` (radial slider: press / drag sets the value from the distance to the center) |
 | `color_selector.py` | `ColorSelector` — pen-friendly color selector, every part swiped like a touchpad (pure Python layout / input). Layouts are `ColorShape` variants: `SheetShape`, `SquareShape`, `TriangleShape`, `WheelShape`; model HSV / HSL; optional RGB / HSV / HSL channel sliders underneath |
 | `color_models.py` | HSV / HSL / RGB conversions that keep hue / saturation through grey, black and white |
 | `color_pad.py` | `ColorPad` (the selector with the Sheet layout), `hsv_for_rgb` |
@@ -184,7 +185,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `dispatch()` then skips screen-space tools. Pens may have no hover and no
   wheel, so the bar uses only press / drag / release: `DragBubble` knobs
   (`draggable`), flyout openers (`activate_on_press`) and flyout entries
-  (`drag_release`). The bar sits in the bottom corner. *Color* toggles the
+  (`drag_release`). The bar sits in the bottom corner.
+  Below the color row sits the dial (`kit.Dial`): the Size knob in the center,
+  S / A / M radial sliders top right, the tools top left (two rings), Blend /
+  Alphalock / Pixel-Free / RMB bottom left, Undo / Redo and the falloff presets
+  bottom right; the arcs and radii are the `*_ARC` / `*_RING` constants in `ui/pen_bar.py`. *Color* toggles the
   `ColorPad` (a `ColorSelector` inside the bar under the color row, stretched to its width):
   every part moves relative to the swipe (`gain` 0.5), a tap jumps. Layout
   (`pixel_painter_color_selector_layout`: Sheet / Square / Triangle / Wheel), model
