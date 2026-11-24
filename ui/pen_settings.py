@@ -22,7 +22,7 @@ from .kit.theme import with_alpha
 from .kit.widget import _resolve
 from ..tools import blend_modes, falloff
 from .pen_bar import (TINT_FALLOFF, TINT_MODES, TINT_TOOLS, _paint_color_wheel, _paint_curve,
-                      _paint_eyedropper, _thick_line)
+                      _paint_eyedropper, _paint_save, _thick_line)
 
 
 PAGE_WIDTH = 300.0       # unscaled width of every group
@@ -52,11 +52,20 @@ USAGE = (
     "Padlock: lock position and size",
     "Colors: tap to paint with one, arrows swap",
     "History (along the circle): tap to reuse",
-    "Pipette: arm it, then tap the canvas",
+    "Pickers (beside each color): arm one, then tap the canvas",
+    "Mix (top-left corner): tap to paint with the mix",
     "Blend: press, drag onto an entry, lift",
     "Curve (beside Custom): edit / draw the falloff",
     "RMB: the pen paints the secondary color",
+    "Save (top right): saves the image; dot = unsaved",
 )
+SAVE_METHODS = (('AUTO', "Auto"), ('PACK', "Pack"), ('FILE', "File"))
+SAVE_HINTS = {
+    'AUTO': ("Repacks a packed image, saves an image with a file",
+             "to it, packs anything else (e.g. a new image)."),
+    'PACK': ("Always packs the image into the .blend.",),
+    'FILE': ("Always writes a file; images without one go to:",),
+}
 
 
 # ---- icons: painter(dc, x, y, size, alpha) ------------------------------------------------
@@ -441,8 +450,27 @@ class SettingsMenu:
         return [
             self._group("Pen Menu", menu, tint, _icon_pen),
             self._group("Pen Pressure Affects", pressure, tint, _icon_pressure),
+            self._group("Save Image (top right)", self._save_settings(), tint, _paint_save(None)),
             self._group("How to Use", self._hint(USAGE), tint, _paint_eyedropper),
         ]
+
+    def _save_settings(self):
+        """Save method, the .blend toggle and a hint for the chosen method (the folder is
+        set in the Blender settings popup: the pen menu has no text input)."""
+        a = self.a
+        methods = Row([self._choice('save_image_method', m, label, size=(86.0, 26.0))
+                       for m, label in SAVE_METHODS], gap=6.0)
+        blend = self._toggle('save_image_blend', "Also save the .blend", size=(170.0, 28.0))
+
+        def hint():
+            method = a.wm_get('save_image_method', 'AUTO')
+            lines = list(SAVE_HINTS.get(method, ()))
+            if method == 'FILE':
+                lines += [f"  {a.wm_get('save_image_folder', '') or '//'}<name>.png",
+                          "(folder: settings popup; // = next to the .blend)"]
+            return lines + ["Packed pixels reach the disk with the .blend."]
+
+        return Column([methods, blend, TextBlock(hint, size=9.0, width=PAGE_WIDTH - 20.0)], gap=6.0)
 
     def _page_display(self, tint):
         grid = self._slider('grid_opacity', "Grid opacity", fill_color=(*TINT_DISPLAY, 1.0))

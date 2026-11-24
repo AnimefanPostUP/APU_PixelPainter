@@ -107,6 +107,7 @@ _MODULES = (
     'core.core',
     'ui.tool_settings_ui',
     'ui.palette_ops',
+    'ui.image_save_ops',
     'ui.settings_menu',
     'properties',
     # addon UI
@@ -159,6 +160,7 @@ def _classes():
         *_module('ui.tool_settings_ui').classes,
         *_module('ui.settings_menu').classes,
         *_module('ui.palette_ops').classes,
+        *_module('ui.image_save_ops').classes,
     )
 
 

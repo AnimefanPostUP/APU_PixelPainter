@@ -238,6 +238,23 @@ def _static_properties():
             description="Pen menu: drag colors (primary / secondary, history, palette, the old / new bubble) "
                         "onto palette slots or the primary / secondary color",
             default=True, update=_persist),
+        # ---- saving the painted image (pen menu Save button, ui/image_save_ops.py) ----
+        'save_image_method': bpy.props.EnumProperty(
+            name="Save Method", description="How the pen menu's Save button stores the painted image",
+            items=[
+                ('AUTO', "Auto", "Repack a packed image, save an image with a file to it, pack anything else"),
+                ('PACK', "Pack", "Always pack the image into the .blend file"),
+                ('FILE', "File", "Always write the image to a file (images without one go to the folder below)"),
+            ],
+            default='AUTO', update=_persist),
+        'save_image_folder': bpy.props.StringProperty(
+            name="Save Folder",
+            description="Folder for images that have no file yet (File method); // = next to the .blend",
+            default="//textures/", subtype='DIR_PATH', update=_persist),
+        'save_image_blend': bpy.props.BoolProperty(
+            name="Also Save .blend",
+            description="Save the .blend file after the image (packed pixels only reach the disk with the .blend)",
+            default=False, update=_persist),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",

@@ -12,7 +12,11 @@ from .eyedropper import EyedropperTool
 
 
 def _paints_secondary(ctx):
-    """The pen bar's RMB lock: the pen tip paints (and picks) the secondary color."""
+    """The color to pick: the pen bar's picker sets ``pen_pick_target``; without it
+    the RMB lock decides (the pen tip paints, and picks, the secondary color)."""
+    target = ctx.state.get('pen_pick_target')
+    if target is not None:
+        return target == 'SECONDARY'
     return bool(ctx.state.get('pen_rmb_lock'))
 
 
@@ -37,6 +41,7 @@ class PenEyedropperTool(ToolFrame):
             self._hover(ctx, event)
 
     def on_deactivate(self, ctx):
+        ctx.state['pen_pick_target'] = None
         ctx.state['ctrl_pick_active'] = False
         ctx.state['ctrl_hovered_color'] = None
         ctx.redraw()

@@ -8,7 +8,7 @@ everything here works with press, drag and release only.
   dragging their empty background and resized by dragging the triangle in
   their bottom-right corner (each has its own size: pen menu 0.2x .. 2x,
   color selector 0.5x .. 2x, and never larger than the editor). The padlock
-  in their top-left corner locks both. They are clipped to the editor
+  (pen menu: bottom-left corner; color selector: top left) locks both. They are clipped to the editor
   borders (and an overlapping sidebar). Size and position are remembered;
   *Reset Pen UI* (settings popup, N-panel) restores the defaults: the pen
   menu in the bottom corner at the chosen side, the color selector beside it.
@@ -34,15 +34,20 @@ everything here works with press, drag and release only.
   between the circle and the square (icons). Top left the color section: the
   color history along the circle (the last painted colors, newest left; tap
   paints with it), the secondary and primary color (tap a color: the pen
-  paints with it -- the secondary one sets the RMB lock) with *Pipette*
-  (eyedropper: arms it for the next canvas press) and *Swap* between them;
+  paints with it -- the secondary one sets the RMB lock), each with its own
+  *Picker* on its outer side (eyedropper for that color: arms it for the next canvas
+  press; the active color's picker is bright, the other grey), and between
+  them *Swap* with the *Mix* field behind it in the corner (the two colors
+  half and half; tap: the active color becomes the mix);
   bottom left the palette band (24 slots in two bands along the circle) and
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes), *Color* (hue ring around the pen's color: shows /
   hides the color selector) and *Library* (the palette library window);
   bottom right, past the second falloff row, the *curve* button behind the
   Custom falloff (opens the curve flyout, selects Custom) and *Settings*
-  (gear: the settings popup).
+  (gear: the settings popup); top right *Save* (saves / packs the painted
+  image as set in settings > Pen > Save Image; a green dot while it has
+  unsaved changes).
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -119,7 +124,8 @@ CHANNEL_LABELS = {'size': "Size", 'strength': "Strength", 'alpha': "Alpha", 'mod
 SLIDERS = (('modifier', "M", (0.84, 0.95, 0.36, 1.0)),
            ('alpha', "A", (0.80, 0.83, 0.90, 1.0)),
            ('strength', "S", (0.96, 0.38, 0.47, 1.0)))
-ARM_HINTS = {'EYEDROPPER': "Tap canvas: pick color"}
+ARM_HINTS = {'EYEDROPPER_PRIMARY': "Tap canvas: pick the primary color",
+             'EYEDROPPER_SECONDARY': "Tap canvas: pick the secondary color"}
 # Blend flyout columns after Favorites (titles as in the Shift+W pie).
 BLEND_GROUPS = (("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL/HSV", 'HSL'))
 
@@ -158,8 +164,13 @@ FALLOFF_BAND_ORDER = ('INVERTED', 'RING', 'CUSTOM', 'STEPPED', 'SPIKE', 'SHARPEN
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
-COLORS_ARC = (90.0, 180.0)           # top left: history band along the circle; secondary | Pipette | Swap | primary
-COLORS_WEIGHTS = (2.0, 1.0, 1.0, 2.0)
+# Top left: history band along the circle; then secondary's Picker | secondary |
+# Swap + Mix | primary | primary's Picker (the colors toward the corner). Swap sits by
+# the circle, the Mix field behind it fills the square's corner (not cut: the menu's
+# lock is bottom left).
+COLORS_ARC = (90.0, 180.0)
+COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
+SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix field starts past it
 COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
 # Palettes | Color | Library: pushed together toward the diagonal, the only part of
 # the corner with room left past the palette bands.
@@ -170,6 +181,8 @@ WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
 FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the second falloff row (bottom right), as deep as the palette
 FALLOFF_CORNER_INNER = CORNER_INNER + FALLOFF_BAND_DEPTH + DIAL_GAP
 CURVE_SETTINGS_ARC = (295.0, 335.0)  # bottom right past the band: Curve | Settings, around the diagonal
+SAVE_ARC = (25.0, 65.0)              # top right, around the diagonal: Save (the X sits in the cut corner)
+TINT_SAVE = (0.45, 0.80, 0.45)
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
@@ -300,6 +313,30 @@ class _ColorCorner(_ColorDrag, CornerSegment):
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
+class _MixCorner(_ColorDrag, CornerSegment):
+    """The primary and secondary color mixed half and half. Tap: the active color
+    becomes the mix (tap again for the next step toward the other color); drag
+    source, not a drop target (it follows the two colors)."""
+
+    def __init__(self, bar, rgb, **kwargs):
+        super().__init__(**kwargs)
+        self.bar = bar
+        self.rgb = rgb          # () -> (r, g, b)
+
+    def drag_color(self):
+        return _resolve(self.rgb, None)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        inner, outer = self.points()
+        if not inner:
+            return
+        rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
+        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
 class _BubbleDrag(_ColorDrag, ColorBubble):
     """The color selector's old / new bubble: tap accepts, dragging carries the new color."""
 
@@ -334,11 +371,11 @@ def _thick_line(a, b, width, color):
     draw.gradient_line(a, b, color, color, width)
 
 
-def _paint_eyedropper(dc, x, y, size, alpha):
+def _paint_eyedropper(dc, x, y, size, alpha, color=None):
     """Picker icon: an eyedropper, bulb top right, tip bottom left."""
     theme = dc.theme
     s = min(size * 0.62, theme.px(24.0))
-    color = with_alpha(theme.text, 0.92 * alpha)
+    color = with_alpha(theme.text, 0.92 * alpha) if color is None else color
     ux = uy = math.sqrt(0.5)
     tip = (x - ux * s * 0.5, y - uy * s * 0.5)
     neck = (x + ux * s * 0.12, y + uy * s * 0.12)
@@ -346,6 +383,24 @@ def _paint_eyedropper(dc, x, y, size, alpha):
     _thick_line((neck[0] + uy * s * 0.2, neck[1] - ux * s * 0.2),
                 (neck[0] - uy * s * 0.2, neck[1] + ux * s * 0.2), s * 0.12, color)
     draw.circle(x + ux * s * 0.3, y + uy * s * 0.3, s * 0.17, color, segments=16)
+
+
+def _paint_target_picker(rgb, active):
+    """Picker for one color (``rgb()``): bright while that color is the active one
+    (``active()``), grey otherwise; a dot of the color at its tip."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        on = _resolve(active, False)
+        ink = (1.0, 1.0, 1.0, alpha) if on else with_alpha(theme.text_muted, 0.55 * alpha)
+        _paint_eyedropper(dc, x, y, size, alpha, color=ink)
+        c = _resolve(rgb, None)
+        if c is not None:
+            s = min(size * 0.62, theme.px(24.0))
+            dx = dy = -math.sqrt(0.5) * s * 0.5     # the eyedropper's tip
+            dx, dy = x + dx, y + dy
+            dot = (c[0], c[1], c[2], alpha if on else 0.6 * alpha)
+            draw.circle(dx, dy, max(2.0, s * 0.16), dot, rim=theme.edge_for(c, dot[3]), segments=16)
+    return paint
 
 
 def _paint_color_wheel(rgb):
@@ -374,6 +429,25 @@ def _paint_gear(dc, x, y, size, alpha):
                     (x + math.cos(a) * r, y + math.sin(a) * r), r * 0.34, color)
     draw.circle(x, y, r * 0.74, color, segments=24)
     draw.circle(x, y, r * 0.32, with_alpha(theme.surface_dark, alpha), segments=16)
+
+
+def _paint_save(unsaved):
+    """Save icon: a floppy disk; a dot in the accent color while ``unsaved()``."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        s = min(size * 0.5, theme.px(20.0))
+        color = with_alpha(theme.text, 0.92 * alpha)
+        body = Rect.from_center(x, y, s, s)
+        draw.rect(body, color)
+        hole = with_alpha(theme.surface_dark, alpha)
+        draw.rect(Rect(body.x0 + s * 0.22, body.y1 - s * 0.34, body.x1 - s * 0.22, body.y1 - s * 0.06), hole)
+        draw.rect(Rect(body.x0 + s * 0.16, body.y0 + s * 0.1, body.x1 - s * 0.16, body.y0 + s * 0.48), hole)
+        if _resolve(unsaved, False):
+            dot = (*TINT_SAVE, alpha)
+            draw.circle(body.x1, body.y1, max(2.5, s * 0.2), dot, rim=theme.edge_for(TINT_SAVE, alpha), segments=16)
+        draw.text_centered("Save", x, body.y0 - theme.px(7.0), theme.px(8.0),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
 
 
 def _paint_curve(dc, x, y, size, alpha):
@@ -647,12 +721,14 @@ class _MovePanel(Panel):
 
 
 class _Window(Widget):
-    """A floating element: a movable panel with a lock (top left), an optional X
-    (top right) and a resize triangle (bottom right, hidden while locked).
-    ``tab`` (optional) replaces it while ``collapsed``. Placed by its top-left corner."""
+    """A floating element: a movable panel with a lock (top left, or bottom left with
+    ``lock_bottom``), an optional X (top right) and a resize triangle (bottom right,
+    hidden while locked). ``tab`` (optional) replaces it while ``collapsed``. Placed
+    by its top-left corner."""
 
-    def __init__(self, panel, lock, grip, *, locked, close=None, tab=None):
+    def __init__(self, panel, lock, grip, *, locked, close=None, tab=None, lock_bottom=False):
         super().__init__()
+        self.lock_bottom = lock_bottom
         self.panel = self.add(panel)
         self.tab = self.add(tab) if tab is not None else None
         self.lock = self.add(lock)
@@ -689,7 +765,8 @@ class _Window(Widget):
         r = self.panel.rect
         inset = theme.px(_CORNER_INSET)
         lw, lh = self.lock.measure(theme)
-        self.lock.arrange(Rect.from_size(r.x0 + inset, r.y1 - inset - lh, lw, lh), theme)
+        ly = r.y0 + inset if self.lock_bottom else r.y1 - inset - lh
+        self.lock.arrange(Rect.from_size(r.x0 + inset, ly, lw, lh), theme)
         if self.close is not None:
             cw, ch = self.close.measure(theme)
             self.close.arrange(Rect.from_size(r.x1 - inset - cw, r.y1 - inset - ch, cw, ch), theme)
@@ -850,7 +927,7 @@ class PenBar:
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         self.menu = self._window('bar', self._build_dial(),
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
-                                 tab=tab)
+                                 tab=tab, lock_bottom=True)   # top left: the Mix color field
         self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout,
                                            self.library_flyout], self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
@@ -870,7 +947,7 @@ class PenBar:
 
     # ---- building ------------------------------------------------------------------
 
-    def _window(self, name, content, close, tab=None):
+    def _window(self, name, content, close, tab=None, lock_bottom=False):
         locked = lambda: self._locked(name)
         panel = _MovePanel(content, padding=_PANEL_PADDING, key=f"{name.upper()}_PANEL", locked=locked,
                            on_move_begin=lambda: self._begin_move(name), on_move=self._move_to,
@@ -879,7 +956,7 @@ class PenBar:
                              on_click=lambda: self._toggle_lock(name))
         grip = _ResizeHandle(lambda: self._begin_resize(name), self._resize_to, self._end_resize,
                              key=f"{name.upper()}_RESIZE")
-        return _Window(panel, lock, grip, locked=locked, close=close, tab=tab)
+        return _Window(panel, lock, grip, locked=locked, close=close, tab=tab, lock_bottom=lock_bottom)
 
     def _knob(self, channel, label, radius, font_size, value_font_size):
         if channel == 'size':
@@ -964,9 +1041,9 @@ class PenBar:
         return dial
 
     def _add_corners(self, dial):
-        """Top left the color section: the color history band, secondary / Pipette /
-        Swap / primary; bottom left the color selector button; bottom right the custom
-        curve button (on Custom's outer edge) and Settings."""
+        """Top left the color section: the color history band, secondary's Picker /
+        secondary / Swap + Mix / primary / primary's Picker; bottom left the palette and its
+        buttons; bottom right, past the second falloff row, Curve and Settings."""
         a = self.actions
         corner = dict(chamfer=CORNER_CHAMFER)
 
@@ -974,16 +1051,29 @@ class PenBar:
         swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
-        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], lambda: not a.rmb_lock(), key='PRIMARY',
+        primary_active = lambda: not a.rmb_lock()
+        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], primary_active, key='PRIMARY',
                                on_click=lambda: a.set_rmb_lock(False))
-        swap = CornerSegment("Swap", key='SWAP', painter=_paint_swap, on_click=a.swap_colors)
-        picker = CornerSegment("Picker", key='PICKER', painter=_paint_eyedropper,
-                               selected=lambda: a.armed() == 'EYEDROPPER', on_click=lambda: a.toggle_arm('EYEDROPPER'))
-        self.arm_buttons = {'EYEDROPPER': picker}
         secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
                                  on_click=lambda: a.set_rmb_lock(True))
-        dial.add_corner([secondary, picker, swap, primary], COLOR_CORNER_INNER, SQUARE_HALF, *COLORS_ARC,
-                        weights=COLORS_WEIGHTS, **corner)
+
+        def picker(which, rgb, active):
+            kind = f'EYEDROPPER_{which}'
+            return CornerSegment(f"Pick {which.title()}", key=f'PICKER_{which}',
+                                 painter=_paint_target_picker(rgb, active),
+                                 selected=lambda: a.armed() == kind, on_click=lambda: a.toggle_arm(kind))
+        pick_primary = picker('PRIMARY', lambda: a.colors()[0], primary_active)
+        pick_secondary = picker('SECONDARY', lambda: a.colors()[1], a.rmb_lock)
+        self.arm_buttons = {'EYEDROPPER_PRIMARY': pick_primary, 'EYEDROPPER_SECONDARY': pick_secondary}
+        mix = _MixCorner(self, a.mix_color, key='MIX', on_click=a.use_mix_color)
+        dial.add_corner([pick_secondary, secondary, mix, primary, pick_primary], COLOR_CORNER_INNER, SQUARE_HALF,
+                        *COLORS_ARC, weights=COLORS_WEIGHTS, chamfer=0.0)
+        # Swap by the circle in the middle; the Mix field behind it, out to the corner.
+        swap_outer = COLOR_CORNER_INNER + SWAP_DEPTH
+        swap = RingSegment("Swap", key='SWAP', painter=_paint_swap, on_click=a.swap_colors)
+        dial.add_band([swap], COLOR_CORNER_INNER, swap_outer, mix.a0, mix.a1)
+        swap.edge_extra = (0.0, 0.0)      # side edges in line with the Mix field's
+        mix.r0 = swap_outer + DIAL_GAP
 
         from .pen_palettes import paint_library, paint_palettes
         palettes = CornerSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
@@ -1014,6 +1104,11 @@ class PenBar:
                                  selected=lambda: self.flyout is self.settings_flyout,
                                  on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
         dial.add_corner([curve, settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *CURVE_SETTINGS_ARC, **corner)
+
+        # Top right, past the S / A / M sliders: Save the painted image.
+        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved),
+                             tint=TINT_SAVE, on_click=a.save_image)
+        dial.add_corner([save], CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
 
     def open_library(self, opener):
         """The library flyout; the palette band switches to its palette view (drag targets)."""

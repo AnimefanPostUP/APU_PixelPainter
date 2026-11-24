@@ -191,7 +191,8 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   (`drag_release`). `ui/pen_bar.PenBar` holds two floating elements, each its
   own non-modal `Overlay` with its own theme scale: the pen menu and the color
   selector. Each is a `_Window`: a `_MovePanel` (drag the background to move),
-  a padlock (top left: no moving / resizing), an X (top right) and a resize
+  a padlock (no moving / resizing; top left, the pen menu's bottom left:
+  `_Window(lock_bottom=True)`), an X (top right) and a resize
   triangle (bottom right). Size and position live in tool state
   (`pen_bar_scale` / `pen_bar_pos`, `pen_color_scale` / `pen_color_pos`,
   `ui.pen_bar.LAYOUT_STATE`; scale limits `SCALE_LIMITS`); both are clipped to
@@ -203,10 +204,13 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
-  extreme corners cut for the lock / X / resize triangle): top left the color
-  section -- the color history band (`tools/color_history.py`, recorded by
-  `StrokeTool.begin_stroke` for tools with `paints_color`) and the secondary /
-  primary color with Pipette / Swap between them; bottom left the palette
+  extreme corners cut for the lock / X / resize triangle, except top left): top
+  left the color section -- the color history band (`tools/color_history.py`,
+  recorded by `StrokeTool.begin_stroke` for tools with `paints_color`), the
+  secondary / primary color each with its own picker (arm kinds
+  `EYEDROPPER_PRIMARY` / `_SECONDARY`; the press sets state `pen_pick_target`
+  for `PenEyedropperTool`), and between them Swap with the Mix field
+  (`_MixCorner`, `PenBarTool.mix_color` / `use_mix_color`) behind it; bottom left the palette
   band (24 slots in `PALETTE_ROWS` bands) and Palettes / Color / Library.
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
@@ -248,7 +252,13 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   E = primary / secondary; it commits once, on release. It edits
   the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
   settings popup > Color Selector) the pad is `live` (commits every step).
-  *Settings* opens the settings popup. The color from before (`pen_color_original`) stays marked and
+  *Settings* opens the settings popup. *Save* (top-right corner, `SAVE_ARC`)
+  runs `image.pixel_painter_save_image` (`ui/image_save_ops.py`) on the painted
+  image; a dot shows while `image.is_dirty`. How it saves comes from settings >
+  Pen > Save Image: `pixel_painter_save_image_method` (`AUTO`: repack packed,
+  save to its file, else pack / `PACK` / `FILE`: write a file, images without
+  one go to `pixel_painter_save_image_folder`/`<name>.png`) and
+  `pixel_painter_save_image_blend` (save the .blend afterwards). The color from before (`pen_color_original`) stays marked and
   shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`

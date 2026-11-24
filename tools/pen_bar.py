@@ -55,7 +55,8 @@ class PenBarTool(ToolFrame):
     priority = 200
 
     state_defaults = {
-        'pen_armed':         None,   # 'EYEDROPPER': runs on the next canvas press
+        'pen_armed':         None,   # 'EYEDROPPER_PRIMARY' / '_SECONDARY': runs on the next canvas press
+        'pen_pick_target':   None,   # the color the running pen eyedropper sets ('PRIMARY' / 'SECONDARY')
         'pen_rmb_lock':      False,  # the pen tip paints like the right mouse button
         'pen_bar_collapsed': False,
         'pen_color_panel':   True,   # the color selector is shown
@@ -125,6 +126,7 @@ class PenBarTool(ToolFrame):
         if armed and event.is_press:
             if event.type == 'LEFTMOUSE':
                 ctx.state['pen_armed'] = None
+                ctx.state['pen_pick_target'] = 'SECONDARY' if armed == 'EYEDROPPER_SECONDARY' else 'PRIMARY'
                 self.eyedropper.activate(ctx, event)
                 event.consume()
                 return
@@ -338,6 +340,19 @@ class PenBarTool(ToolFrame):
     def colors(self):
         ctx = self._c()
         return ctx.settings.get_brush_rgb(ctx.context), ctx.settings.get_brush_secondary_rgb(ctx.context)
+
+    def mix_color(self):
+        """The primary and secondary color mixed half and half."""
+        primary, secondary = self.colors()
+        if primary is None or secondary is None:
+            return primary or secondary
+        return tuple((p + s) * 0.5 for p, s in zip(primary[:3], secondary[:3]))
+
+    def use_mix_color(self):
+        """The active color (secondary with the RMB lock) becomes the mix."""
+        rgb = self.mix_color()
+        if rgb is not None:
+            self.set_color('SECONDARY' if self.rmb_lock() else 'PRIMARY', rgb)
 
     def swap_colors(self):
         ctx = self._c()
@@ -645,6 +660,18 @@ class PenBarTool(ToolFrame):
 
     def set_state(self, key, value):
         self._c().state[key] = value
+
+    def save_image(self):
+        """Save the painted image (how: settings > Pen > Save Image, ui/image_save_ops.py)."""
+        self._run_deferred(lambda: bpy.ops.image.pixel_painter_save_image())
+
+    def image_unsaved(self):
+        """The painted image has changes that are not saved / packed yet."""
+        try:
+            image = self._c().image
+            return bool(image is not None and image.is_dirty)
+        except Exception:
+            return False
 
     def undo(self):
         self._run_deferred(lambda: bpy.ops.ed.undo())

@@ -169,6 +169,22 @@ def _draw_pen(layout, context):
     layout.prop(wm, "pixel_painter_pen_pressure_min", text="Minimum Pressure", slider=True)
 
     layout.separator()
+    layout.label(text="Save Image (pen menu, top right)", icon='FILE_TICK')
+    row = layout.row(align=True)
+    row.prop(wm, "pixel_painter_save_image_method", expand=True)
+    folder = layout.row(align=True)
+    folder.enabled = wm.pixel_painter_save_image_method == 'FILE'
+    folder.prop(wm, "pixel_painter_save_image_folder", text="Folder")
+    layout.prop(wm, "pixel_painter_save_image_blend", text="Also Save .blend", toggle=True, icon='BLENDER')
+    _hints(layout, (
+        "Auto: repack packed images, save images with a file, pack new ones.",
+        "Pack: always pack into the .blend. File: always write a file;",
+        "images without one go to the folder (// = next to the .blend).",
+        "Packed pixels only reach the disk when the .blend is saved.",
+    ))
+    layout.operator("image.pixel_painter_save_image", text="Save Image Now", icon='FILE_TICK')
+
+    layout.separator()
     layout.label(text="Pen Bar Usage")
     _hints(layout.box(), (
         "Size: press and drag up/down; S / A / M: press or drag",
@@ -181,6 +197,7 @@ def _draw_pen(layout, context):
         "Color history (along the circle): tap to paint with it",
         "Curve (beside Custom falloff): edit / draw the curve",
         "Settings: opens this menu",
+        "Save (top right): saves the image; dot = unsaved",
         "Picker: arm, then tap the canvas",
         "Blend: press, drag onto entry, lift",
         "RMB: pen paints the secondary color",
