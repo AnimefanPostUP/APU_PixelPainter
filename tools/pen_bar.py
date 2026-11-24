@@ -7,9 +7,9 @@ widgets it
 
 * runs the armed eyedropper on the next canvas press,
 * edits the pen's color for the color pad (keeping hue / saturation through
-  grey and black, where RGB has none) -- applied on release, or with Preview
-  on live while the pen is down (the original stays marked until the old /
-  new bubble is tapped), and
+  grey and black, where RGB has none) -- applied on release (the original
+  stays marked until the old / new bubble is tapped), or with Preview on kept
+  pending (the brush keeps its color) until the old / new bubble is tapped, and
 * with the RMB lock on, turns pen-tip (left button) presses into right
   button presses, so the pen paints with the secondary color / RMB settings.
 """
@@ -57,10 +57,11 @@ class PenBarTool(ToolFrame):
         'pen_rmb_lock':      False,  # the pen tip paints like the right mouse button
         'pen_bar_collapsed': False,
         'pen_color_panel':   True,   # color pad shown in the bar (under the color row)
-        'pen_color_preview': False,  # pad applies live while the pen is down (else on release)
+        'pen_color_preview': False,  # pad edits stay pending until the bubble is tapped (else apply on release)
         'pen_bar_scale':     1.0,    # resize handle: 0.2 .. 2 x the default size
         'pen_hsv':           None,   # (rgb, hsv) last written by the color pad
         'pen_color_original': None,  # (target, hsv) before the pad edits: bubble + cross compare to it
+        'pen_color_pending': None,   # (target, hsv) Preview: pad color not yet applied to the brush
     }
     persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel', 'pen_color_preview',
                         'pen_bar_scale')
@@ -211,37 +212,61 @@ class PenBarTool(ToolFrame):
         target, hsv = original
         return hsv if target == self._button(ctx) else None  # RMB lock switched: other color
 
+    def _pending(self, ctx):
+        """Preview: HSV picked on the pad but not yet applied to the pen's color, or None."""
+        pending = ctx.state.get('pen_color_pending')
+        if not pending or not ctx.state.get('pen_color_preview'):
+            return None
+        target, hsv = pending
+        return hsv if target == self._button(ctx) else None  # RMB lock switched: other color
+
     def pen_hsv(self):
-        return self._applied_hsv(self._c())
+        ctx = self._c()
+        pending = self._pending(ctx)
+        return pending if pending is not None else self._applied_hsv(ctx)
 
     def set_pen_hsv(self, h, s, v):
-        """The color pad's commit (with Preview on: every step while the pen is down)."""
+        """The color pad's commit (with Preview on: every step while the pen is down).
+
+        With Preview on the color is only kept pending; the bubble applies it."""
         ctx = self._c()
+        if ctx.state.get('pen_color_preview'):
+            ctx.state['pen_color_pending'] = (self._button(ctx), (h, s, v))
+            return
         if self._original(ctx) is None:
             ctx.state['pen_color_original'] = (self._button(ctx), self._applied_hsv(ctx))
         self._apply_hsv(ctx, h, s, v)
 
     def original_hsv(self):
-        """Marked on the pad (cross + ticks) until the bubble is tapped."""
-        return self._original(self._c())
+        """Marked on the pad (cross + ticks): the applied color while a Preview is
+        pending, else the color from before the pad edits until the bubble is tapped."""
+        ctx = self._c()
+        if self._pending(ctx) is not None:
+            return self._applied_hsv(ctx)
+        return self._original(ctx)
 
     def has_color_change(self):
-        ctx = self._c()
-        original = self._original(ctx)
-        if original is None:
-            return False
-        return any(abs(a - b) > 1e-4 for a, b in zip(colorsys.hsv_to_rgb(*original), self._pen_color(ctx)))
+        old, new = self.preview_colors()
+        return any(abs(a - b) > 1e-4 for a, b in zip(old, new))
 
     def preview_colors(self):
         """(old, new) RGB for the preview bubble."""
         ctx = self._c()
-        new = tuple(self._pen_color(ctx))
+        applied = tuple(self._pen_color(ctx))
+        pending = self._pending(ctx)
+        if pending is not None:
+            return applied, colorsys.hsv_to_rgb(*pending)
         original = self._original(ctx)
-        return (colorsys.hsv_to_rgb(*original) if original is not None else new), new
+        return (colorsys.hsv_to_rgb(*original) if original is not None else applied), applied
 
     def accept_color_change(self):
-        """The bubble: the current color becomes the reference."""
-        self._c().state['pen_color_original'] = None
+        """The bubble: applies a pending Preview color; the current color becomes the reference."""
+        ctx = self._c()
+        pending = self._pending(ctx)
+        if pending is not None:
+            self._apply_hsv(ctx, *pending)
+        ctx.state['pen_color_pending'] = None
+        ctx.state['pen_color_original'] = None
 
     def color_preview(self):
         return bool(self._c().state.get('pen_color_preview'))
@@ -249,6 +274,7 @@ class PenBarTool(ToolFrame):
     def toggle_color_preview(self):
         state = self._c().state
         state['pen_color_preview'] = not state.get('pen_color_preview')
+        state['pen_color_pending'] = None  # an unapplied Preview color is discarded
 
     def _apply_hsv(self, ctx, h, s, v):
         rgb = colorsys.hsv_to_rgb(h, s, v)
