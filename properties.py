@@ -376,6 +376,10 @@ SCENE_PROPERTIES = {
     'mask_selection': lambda: bpy.props.StringProperty(
         name="Pixel Painter Mask", description="Chosen mask islands / parts (JSON, see tools/mask.py)",
         default="", options={'HIDDEN'}),
+    'pen_layout': lambda: bpy.props.StringProperty(
+        name="Pixel Painter Pen Layout",
+        description="Pen menu windows: open, position, scale, lock (JSON, see tools/pen_layout.py)",
+        default="", options={'HIDDEN'}),
 }
 
 

@@ -1539,6 +1539,10 @@ class PenBar:
             overlay.pressed = None
             overlay.pointer_widget = None
 
+    def dragging(self):
+        """Something is being dragged (an element moved / resized, a value or a color)."""
+        return any(ov.dragging is not None for _w, ov in self.windows.values())
+
     def end_drag(self):
         """The host lost the pointer: keep the dragged value (a carried color is dropped nowhere)."""
         self.drag_preview = None

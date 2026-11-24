@@ -283,7 +283,14 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   Orbit (arrows around Fit; zoom, Center, Persp / Ortho in the corners). The
   explanations show only while the window's '?' corner button is on
   (`_Window.help`, state `pen_<name>_help`). Kit hooks used: `Button.outline`,
-  `Group(title_indent=)`. The color from before (`pen_color_original`) stays marked and
+  `Group(title_indent=)`.
+  Per project: `PenBarTool.layout_keys` (every window's open / collapsed state,
+  position, scale, lock, help, Auto Fit) are stored as JSON in the scene property
+  `pixel_painter_pen_layout` (`tools/pen_layout.py`, `tests/test_pen_layout.py`).
+  `LayoutStore.load_if_needed` (from `_layout`, also in draw callbacks: it only
+  updates the Python state) loads it when the file / scene changes;
+  `save_if_changed` (from `on_event`, not while dragging) writes it after a change.
+  A project without a stored layout keeps the current one until its first change. The color from before (`pen_color_original`) stays marked and
   shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`

@@ -103,6 +103,7 @@ _MODULES = (
     'ui.pen_settings',
     'ui.pen_bar',
     'ui.pen_windows',
+    'tools.pen_layout',
     'tools.pen_bar',
     'tools.selection_ops',
     'tools.selection',

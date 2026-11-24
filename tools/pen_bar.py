@@ -27,6 +27,7 @@ from ..ui.kit import Theme, UIEvent, hsv_for_rgb
 from ..ui.pen_bar import LAYOUT_STATE, PenBar
 from ..utils import blender_utils, palette_library
 from . import blend_modes, color_history, color_palette, falloff, mask, view_nav
+from .pen_layout import LayoutStore
 from .subtools.pen import PenEyedropperTool
 
 GRID_DEFAULT_OPACITY = 0.5     # a grid toggled on at 0 % starts here
@@ -69,6 +70,8 @@ class PenBarTool(ToolFrame):
         'pen_view_panel':    False,  # the View window is shown
         'pen_view_locked':   False,
         'pen_view_autofit':  True,   # View window: re-fit the object after orient / orbit / roll
+        'pen_mask_help':     False,  # the window's '?' help text is shown
+        'pen_view_help':     False,
         'pen_palette_view':  False,  # the palette band shows the project's palettes (else the active one's colors)
         'pen_palette_status': None,  # last message of the palette library window (also set by palette_ops)
         'pen_hsv':           None,   # (rgb, hsv) last written by the color pad
@@ -78,7 +81,13 @@ class PenBarTool(ToolFrame):
     persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel',
                         *LAYOUT_STATE, 'pen_bar_locked', 'pen_color_locked', 'pen_palette_view',
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
-                        'pen_view_autofit')
+                        'pen_view_autofit', 'pen_mask_help', 'pen_view_help')
+    # Saved per project (scene property, tools/pen_layout.py): the windows' open / collapsed
+    # state, position, scale, lock and help.
+    layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
+                   'pen_color_panel', 'pen_color_locked',
+                   'pen_mask_panel', 'pen_mask_locked', 'pen_mask_help',
+                   'pen_view_panel', 'pen_view_locked', 'pen_view_help', 'pen_view_autofit')
 
     def __init__(self, registry):
         super().__init__()
@@ -87,6 +96,7 @@ class PenBarTool(ToolFrame):
         self._ctx = None            # ToolContext of the event / draw being handled
         self._remap_release = False
         self._library = None        # palette library (palettes.json), loaded on first use
+        self._layout_store = LayoutStore({k: self.state_defaults[k] for k in self.layout_keys})
 
     def on_register(self):
         # No triggers: the bar starts them for the next canvas press.
@@ -117,6 +127,8 @@ class PenBarTool(ToolFrame):
         self._ctx = ctx
         try:
             self._handle(ctx, event)
+            if self.bar is None or not self.bar.dragging():
+                self._layout_store.save_if_changed(ctx.context, ctx.state)
         finally:
             self._ctx = None
 
@@ -178,6 +190,7 @@ class PenBarTool(ToolFrame):
             return None
         if self.bar is None:
             self.bar = PenBar(self)
+        self._layout_store.load_if_needed(ctx.context, ctx.state)
         left, right = _side_insets(area, region)
         side = getattr(ctx.wm, 'pixel_painter_pen_bar_side', 'LEFT')
         self.bar.layout(region.width, region.height, side, left, right, Theme.for_context(ctx.context))
