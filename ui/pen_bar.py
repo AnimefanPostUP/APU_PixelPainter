@@ -123,9 +123,18 @@ BLEND_GROUPS = (("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL/HSV", 'HSL'))
 # Dial (unscaled px; angles in degrees counter-clockwise from +x, 90 = up).
 DIAL_GAP = 2.5                 # spacing between segments of a category / rings / the Size knob
 GROUP_GAP = 14.0               # spacing between categories (a divider line runs through it)
-SIZE_RADIUS = 30.0
-INNER_RING = (32.5, 72.5)
-OUTER_RING = (75.0, 115.0)
+SQUARE_HALF = 172.0                  # half size of the enclosing square
+HISTORY_DEPTH = 14.0                 # the color history band / each palette band
+PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
+PALETTE_DEPTH = PALETTE_ROWS * HISTORY_DEPTH + (PALETTE_ROWS - 1) * DIAL_GAP
+CORNER_GAP = 4.0                     # circle -> first band (divider lines end in the bands' end gaps)
+# The circle fills the square except for the palette bands' depth on each side;
+# the rings keep their original proportions (designed for an outer radius of 115).
+DIAL_RADIUS = SQUARE_HALF - CORNER_GAP - PALETTE_DEPTH
+_RING_SCALE = DIAL_RADIUS / 115.0
+SIZE_RADIUS = 30.0 * _RING_SCALE
+INNER_RING = (SIZE_RADIUS + DIAL_GAP, 72.5 * _RING_SCALE)
+OUTER_RING = (INNER_RING[1] + DIAL_GAP, DIAL_RADIUS)
 SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
 TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
 MODE_ARC = (210.0, 270.0)      # Blend | Alphalock, Pixel / Free, RMB
@@ -142,17 +151,17 @@ CUSTOM_TINT_AMOUNT = 0.45
 # the diagonal, where the corner has room for its curve button.
 FALLOFF_RING_ORDER = ('SHARPEN', 'SPHERE', 'CUSTOM', 'LINEAR', 'SMOOTH', 'CONSTANT')
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
-CORNER_INNER = OUTER_RING[1] + 8.0   # past the fading divider lines
-SQUARE_HALF = 172.0                  # half size of the enclosing square
+CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
 COLORS_ARC = (90.0, 180.0)           # top left: history band along the circle; secondary | Pipette | Swap | primary
 COLORS_WEIGHTS = (2.0, 1.0, 1.0, 2.0)
-COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle); Palettes | Color | Library
-PALETTE_BUTTON_WEIGHTS = (1.0, 1.3, 1.0)
-HISTORY_DEPTH = 14.0                 # the color history band / each palette band
+COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
+# Palettes | Color | Library: pushed together toward the diagonal, the only part of
+# the corner with room left past the palette bands.
+PALETTE_BUTTON_ARC = (200.0, 250.0)
+PALETTE_BUTTON_WEIGHTS = (1.2, 1.0, 1.2)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
-PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
-WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_ROWS * (HISTORY_DEPTH + DIAL_GAP)
+WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 SETTINGS_END = 360.0                 # bottom right: the curve button (Custom's angles), Settings up to here
 CURVE_EDITOR_SIZE = (220.0, 150.0)
@@ -975,7 +984,7 @@ class PenBar:
         library = CornerSegment("Library", key='LIBRARY', painter=paint_library,
                                 selected=lambda: self.flyout is self.library_flyout,
                                 on_click=lambda: self.open_library(library))
-        dial.add_corner([palettes, color, library], WHEEL_CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC,
+        dial.add_corner([palettes, color, library], WHEEL_CORNER_INNER, SQUARE_HALF, *PALETTE_BUTTON_ARC,
                         weights=PALETTE_BUTTON_WEIGHTS, **corner)
 
         # Palette band in front of them: the active palette's colors, or (palette view) the
