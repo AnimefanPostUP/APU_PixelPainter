@@ -29,12 +29,13 @@ everything here works with press, drag and release only.
     *Custom* in its own color.
 
   The corners of the square around the circle are buttons shaped to fit
-  between the circle and the square (icons): *Picker* (eyedropper: arms it
-  for the next canvas press) and *Color* (hue ring around the pen's color:
-  shows / hides the color selector) top left; bottom left the color history
-  along the circle (the last painted colors, newest left; tap paints with
-  it) and the primary and secondary color with *Swap* between them (tap a
-  color: the pen paints with it -- the secondary one sets the RMB lock);
+  between the circle and the square (icons). Top left the color section: the
+  color history along the circle (the last painted colors, newest left; tap
+  paints with it), the secondary and primary color (tap a color: the pen
+  paints with it -- the secondary one sets the RMB lock) with *Pipette*
+  (eyedropper: arms it for the next canvas press) and *Swap* between them;
+  bottom left *Color* (hue ring around the pen's color: shows / hides the
+  color selector);
   bottom right the *curve* button on the Custom falloff's outer edge (opens
   the curve flyout, selects Custom) and *Settings* (gear: the settings popup).
 * **Curve flyout**: the custom falloff curve (the brush's falloff curve; x =
@@ -128,9 +129,9 @@ FALLOFF_RING_ORDER = ('SHARPEN', 'SPHERE', 'CUSTOM', 'LINEAR', 'SMOOTH', 'CONSTA
 CORNER_INNER = OUTER_RING[1] + 8.0   # past the fading divider lines
 SQUARE_HALF = 150.0                  # half size of the enclosing square
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
-PICKER_ARC = (90.0, 180.0)           # top left: Picker | Color
-COLORS_ARC = (180.0, 270.0)          # bottom left: history band along the circle; primary | Swap | secondary
-COLORS_WEIGHTS = (2.0, 1.0, 2.0)
+COLORS_ARC = (90.0, 180.0)           # top left: history band along the circle; secondary | Pipette | Swap | primary
+COLORS_WEIGHTS = (2.0, 1.0, 1.0, 2.0)
+COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the color selector button
 HISTORY_DEPTH = 14.0                 # the color history band
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 SETTINGS_END = 360.0                 # bottom right: the curve button (Custom's angles), Settings up to here
@@ -200,11 +201,11 @@ class _ColorCorner(CornerSegment):
 
 
 def _paint_swap(dc, x, y, size, alpha):
-    """Double arrow from the primary to the secondary color (diagonal, bottom-left corner)."""
+    """Double arrow between the primary and the secondary color (along the top-left diagonal)."""
     theme = dc.theme
     r = min(size * 0.5, theme.px(12.0))
     color = with_alpha(theme.text, 0.9 * alpha)
-    ux, uy = math.cos(math.radians(-45.0)), math.sin(math.radians(-45.0))
+    ux, uy = math.cos(math.radians(45.0)), math.sin(math.radians(45.0))
     length, head = r * 0.8, r * 0.4
     a = (x - ux * length, y - uy * length)
     b = (x + ux * length, y + uy * length)
@@ -732,28 +733,30 @@ class PenBar:
         return dial
 
     def _add_corners(self, dial):
-        """Picker / Color top left; the color history band, primary / Swap / secondary
-        bottom left; the custom curve button (on Custom's outer edge) and Settings bottom right."""
+        """Top left the color section: the color history band, secondary / Pipette /
+        Swap / primary; bottom left the color selector button; bottom right the custom
+        curve button (on Custom's outer edge) and Settings."""
         a = self.actions
         corner = dict(chamfer=CORNER_CHAMFER)
-        picker = CornerSegment("Picker", key='PICKER', painter=_paint_eyedropper,
-                               selected=lambda: a.armed() == 'EYEDROPPER', on_click=lambda: a.toggle_arm('EYEDROPPER'))
-        self.arm_buttons = {'EYEDROPPER': picker}
-        color = CornerSegment("Color", key='COLOR', painter=_paint_color_wheel(a.pen_rgb),
-                              selected=a.color_panel_open, on_click=a.toggle_color_panel)
-        dial.add_corner([picker, color], CORNER_INNER, SQUARE_HALF, *PICKER_ARC, **corner)
 
-        # Color history along the circle, newest at the left end.
+        # Color history along the circle, newest at the left end (next to the primary color).
         swatches = [_HistorySwatch(lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
-        dial.add_band(swatches, CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
+        dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
         primary = _ColorCorner(lambda: a.colors()[0], lambda: not a.rmb_lock(), key='PRIMARY',
                                on_click=lambda: a.set_rmb_lock(False))
         swap = CornerSegment("Swap", key='SWAP', painter=_paint_swap, on_click=a.swap_colors)
+        picker = CornerSegment("Picker", key='PICKER', painter=_paint_eyedropper,
+                               selected=lambda: a.armed() == 'EYEDROPPER', on_click=lambda: a.toggle_arm('EYEDROPPER'))
+        self.arm_buttons = {'EYEDROPPER': picker}
         secondary = _ColorCorner(lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
                                  on_click=lambda: a.set_rmb_lock(True))
-        dial.add_corner([primary, swap, secondary], COLOR_CORNER_INNER, SQUARE_HALF, *COLORS_ARC,
+        dial.add_corner([secondary, picker, swap, primary], COLOR_CORNER_INNER, SQUARE_HALF, *COLORS_ARC,
                         weights=COLORS_WEIGHTS, **corner)
+
+        color = CornerSegment("Color", key='COLOR', painter=_paint_color_wheel(a.pen_rgb),
+                              selected=a.color_panel_open, on_click=a.toggle_color_panel)
+        dial.add_corner([color], CORNER_INNER, SQUARE_HALF, *COLOR_WHEEL_ARC, **corner)
 
         # The curve button sits on the Custom falloff's outer edge, in line with it.
         custom = self.custom_falloff

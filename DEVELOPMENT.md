@@ -201,10 +201,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
-  extreme corners cut for the lock / X / resize triangle): Picker / Color top
-  left, the color history band (`tools/color_history.py`, recorded by
-  `StrokeTool.begin_stroke` for tools with `paints_color`) and primary / Swap /
-  secondary bottom left, the custom curve button (in line with the Custom
+  extreme corners cut for the lock / X / resize triangle): top left the color
+  section -- the color history band (`tools/color_history.py`, recorded by
+  `StrokeTool.begin_stroke` for tools with `paints_color`) and the secondary /
+  primary color with Pipette / Swap between them; bottom left the color selector
+  button; the custom curve button (in line with the Custom
   falloff, `FALLOFF_RING_ORDER`) and Settings bottom right. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
   (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`). *Color* toggles the
