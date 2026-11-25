@@ -77,7 +77,7 @@ _stub('bpy.app', handlers=sys.modules['bpy.app.handlers'])
 _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'utils.native', 'utils.pixel_io', 'utils.math_utils', 'tools.draw_blending', 'tools.draw_functions',
     'tools.draw_tool_smooth', 'tools.native_paint', 'tools.mask', 'tools.mask_geometry',
-    'tools.selection_ops', 'tools.base', 'tools.brushes', 'tools.filters')}
+    'tools.selection_ops', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -441,6 +441,112 @@ class ToolParityTest(NativeTestCase):
         finally:
             np_paint.paint_weighted = original
         self.assertEqual(len(calls), 2)   # once per step, native run only
+
+
+def quad_island_mesh():
+    """Three UV islands of one quad each: A and B side by side (2 texels apart at 40 px),
+    C stacked exactly on A (mirrored UVs)."""
+    rects = [(0.1, 0.1, 0.45, 0.9), (0.5, 0.1, 0.9, 0.9), (0.1, 0.1, 0.45, 0.9)]
+    tri_verts, uvs = [], []
+    for q, (u0, v0, u1, v1) in enumerate(rects):
+        base = q * 4
+        corners = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+        for tri in ((0, 1, 2), (0, 2, 3)):
+            tri_verts.append([base + i for i in tri])
+            uvs.extend(corners[i] for i in tri)
+    tri_verts = np.array(tri_verts, dtype=np.int32)
+    tri_loops = np.arange(len(uvs), dtype=np.int32).reshape(-1, 3)
+    uvs = np.array(uvs, dtype=np.float32)
+    # the two triangles of a quad share the diagonal: same vertices, same UVs
+    return SimpleNamespace(tri_verts=tri_verts, tri_loops=tri_loops, uvs=uvs, version=987654,
+                           tri_uv=uvs[tri_loops].astype(np.float64))
+
+
+class IslandClipTest(NativeTestCase):
+    W = H = 40
+
+    def setUp(self):
+        self.view3d = _mod('core.view3d')
+        self.base_mod = _mod('tools.base')
+        self.brushes = _mod('tools.brushes')
+        self.filters = _mod('tools.filters')
+        self.cache = quad_island_mesh()
+        self._orig_cache = self.view3d._mesh_cache
+        self.view3d._mesh_cache = lambda context: self.cache
+        self.view3d._island_map = None
+
+    def tearDown(self):
+        self.view3d._mesh_cache = self._orig_cache
+        self.view3d._island_map = None
+        super().tearDown()
+
+    def island_map(self, use_native):
+        native.set_override(use_native)
+        self.view3d._island_map = None
+        return self.view3d.island_map(None, SimpleNamespace(size=(self.W, self.H)))
+
+    def test_labels_both_backends(self):
+        maps = [self.island_map(False), self.island_map(True)]
+        np.testing.assert_array_equal(maps[0].labels, maps[1].labels)
+        np.testing.assert_array_equal(maps[0].tri_label, maps[1].tri_label)
+        m = maps[1]
+        a = m.labels[20 * self.W + 10]
+        b = m.labels[20 * self.W + 28]
+        self.assertGreaterEqual(a, 0)
+        self.assertGreaterEqual(b, 0)
+        self.assertNotEqual(a, b)
+        self.assertEqual(m.tri_label[0], a)            # A's triangles
+        self.assertEqual(m.tri_label[4], a)            # C overlaps A: merged
+        self.assertEqual(m.tri_label[2], b)
+        self.assertEqual(m.labels[0], -1)              # padding far from every island
+
+    def paint(self, tool, use_native, cursor, cursor_tri, steps, base):
+        islands = self.island_map(use_native)
+        native.set_override(use_native)
+        img = FakeImage(self.W, self.H, base)
+        state = {'last_paint_cx': None, 'last_paint_cy': None, 'stroke_painted': None}
+        wm = SimpleNamespace(pixel_painter_circle_falloff='CONSTANT', pixel_painter_smooth_falloff='CONSTANT',
+                             pixel_painter_smear_falloff='CONSTANT', pixel_painter_spray_falloff='CONSTANT',
+                             pixel_painter_spray_strength=0.5)
+        env = self.base_mod.DrawEnvironment(
+            context=None, state=state, img=img, mode=tool.tool_id, color=(1.0, 0.0, 0.0), blend='MIX',
+            opacity=1.0, alpha_opacity=1.0, protect_transparent=False, radius=8, spacing='FREE', wm=wm,
+            cursor_x=cursor[0], cursor_y=cursor[1], interpolation_steps=lambda: list(steps),
+            curve_sampler_factory=lambda ctx: None, modifier=0.5)
+        env.islands = self.view3d.IslandClip(islands, cursor, cursor_tri)
+        pixel_io.begin_stroke(img)
+        tool.on_stroke_begin(env)
+        with pixel_io.deferred(img):
+            tool.on_draw(env)
+        pixel_io.end_stroke()
+        native.set_override(None)
+        return img.arr.copy(), islands
+
+    def test_stamps_stay_on_their_island(self):
+        base = random_image(self.W, self.H, 30)
+        cursor = (16, 20)            # island A, 2 texels from its right edge, B just beyond
+        steps = [(15, 19), (16, 20)]
+        for tool_cls in (self.brushes.SquareBrushTool, self.brushes.CircleBrushTool,
+                         self.brushes.SprayBrushTool, self.brushes.EraserTool, self.filters.SmoothTool):
+            results = []
+            for use_native in (False, True):
+                arr, islands = self.paint(tool_cls(), use_native, cursor, 0, steps, base)
+                changed = np.any(arr.reshape(-1, 4) != base.reshape(-1, 4), axis=1)
+                label_a = islands.tri_label[0]
+                self.assertTrue(changed.any(), tool_cls.__name__)
+                self.assertTrue(np.all(islands.labels[changed] == label_a),
+                                f"{tool_cls.__name__} native={use_native} painted outside island A")
+                results.append(arr)
+            if tool_cls is not self.brushes.SprayBrushTool:   # spray is random per backend
+                self.assertClose(results[0], results[1], atol=1e-5, msg=tool_cls.__name__)
+
+    def test_stamp_centered_off_island_paints_nothing(self):
+        base = random_image(self.W, self.H, 31)
+        # interpolation step in the padding (no island), cursor stamp elsewhere on A
+        for use_native in (False, True):
+            arr, islands = self.paint(self.brushes.SquareBrushTool(), use_native, (10, 20), 0,
+                                      [(2, 2)], base)
+            self.assertTrue(np.array_equal(arr, base))
 
 
 if __name__ == '__main__':

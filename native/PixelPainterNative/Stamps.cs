@@ -11,10 +11,28 @@ namespace PixelPainterNative;
 /// * stroke grid (<c>grid</c> = w*h floats kept for the whole stroke): raise
 ///   the grid to the max weight and emit only pixels that were not covered
 ///   before (their weight is read back from the grid by the caller).
+///
+/// Island clipping (3D Viewport, UV mode): with a <c>labelMap</c> (w*h ints,
+/// UV island per pixel), stamp i only covers pixels whose label equals
+/// <c>centerLabels[i]</c>; <see cref="NoClip"/> = unclipped, <see cref="Skip"/> = no pixels.
 /// </summary>
 internal static unsafe class Stamps
 {
     private const long LocalGridMaxCells = 1L << 24;   // 64 MB of floats, beyond that use a hash map
+    public const int NoClip = -2, Skip = -1;
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static bool Blocked(int* labelMap, int label, int x, int y, int w, int h)
+    {
+        if (label == NoClip)
+            return false;
+        if ((uint)x >= (uint)w || (uint)y >= (uint)h)
+            return true;
+        return labelMap[(long)y * w + x] != label;
+    }
+
+    private static int CenterLabel(int* labelMap, int* centerLabels, int i)
+        => labelMap == null || centerLabels == null ? NoClip : centerLabels[i];
 
     private sealed class Accumulator
     {
@@ -136,7 +154,7 @@ internal static unsafe class Stamps
     }
 
     public static int Kernel(int* centers, int nc, int radius, float* kernel, int w, int h,
-                             float* grid, int* outXY, float* outW, int cap)
+                             float* grid, int* labelMap, int* centerLabels, int* outXY, float* outW, int cap)
     {
         if (nc <= 0)
             return 0;
@@ -145,6 +163,9 @@ internal static unsafe class Stamps
         var acc = new Accumulator(w, h, grid, centers, nc, r);
         for (int i = 0; i < nc; i++)
         {
+            int label = CenterLabel(labelMap, centerLabels, i);
+            if (label == Skip)
+                continue;
             int cx = centers[2 * i], cy = centers[2 * i + 1];
             for (int dy = -r; dy <= r; dy++)
             {
@@ -152,7 +173,7 @@ internal static unsafe class Stamps
                 for (int dx = -r; dx <= r; dx++)
                 {
                     float v = krow[dx];
-                    if (v > 0f)
+                    if (v > 0f && !Blocked(labelMap, label, cx + dx, cy + dy, w, h))
                         acc.Add(cx + dx, cy + dy, v);
                 }
             }
@@ -163,7 +184,8 @@ internal static unsafe class Stamps
     /// <summary>utils/math_utils.get_spray_pixels at every center: random unique
     /// in-circle offsets, (density * area) per stamp, weights from the kernel.</summary>
     public static int Spray(int* centers, int nc, int radius, double density, float* kernel, int seed,
-                            int w, int h, float* grid, int* outXY, float* outW, int cap)
+                            int w, int h, float* grid, int* labelMap, int* centerLabels,
+                            int* outXY, float* outW, int cap)
     {
         if (nc <= 0)
             return 0;
@@ -173,7 +195,11 @@ internal static unsafe class Stamps
         if (r == 0)
         {
             for (int i = 0; i < nc; i++)
-                acc.Add(centers[2 * i], centers[2 * i + 1], 1f);
+            {
+                int label = CenterLabel(labelMap, centerLabels, i);
+                if (label != Skip && !Blocked(labelMap, label, centers[2 * i], centers[2 * i + 1], w, h))
+                    acc.Add(centers[2 * i], centers[2 * i + 1], 1f);
+            }
             return acc.Emit(outXY, outW, cap);
         }
         var rng = new Random(seed);
@@ -184,6 +210,9 @@ internal static unsafe class Stamps
         var seen = new bool[k * k];
         for (int i = 0; i < nc; i++)
         {
+            int label = CenterLabel(labelMap, centerLabels, i);
+            if (label == Skip)
+                continue;
             int cx = centers[2 * i], cy = centers[2 * i + 1];
             Array.Clear(seen);
             int got = 0;
@@ -198,7 +227,8 @@ internal static unsafe class Stamps
                     continue;
                 seen[ki] = true;
                 got++;
-                acc.Add(cx + dx, cy + dy, kernel[ki]);
+                if (!Blocked(labelMap, label, cx + dx, cy + dy, w, h))
+                    acc.Add(cx + dx, cy + dy, kernel[ki]);
             }
         }
         return acc.Emit(outXY, outW, cap);

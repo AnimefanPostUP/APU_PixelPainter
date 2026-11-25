@@ -370,6 +370,12 @@ tools/native_paint.py   tool-level fast paths (footprint + paint of a whole draw
   `if native.enabled():` branch. On top of that, the stroke tools' `on_draw`
   build the whole footprint in C# via `tools/native_paint.py` (not in the 3D
   Viewport's Edge mode, where `env.expand` maps stamps over seams in Python).
+* **3D Viewport, UV mode**: every stamp is clipped to the UV island under its
+  center (`core/view3d.island_map` / `IslandClip`, set as `env.islands` by
+  `StrokeTool.paint`), so a brush near an island's edge never spills onto
+  neighbouring islands or the padding. Python footprints go through
+  `env.expand` / `env.clip`; the C# stamps take `env.island_labels(centers)`.
+  Edge mode drops texels its unfold does not cover (`expand_footprint`).
 * **Same results**: the C# code mirrors the Python math (float32 where NumPy
   uses float32, colorsys in double, Python rounding). `tests/test_native.py`
   runs both paths on the same images; keep it passing when changing either side.

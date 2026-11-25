@@ -19,7 +19,7 @@ namespace PixelPainterNative;
 /// </summary>
 public static unsafe class Exports
 {
-    public const int ApiVersion = 1;
+    public const int ApiVersion = 2;
     private const int Failed = -1000;
 
     [UnmanagedCallersOnly(EntryPoint = "pp_api_version")]
@@ -66,17 +66,23 @@ public static unsafe class Exports
 
     [UnmanagedCallersOnly(EntryPoint = "pp_stamp_kernel")]
     public static int StampKernelExport(int* centers, int nc, int radius, float* kernel, int w, int h,
-                                        float* grid, int* outXY, float* outW, int cap)
+                                        float* grid, int* labelMap, int* centerLabels,
+                                        int* outXY, float* outW, int cap)
     {
-        try { return Stamps.Kernel(centers, nc, radius, kernel, w, h, grid, outXY, outW, cap); }
+        try { return Stamps.Kernel(centers, nc, radius, kernel, w, h, grid, labelMap, centerLabels, outXY, outW, cap); }
         catch { return Failed; }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "pp_stamp_spray")]
     public static int StampSprayExport(int* centers, int nc, int radius, double density, float* kernel, int seed,
-                                       int w, int h, float* grid, int* outXY, float* outW, int cap)
+                                       int w, int h, float* grid, int* labelMap, int* centerLabels,
+                                       int* outXY, float* outW, int cap)
     {
-        try { return Stamps.Spray(centers, nc, radius, density, kernel, seed, w, h, grid, outXY, outW, cap); }
+        try
+        {
+            return Stamps.Spray(centers, nc, radius, density, kernel, seed, w, h, grid, labelMap, centerLabels,
+                                outXY, outW, cap);
+        }
         catch { return Failed; }
     }
 
@@ -112,6 +118,14 @@ public static unsafe class Exports
     public static int RasterTrianglesExport(double* tris, int count, int w, int h, double grow, byte* mask)
     {
         try { Raster.Triangles(tris, count, w, h, grow, mask); return 0; }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_raster_labels")]
+    public static int RasterLabelsExport(double* tris, int* triLabels, int count, int labelCount, int w, int h,
+                                         int* outMap)
+    {
+        try { Raster.Labels(tris, triLabels, count, labelCount, w, h, outMap); return 0; }
         catch { return Failed; }
     }
 

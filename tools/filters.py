@@ -88,8 +88,8 @@ class SmearTool(StrokeTool):
         for i, (sx, sy) in enumerate(steps):
             ox = (prev_x if prev_x is not None else sx) if i == 0 else steps[i - 1][0]
             oy = (prev_y if prev_y is not None else sy) if i == 0 else steps[i - 1][1]
-            px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
-                sx, sy, env.radius, falloff, curve_sampler=curve_sampler)
+            px_list, pw_list = env.clip(sx, sy, *math_utils.get_pixels_in_circle_weighted(
+                sx, sy, env.radius, falloff, curve_sampler=curve_sampler))
             weights = dict(zip(px_list, pw_list))
             if env.protect_transparent:
                 visible = set(_filter_visible_alpha_pixels(env.img, px_list))

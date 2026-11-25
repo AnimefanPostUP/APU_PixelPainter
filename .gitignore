@@ -186,3 +186,4 @@ native/PixelPainterNative/bin/
 native/PixelPainterNative/obj/
 !native/runtimes/
 !native/runtimes/**
+native/runtimes/**/*.old

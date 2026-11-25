@@ -18,12 +18,14 @@ No ``bpy`` at import time (unit tests load this module without Blender).
 import ctypes
 import os
 import platform
+import shutil
 import sys
+import tempfile
 
 import numpy as np
 
 
-API_VERSION = 1   # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
+API_VERSION = 2   # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
 
 # Blend mode ids, must match Blend.cs.
@@ -75,14 +77,39 @@ _SIGNATURES = {
     'pp_erase': (_I, (_P, _I, _I, _P, _I, _D)),
     'pp_smooth': (_I, (_P, _I, _I, _P, _P, _I, _I, _D, _I)),
     'pp_smear': (_I, (_P, _I, _I, _P, _P, _I, _D, _D, _D, _D, _I)),
-    'pp_stamp_kernel': (_I, (_P, _I, _I, _P, _I, _I, _P, _P, _P, _I)),
-    'pp_stamp_spray': (_I, (_P, _I, _I, _D, _P, _I, _I, _I, _P, _P, _P, _I)),
+    'pp_stamp_kernel': (_I, (_P, _I, _I, _P, _I, _I, _P, _P, _P, _P, _P, _I)),
+    'pp_stamp_spray': (_I, (_P, _I, _I, _D, _P, _I, _I, _I, _P, _P, _P, _P, _P, _I)),
+    'pp_raster_labels': (_I, (_P, _P, _I, _I, _I, _I, _P)),
     'pp_restore_blocked': (_L, (_P, _P, _P, _L)),
     'pp_blend_region': (_I, (_P, _P, _P, _L, _I, _F)),
     'pp_blit_region': (_I, (_P, _I, _I, _P, _I, _I, _I, _I, _I, _I, _I, _I, _I, _I, _I, _F)),
     'pp_raster_triangles': (_I, (_P, _I, _I, _I, _D, _P)),
     'pp_fill_uv_triangles': (_L, (_P, _I, _I, _P, _I, _F, _F, _F)),
 }
+
+
+def _shadow_copy(path):
+    """Load a versioned copy, so the library in native/runtimes is never locked by
+    Blender (a loaded library is locked on Windows): it can be rebuilt while Blender
+    runs, and a reloaded addon picks up the new build. Falls back to the original path."""
+    try:
+        stat = os.stat(path)
+        folder = os.path.join(tempfile.gettempdir(), 'pixel_painter_native')
+        os.makedirs(folder, exist_ok=True)
+        base, ext = os.path.splitext(os.path.basename(path))
+        target = os.path.join(folder, f"{base}-{stat.st_mtime_ns:x}-{stat.st_size:x}{ext}")
+        if not os.path.isfile(target):
+            shutil.copy2(path, target + '.tmp')
+            os.replace(target + '.tmp', target)
+        for name in os.listdir(folder):   # older builds (ones still loaded stay locked)
+            if name.startswith(base + '-') and os.path.join(folder, name) != target:
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+        return target
+    except Exception:
+        return path
 
 
 def _load():
@@ -95,7 +122,7 @@ def _load():
         _error = f"Library not built for this platform ({_rid()[0]}): run native/build.ps1"
         return None
     try:
-        lib = ctypes.CDLL(path)
+        lib = ctypes.CDLL(_shadow_copy(path))
         for name, (restype, argtypes) in _SIGNATURES.items():
             fn = getattr(lib, name)
             fn.restype = restype
@@ -257,7 +284,12 @@ def _stamp_capacity(centers, radius, w, h, grid):
     return min(len(centers) * k * k, area)
 
 
-def _stamp_call(fn_name, centers, radius, w, h, grid, *args):
+# Island clipping label per stamp center (Stamps.cs).
+CLIP_NONE = -2   # stamp not clipped
+CLIP_SKIP = -1   # stamp paints nothing
+
+
+def _stamp_call(fn_name, centers, radius, w, h, grid, islands, *args):
     lib = _load()
     centers = coords(centers)
     if len(centers) == 0:
@@ -265,32 +297,42 @@ def _stamp_call(fn_name, centers, radius, w, h, grid, *args):
     if grid is not None:
         if grid.dtype != np.float32 or grid.size != w * h or not grid.flags.c_contiguous:
             raise ValueError("stroke grid must be a contiguous float32 array of w * h")
+    label_map = center_labels = None
+    if islands is not None:
+        label_map, center_labels = islands
+        label_map = np.ascontiguousarray(label_map, dtype=np.int32)
+        center_labels = np.ascontiguousarray(center_labels, dtype=np.int32)
+        if label_map.size != w * h or center_labels.size != len(centers):
+            raise ValueError("island labels: size mismatch")
     cap = _stamp_capacity(centers, int(radius), w, h, grid)
     out_xy = np.empty((max(cap, 1), 2), dtype=np.int32)
     out_w = np.empty(max(cap, 1), dtype=np.float32)
     n = getattr(lib, fn_name)(_ptr(centers), len(centers), int(radius), *args,
-                              w, h, _ptr(grid), _ptr(out_xy), _ptr(out_w), cap)
+                              w, h, _ptr(grid), _ptr(label_map), _ptr(center_labels),
+                              _ptr(out_xy), _ptr(out_w), cap)
     if not _ok(n) or n < 0:
         return None
     return out_xy[:n], out_w[:n]
 
 
-def stamp(centers, radius, kernel, w, h, grid=None):
+def stamp(centers, radius, kernel, w, h, grid=None, islands=None):
     """Stamp ``kernel`` ((2r+1)^2 float32, row-major dy then dx, 0 = uncovered) at every center.
 
     Returns ``(xy (N, 2) int32, weights (N,) float32)``: without ``grid`` every
     covered in-image pixel with its max weight; with a stroke ``grid`` (w*h
     float32, updated in place) only the pixels covered for the first time.
-    ``None`` on failure.
+    ``islands`` = ``(label_map (w*h int32), center_labels (N,) int32)`` clips
+    each stamp to the pixels carrying its center's label (``CLIP_NONE`` /
+    ``CLIP_SKIP`` per center). ``None`` on failure.
     """
     kernel = np.ascontiguousarray(kernel, dtype=np.float32)
-    return _stamp_call('pp_stamp_kernel', centers, radius, w, h, grid, _ptr(kernel))
+    return _stamp_call('pp_stamp_kernel', centers, radius, w, h, grid, islands, _ptr(kernel))
 
 
-def spray(centers, radius, density, kernel, seed, w, h, grid=None):
+def spray(centers, radius, density, kernel, seed, w, h, grid=None, islands=None):
     """utils/math_utils.get_spray_pixels at every center, merged like :func:`stamp`."""
     kernel = np.ascontiguousarray(kernel, dtype=np.float32)
-    return _stamp_call('pp_stamp_spray', centers, radius, w, h, grid,
+    return _stamp_call('pp_stamp_spray', centers, radius, w, h, grid, islands,
                        float(density), _ptr(kernel), int(seed) & 0x7FFFFFFF)
 
 
@@ -342,6 +384,19 @@ def raster_triangles(tri_uv, width, height, grow=0.0):
     mask = np.zeros(int(width) * int(height), dtype=np.uint8)
     r = lib.pp_raster_triangles(_ptr(tris), len(tris), int(width), int(height), float(grow), _ptr(mask))
     return mask.view(bool) if _ok(r) else None
+
+
+def raster_labels(tri_uv, tri_labels, label_count, width, height):
+    """Label map (width * height int32, -1 = no triangle) of pixel centers inside the UV
+    triangles (T, 3, 2). Labels meeting on a pixel are merged; returns
+    ``(label_map, merged tri_labels)`` or None."""
+    lib = _load()
+    tris = np.ascontiguousarray(tri_uv, dtype=np.float64).reshape(-1, 6)
+    labels = np.ascontiguousarray(tri_labels, dtype=np.int32).copy()
+    out = np.empty(int(width) * int(height), dtype=np.int32)
+    r = lib.pp_raster_labels(_ptr(tris), _ptr(labels), len(tris), int(label_count),
+                             int(width), int(height), _ptr(out))
+    return (out, labels) if _ok(r) else None
 
 
 def fill_uv_triangles(buf, w, h, tri_uv, color):

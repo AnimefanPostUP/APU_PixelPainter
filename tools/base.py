@@ -60,13 +60,28 @@ class DrawEnvironment:
     expand_stamp: Optional[Callable[..., Tuple[list, list]]] = None
     edge_mode: bool = False   # 3D Viewport, Edge mode
     modifier: float = 0.5     # tool modifier (button-specific, pen pressure applied)
+    # 3D Viewport, UV mode: core.view3d.IslandClip -- every stamp stays on the
+    # UV island under its center (None = no clipping).
+    islands: Optional[object] = None
 
     def expand(self, x, y, pixels, weights=None):
         """Footprint of a stamp at ``(x, y)`` -> ``(pixels, weights)`` lists to write."""
         if self.expand_stamp is not None:
-            return self.expand_stamp(x, y, pixels, weights)
+            return self.clip(x, y, *self.expand_stamp(x, y, pixels, weights))
+        return self.clip(x, y, pixels, weights)
+
+    def clip(self, x, y, pixels, weights=None):
+        """A stamp's ``(pixels, weights)`` lists limited to its UV island (see ``islands``)."""
+        if self.islands is not None:
+            return self.islands.filter(x, y, pixels, weights)
         pixels = list(pixels)
         return pixels, (list(weights) if weights is not None else [1.0] * len(pixels))
+
+    def island_labels(self, centers):
+        """``islands`` argument of the C# stamps for ``centers`` (or None)."""
+        if self.islands is None:
+            return None
+        return self.islands.labels, self.islands.center_labels(centers)
 
     def falloff(self, prop_name):
         """``(falloff_enum, curve_sampler_or_None)`` read from a WindowManager property."""

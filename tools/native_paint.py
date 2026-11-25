@@ -130,8 +130,9 @@ def paint_shape(env, shape, stroke_unique):
     """Uniform brush (Square). ``stroke_unique``: every pixel once per stroke ('Pixel' spacing)."""
     w, h = env.img.size
     grid = stroke_grid(env) if stroke_unique else None
-    result = native.stamp(centers(env.interpolation_steps()), env.radius,
-                          shape_kernel(env.radius, shape), w, h, grid)
+    steps = centers(env.interpolation_steps())
+    result = native.stamp(steps, env.radius, shape_kernel(env.radius, shape), w, h, grid,
+                          islands=env.island_labels(steps))
     if result is None:
         return False
     return _paint(env, result[0], None)
@@ -146,10 +147,12 @@ def paint_weighted(env, falloff, curve_sampler, spray_density=None):
     steps = centers(env.interpolation_steps())
     pixel_spacing = env.spacing == 'PIXEL'
     grid = stroke_grid(env) if pixel_spacing else None
+    islands = env.island_labels(steps)
     if spray_density is None:
-        result = native.stamp(steps, r, kernel, w, h, grid)
+        result = native.stamp(steps, r, kernel, w, h, grid, islands=islands)
     else:
-        result = native.spray(steps, r, spray_density, kernel, random.getrandbits(31), w, h, grid)
+        result = native.spray(steps, r, spray_density, kernel, random.getrandbits(31), w, h, grid,
+                              islands=islands)
     if result is None:
         return False
     xy, weights = result
@@ -175,7 +178,8 @@ def line_footprint(env, line, tip):
         kernel = falloff_kernel(env.radius, falloff, curve_sampler)
     else:
         kernel = shape_kernel(env.radius, 'SQUARE' if tip == 'SQUARE' else 'CIRCLE')
-    result = native.stamp(native.coords(line), env.radius, kernel, w, h)
+    line = native.coords(line)
+    result = native.stamp(line, env.radius, kernel, w, h, islands=env.island_labels(line))
     if result is None:
         return None
     xy, weights = result
@@ -184,8 +188,9 @@ def line_footprint(env, line, tip):
 
 def erase(env):
     w, h = env.img.size
-    result = native.stamp(centers(env.interpolation_steps()), env.radius,
-                          shape_kernel(env.radius, 'CIRCLE'), w, h)
+    steps = centers(env.interpolation_steps())
+    result = native.stamp(steps, env.radius, shape_kernel(env.radius, 'CIRCLE'), w, h,
+                          islands=env.island_labels(steps))
     if result is None:
         return False
     xy = result[0]
@@ -200,8 +205,9 @@ def erase(env):
 
 def smooth(env, smooth_radius, falloff, curve_sampler):
     w, h = env.img.size
-    result = native.stamp(centers(env.interpolation_steps()), env.radius,
-                          falloff_kernel(env.radius, falloff, curve_sampler), w, h)
+    steps = centers(env.interpolation_steps())
+    result = native.stamp(steps, env.radius, falloff_kernel(env.radius, falloff, curve_sampler), w, h,
+                          islands=env.island_labels(steps))
     if result is None:
         return False
     xy, weights = result
@@ -226,7 +232,8 @@ def smear(env, steps, smear_reach, falloff, curve_sampler, prev_x, prev_y):
     for i, (sx, sy) in enumerate(steps):
         ox = (prev_x if prev_x is not None else sx) if i == 0 else steps[i - 1][0]
         oy = (prev_y if prev_y is not None else sy) if i == 0 else steps[i - 1][1]
-        result = native.stamp(native.coords([(sx, sy)]), env.radius, kernel, w, h)
+        center = native.coords([(sx, sy)])
+        result = native.stamp(center, env.radius, kernel, w, h, islands=env.island_labels(center))
         if result is None:
             return False if not changed else _finish(env, buf)
         xy, weights = result

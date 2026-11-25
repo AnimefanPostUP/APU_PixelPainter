@@ -253,8 +253,8 @@ class LineBrushTool(BrushTool):
             falloff, curve_sampler = env.falloff('pixel_painter_circle_falloff')
             weights = {}
             for (lx, ly) in line:
-                px_list, pw_list = math_utils.get_pixels_in_circle_weighted(
-                    lx, ly, env.radius, falloff, curve_sampler=curve_sampler)
+                px_list, pw_list = env.clip(lx, ly, *math_utils.get_pixels_in_circle_weighted(
+                    lx, ly, env.radius, falloff, curve_sampler=curve_sampler))
                 for px, w in zip(px_list, pw_list):
                     if w > weights.get(px, 0.0):
                         weights[px] = w
@@ -263,7 +263,10 @@ class LineBrushTool(BrushTool):
         shape = 'SQUARE' if tip == 'SQUARE' else 'CIRCLE'
         all_pixels = set()
         for (lx, ly) in line:
-            all_pixels |= math_utils.get_pixels_in_shape(lx, ly, env.radius, shape)
+            if env.islands is not None:
+                all_pixels.update(env.clip(lx, ly, math_utils.get_pixels_in_shape(lx, ly, env.radius, shape))[0])
+            else:
+                all_pixels |= math_utils.get_pixels_in_shape(lx, ly, env.radius, shape)
         return list(all_pixels), None
 
 

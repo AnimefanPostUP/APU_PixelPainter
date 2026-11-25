@@ -9,8 +9,8 @@
 # macOS libraries on those systems (pwsh works there too).
 #
 # The library is copied to native/runtimes/<rid>/, where utils/native.py looks
-# for it. Blender keeps a loaded library open: restart Blender to pick up a
-# rebuilt one.
+# for it. Blender loads a shadow copy (see utils/native.py), so rebuilding works
+# while Blender runs; reload the addon (or restart Blender) to pick it up.
 
 param(
     [string]$Rid = "",
@@ -46,5 +46,14 @@ elseif ($Rid.StartsWith("osx")) { $lib = "PixelPainterNative.dylib" }
 else { $lib = "PixelPainterNative.so" }
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-Copy-Item (Join-Path $publishDir $lib) (Join-Path $outDir $lib) -Force
+$target = Join-Path $outDir $lib
+Get-ChildItem $outDir -Filter "$lib.*.old" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue
+try {
+    Copy-Item (Join-Path $publishDir $lib) $target -Force
+} catch {
+    # Loaded by a running Blender (older addon versions load it in place): a loaded
+    # library can still be renamed, so move it aside and copy the new one.
+    Rename-Item $target "$lib.$([DateTime]::Now.ToString('yyyyMMddHHmmss')).old"
+    Copy-Item (Join-Path $publishDir $lib) $target -Force
+}
 Write-Host "-> $(Join-Path $outDir $lib)"

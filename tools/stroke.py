@@ -236,6 +236,10 @@ class StrokeTool(ToolBase):
             curve_sampler_factory=settings.get_falloff_curve_sampler,
             modifier=modifier,
         )
+        if ctx.is_3d and not ctx.edge_mode:
+            islands = view3d.island_map(context, img)
+            if islands is not None:
+                env.islands = view3d.IslandClip(islands, (cx, cy), state.get('view3d_hit_tri'))
         if ctx.edge_mode:
             env.edge_mode = True
             tile = state.get('view3d_uv_tile') or (0, 0)
