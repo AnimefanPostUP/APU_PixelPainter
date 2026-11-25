@@ -1,11 +1,10 @@
 """Painting tools: Square, Circle, Spray, Line, Eraser."""
 
-import numpy as np
-
 from . import draw_functions
+from . import native_paint
 from .base import SettingDefaults
 from .stroke import BrushTool
-from ..utils import math_utils
+from ..utils import math_utils, native, pixel_io
 
 
 def _paint(env, pixels, base_buffer=None, weights=None):
@@ -31,6 +30,9 @@ class SquareBrushTool(BrushTool):
     line_tip_shape = 'SQUARE'
 
     def on_draw(self, env):
+        if native_paint.usable(env) and native_paint.paint_shape(env, 'SQUARE', env.spacing == 'PIXEL'):
+            env.mark_painted()
+            return
         if env.spacing == 'PIXEL':
             # Remember painted pixels for the whole stroke so interpolation
             # never double-stamps a coordinate.
@@ -67,8 +69,15 @@ class WeightedBrushTool(BrushTool):
         """Return ``(pixels, weights)`` for one stamp at ``(x, y)``."""
         raise NotImplementedError
 
+    def native_draw(self, env, falloff, curve_sampler):
+        """C# version of :meth:`on_draw` (tools/native_paint.py); False = not handled."""
+        return native_paint.paint_weighted(env, falloff, curve_sampler)
+
     def on_draw(self, env):
         falloff, curve_sampler = env.falloff(self.falloff_property)
+        if native_paint.usable(env) and self.native_draw(env, falloff, curve_sampler):
+            env.mark_painted()
+            return
         pixel_spacing = env.spacing == 'PIXEL'
         weights = env.state['stroke_weight_map'] if pixel_spacing else {}
         for (sx, sy) in env.interpolation_steps():
@@ -106,6 +115,10 @@ class SprayBrushTool(WeightedBrushTool):
     outline_color = (1.0, 0.55, 0.0, 0.9)
     defaults = SettingDefaults(size=False, modifier=False, strength=False, alpha=False)
     falloff_property = 'pixel_painter_spray_falloff'
+
+    def native_draw(self, env, falloff, curve_sampler):
+        return native_paint.paint_weighted(env, falloff, curve_sampler,
+                                           spray_density=env.wm.pixel_painter_spray_strength)
 
     def sample(self, env, x, y, falloff, curve_sampler):
         return math_utils.get_spray_pixels(
@@ -152,7 +165,7 @@ class LineBrushTool(BrushTool):
         img = ctx.image
         cx, cy = ctx.cursor
         if img is not None and cx is not None:
-            ctx.state['back_buffer'] = np.array(img.pixels, dtype=np.float32)
+            ctx.state['back_buffer'] = pixel_io.read(img)
             ctx.state['start_position'] = (cx, cy)
             # 3D: the surface point, for the Edge-mode shortest path
             tri, local = ctx.state.get('view3d_hit_tri'), ctx.state.get('view3d_hit_local')
@@ -169,8 +182,7 @@ class LineBrushTool(BrushTool):
         img = ctx.image
         back_buffer = ctx.state.get('back_buffer')
         if img is not None and back_buffer is not None:
-            img.pixels.foreach_set(back_buffer)
-            img.update()
+            pixel_io.write(img, back_buffer.copy())
         ctx.state['start_position'] = None
         ctx.state['back_buffer'] = None
         ctx.state['line_start_hit'] = None
@@ -220,14 +232,18 @@ class LineBrushTool(BrushTool):
             x0, y0 = env.state['start_position']
             line = math_utils.get_line_pixels(x0, y0, env.cursor_x, env.cursor_y)
 
-        pixels, weights = self._line_footprint(env, line)
+        footprint = None
+        if frame is None and native.enabled():
+            tip = getattr(self.tip_tool(env.state), 'line_tip_shape', 'CIRCLE')
+            footprint = native_paint.line_footprint(env, line, tip)
+        pixels, weights = footprint if footprint is not None else self._line_footprint(env, line)
         if frame is not None:
             # ``line`` is in the start face's unfolded texture space: map to real pixels.
             from ..core import view3d
             w, h = env.img.size
             pixels, weights = view3d.expand_footprint(
                 frame, pixels, weights, w, h, (0, 0), drop_uncovered=True)
-        if pixels:
+        if len(pixels):
             _paint(env, pixels, base_buffer=env.state['back_buffer'], weights=weights)
 
     def _line_footprint(self, env, line):
@@ -264,6 +280,9 @@ class EraserTool(BrushTool):
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):
+        if native_paint.usable(env) and native_paint.erase(env):
+            env.mark_painted()
+            return
         all_pixels = set()
         for (sx, sy) in env.interpolation_steps():
             stamp, _ = env.expand(sx, sy, math_utils.get_pixels_in_shape(sx, sy, env.radius, 'CIRCLE'))
@@ -271,11 +290,16 @@ class EraserTool(BrushTool):
         if not all_pixels:
             return
         w, h = env.img.size
-        arr = np.array(env.img.pixels, dtype=np.float32)
+        if native.enabled():
+            arr = pixel_io.buffer(env.img)
+            if native.erase(arr, w, h, all_pixels, env.opacity) is not None:
+                pixel_io.write(env.img, arr)
+                env.mark_painted()
+                return
+        arr = pixel_io.read(env.img)
         for (px, py) in all_pixels:
             if 0 <= px < w and 0 <= py < h:
                 idx = (py * w + px) * 4
                 arr[idx + 3] = max(0.0, arr[idx + 3] - env.opacity)
-        env.img.pixels.foreach_set(arr)
-        env.img.update()
+        pixel_io.write(env.img, arr)
         env.mark_painted()

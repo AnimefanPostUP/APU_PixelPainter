@@ -14,6 +14,8 @@ mesh parts and rasterize them into pixel sets.
 
 import numpy as np
 
+from ..utils import native   # optional C# rasterizer (no bpy)
+
 
 def components(n, a, b):
     """Connected-component labels (0..k-1) of ``n`` nodes joined by the pairs ``a[i]`` -- ``b[i]``."""
@@ -92,6 +94,10 @@ def mesh_part_labels(loop_start, loop_vert, n_verts, edge_verts):
 def raster_triangles(tri_uv, width, height, grow=0.0):
     """Sorted flat pixel indices (``y * width + x``) whose center lies inside any of
     the UV triangles ``tri_uv`` (T, 3, 2), each edge pushed out by ``grow`` pixels."""
+    if native.enabled():
+        mask = native.raster_triangles(tri_uv, width, height, grow)
+        if mask is not None:
+            return np.flatnonzero(mask).astype(np.int64)
     pts = np.asarray(tri_uv, dtype=np.float64).reshape(-1, 3, 2) * (float(width), float(height))
     reach = float(grow) + 1e-6
     chunks = []

@@ -11,6 +11,8 @@ import numpy as np
 from ..core.state import declare as declare_state
 from ..utils import math_utils
 from ..utils import blender_utils
+from ..utils import native
+from ..utils import pixel_io
 from . import draw_blending
 
 
@@ -41,8 +43,12 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
                     falloff on circle/spray brushes.  Requires *pixels* to be
                     an ordered sequence (list), not a set.
     """
+    if native.enabled() and _write_pixels_native(
+            img, pixels, color, base_buffer, blend, opacity, alpha_opacity, pixel_weights,
+            protect_transparent):
+        return
     w, h = img.size
-    arr  = base_buffer.copy() if base_buffer is not None else np.array(img.pixels, dtype=np.float32)
+    arr  = base_buffer.copy() if base_buffer is not None else pixel_io.read(img)
 
     # Build parallel lists of flat RGBA base-indices and per-pixel weights
     # for every coordinate that falls inside the image bounds.
@@ -89,19 +95,36 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     alpha_mix = per_pixel_opacity
     arr[flat_idx + 3] = alpha_dst + (alpha_target - alpha_dst) * alpha_mix
 
-    img.pixels.foreach_set(arr)
-    img.update()
+    # Uploads and tags every VIEW_3D / IMAGE_EDITOR showing the image for redraw.
+    pixel_io.write(img, arr)
 
-    # Tag all editors that display this image for redraw: VIEW_3D (texture
-    # preview) and any IMAGE_EDITOR windows other than the one the operator
-    # is running in (that one is covered by context.area.tag_redraw()).
-    try:
-        for screen in bpy.data.screens:
-            for area in screen.areas:
-                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
-                    area.tag_redraw()
-    except Exception:
-        pass
+
+def _write_pixels_native(img, pixels, color, base_buffer, blend, opacity, alpha_opacity,
+                         pixel_weights, protect_transparent):
+    """C# branch of :func:`write_pixels_to_image`. False = not handled (use Python)."""
+    w, h = img.size
+    xy = native.coords(pixels)
+    weights = native.weights_array(pixel_weights, len(xy)) if pixel_weights is not None else None
+    if len(xy) == 0:
+        return True
+    # Like the Python path: nothing (not even the base buffer) is written
+    # when no pixel is inside the image / visible.
+    inside = (xy[:, 0] >= 0) & (xy[:, 0] < w) & (xy[:, 1] >= 0) & (xy[:, 1] < h)
+    if not inside.any():
+        return True
+    if protect_transparent:
+        alpha_src = base_buffer if base_buffer is not None else pixel_io.buffer(img)
+        idx = (xy[inside, 1].astype(np.int64) * w + xy[inside, 0]) * 4 + 3
+        if not np.any(alpha_src[idx] > np.float32(1e-6)):
+            return True
+    arr = pixel_io.buffer(img)
+    if base_buffer is not None:
+        np.copyto(arr, base_buffer.reshape(-1))
+    if native.paint(arr, w, h, xy, weights, color, blend, opacity, alpha_opacity,
+                    protect_transparent) is None:
+        return False
+    pixel_io.write(img, arr)
+    return True
 
 
 def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparent=False, pixel_weights=None):
@@ -110,7 +133,13 @@ def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparen
     ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel.
     """
     w, h = img.size
-    arr = np.array(img.pixels, dtype=np.float32)
+    if native.enabled():
+        arr = pixel_io.buffer(img)
+        if native.set_alpha(arr, w, h, pixels, pixel_weights, alpha_opacity, opacity,
+                            protect_transparent) is not None:
+            pixel_io.write(img, arr)
+            return
+    arr = pixel_io.read(img)
     alpha = float(max(0.0, min(1.0, alpha_opacity)))
     mix = float(max(0.0, min(1.0, opacity)))
 
@@ -125,8 +154,7 @@ def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparen
             curr = arr[idx + 3]
             arr[idx + 3] = curr + (alpha - curr) * mix * weight
 
-    img.pixels.foreach_set(arr)
-    img.update()
+    pixel_io.write(img, arr)
 
 
 # ---------------------------------------------------------------------------

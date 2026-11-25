@@ -4,7 +4,7 @@ import bpy
 import numpy as np
 
 from ..core import history
-from ..utils import blender_utils
+from ..utils import blender_utils, native, pixel_io
 from . import draw_blending
 
 
@@ -133,14 +133,12 @@ def extract_region(img, box):
     top = max(0, min(height - 1, int(box[3])))
     if right < left or top < bottom:
         return None
-    arr = np.array(img.pixels, dtype=np.float32).reshape(height, width, 4)
+    arr = pixel_io.buffer(img).reshape(height, width, 4)   # read only
     return arr[bottom:top + 1, left:right + 1, :].copy()
 
 
 def _write_image(img, arr):
-    img.pixels.foreach_set(arr.ravel())
-    img.update()
-    _tag_image_editors_redraw()
+    pixel_io.write(img, arr)   # uploads + tags image views for redraw
 
 
 def blit_region(img, region, dest_left, dest_bottom, dest_box=None, clear_box=None, blend='MIX', opacity=1.0):
@@ -152,7 +150,7 @@ def blit_region(img, region, dest_left, dest_bottom, dest_box=None, clear_box=No
     if region_w == 0 or region_h == 0:
         return None
 
-    arr = np.array(img.pixels, dtype=np.float32).reshape(height, width, 4)
+    arr = pixel_io.read(img).reshape(height, width, 4)
     if clear_box is not None:
         src_left = max(0, min(width - 1, int(clear_box[0])))
         src_bottom = max(0, min(height - 1, int(clear_box[1])))
@@ -178,6 +176,12 @@ def blit_region(img, region, dest_left, dest_bottom, dest_box=None, clear_box=No
 
     dest_width = max(1, dest_right - dest_left + 1)
     dest_height = max(1, dest_top - dest_bottom + 1)
+    if native.enabled():
+        flat = arr.reshape(-1)
+        if native.blit_region(flat, width, height, region, dest_left, dest_bottom, dest_width, dest_height,
+                              (clip_left, clip_bottom, clip_right, clip_top), blend, opacity) is not None:
+            _write_image(img, flat)
+            return clip_left, clip_bottom, clip_right, clip_top
     for y in range(clip_bottom, clip_top + 1):
         dest_y = y - dest_bottom
         src_y = int(round((dest_y / max(1, dest_height - 1)) * max(0, region_h - 1))) if dest_height > 1 else 0

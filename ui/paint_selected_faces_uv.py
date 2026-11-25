@@ -6,6 +6,7 @@ from bpy.props import StringProperty
 from mathutils import Vector
 
 from ..core import core
+from ..utils import native, pixel_io
 
 
 # bmesh will be injected by the main addon
@@ -68,7 +69,6 @@ class APU_OT_PaintSelectedFacesUV(Operator):
             else:
                 color = (1,1,1,1)
         width, height = image.size
-        pixels = np.array(image.pixels[:]).reshape((height, width, 4))
         # Triangulate all selected faces (in a copy)
         # Create a new BMesh from the mesh data for safe triangulation
         bm_copy = bmesh.new()
@@ -106,6 +106,19 @@ class APU_OT_PaintSelectedFacesUV(Operator):
             if face.select and len(face.loops) == 3:
                 tris.append(face)
         print(f"faces_to_paint: {len(faces_to_paint)}, tris after triangulation: {len(tris)}")
+        if native.enabled():
+            tri_uv = np.array([[tuple(l[uv_layer_copy].uv) for l in face.loops] for face in tris],
+                              dtype=np.float64).reshape(-1, 3, 2)
+            buf = pixel_io.read(image)
+            painted = native.fill_uv_triangles(buf, width, height, tri_uv, color) if len(tri_uv) else 0
+            if painted is not None:
+                pixel_io.write(image, buf)
+                core.history.commit(image, "Paint Selected Faces", push=False)
+                bm_copy.free()
+                self.report({'INFO'}, f"Painted {painted} pixels on {len(faces_to_paint)} selected faces. "
+                                      f"Texture: {texture_name}, Color: {color}")
+                return {'FINISHED'}
+        pixels = pixel_io.read(image).reshape((height, width, 4))
         painted_pixels = 0
         iterated_pixels = 0
         print(f"Image size: {width}x{height}")
@@ -158,8 +171,7 @@ class APU_OT_PaintSelectedFacesUV(Operator):
                         zone_counts[zone] += 1
             print(f"Zone pixel counts: {zone_counts}")
         print(f"Iterated {iterated_pixels} pixels in bounding boxes, painted {painted_pixels}.")
-        image.pixels = pixels.flatten()
-        image.update()
+        pixel_io.write(image, pixels)
         core.history.commit(image, "Paint Selected Faces", push=False)
         bm_copy.free()
         self.report({'INFO'}, f"Painted {painted_pixels} pixels on {len(faces_to_paint)} selected faces. Texture: {texture_name}, Color: {color}")

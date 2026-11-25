@@ -4,7 +4,7 @@ import numpy as np
 
 from ..tools import draw_functions
 from ..tools import draw_blending
-from ..utils import blender_utils
+from ..utils import blender_utils, pixel_io
 from .overlays import (
     _draw_precision_pixel_guide,
     _gpu_draw_circle_outline,
@@ -83,7 +83,7 @@ def _selection_preview_composite_region(context, box, source_region):
     if clip_right < clip_left or clip_top < clip_bottom:
         return preview
 
-    arr = np.array(img.pixels, dtype=np.float32).reshape(height, width, 4)
+    arr = pixel_io.buffer(img).reshape(height, width, 4)   # read only
     src_y0 = clip_bottom - dest_bottom
     src_y1 = src_y0 + (clip_top - clip_bottom + 1)
     src_x0 = clip_left - dest_left

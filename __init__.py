@@ -39,6 +39,8 @@ bl_info = {
 _MODULES = (
     # utilities
     'utils.math_utils',
+    'utils.native',
+    'utils.pixel_io',
     'utils.blender_utils',
     'utils.persistence_settings',
     'utils.settings_service',
@@ -96,6 +98,7 @@ _MODULES = (
     'tools.mask_geometry',
     'tools.mask',
     'tools.view_nav',
+    'tools.native_paint',
     'tools.stroke',
     'tools.brushes',
     'tools.filters',
@@ -149,6 +152,7 @@ def _cleanup_runtime():
         core = _module('core.core')
         _module('tools.draw_functions').remove_draw_handler(core._state)
         core._undo_clear()
+        _module('utils.pixel_io').invalidate()
         _module('core.history').unregister()
         core._state['running'] = False
         core._state['current_cx'] = None

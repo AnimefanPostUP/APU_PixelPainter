@@ -32,6 +32,7 @@ TINT_COLOR = (0.95, 0.45, 0.65)
 TINT_PEN = (0.66, 0.44, 0.92)
 TINT_DISPLAY = (0.55, 0.70, 0.85)
 TINT_KEYS = (0.85, 0.80, 0.45)
+TINT_PERFORMANCE = (0.45, 0.85, 0.55)
 
 CHANNELS = (('size', "Size"), ('strength', "Strength"), ('alpha', "Alpha"), ('modifier', "Modifier"))
 FAVORITE_GROUPS = (("Common", 'COMMON'), ("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL / HSV", 'HSL'))
@@ -146,6 +147,13 @@ def _icon_pressure(dc, x, y, size, alpha):
         draw.rect(Rect(bx - w * 0.5, y - size * 0.3, bx + w * 0.5, y - size * 0.3 + size * h), color)
 
 
+def _icon_bolt(dc, x, y, size, alpha):
+    s = size * 0.3
+    color = _ink(dc, alpha)
+    draw.triangle((x + s * 0.35, y + s * 1.05), (x - s * 0.55, y - s * 0.1), (x + s * 0.05, y - s * 0.1), color)
+    draw.triangle((x - s * 0.35, y - s * 1.05), (x + s * 0.55, y + s * 0.1), (x - s * 0.05, y + s * 0.1), color)
+
+
 def _icon_grid(dc, x, y, size, alpha):
     w = size * 0.3
     color = _ink(dc, alpha, 0.8)
@@ -191,6 +199,7 @@ TABS = (
     ('FALLOFF', "Falloff", TINT_FALLOFF, _icon_falloff),
     ('PEN', "Pen", TINT_PEN, _icon_pen),
     ('DISPLAY', "Display", TINT_DISPLAY, _icon_eye),
+    ('PERFORMANCE', "Performance", TINT_PERFORMANCE, _icon_bolt),
     ('SHORTCUTS', "Shortcuts", TINT_KEYS, _icon_keyboard),
 )
 
@@ -485,6 +494,23 @@ class SettingsMenu:
         hint = self._hint(("Pen menu (top right): tap the % to toggle, drag up / down to adjust.",))
         return [self._group("Pixel Grid", Column([Row([show, grid], gap=6.0), hint], gap=6.0),
                             tint, _icon_grid)]
+
+    def _page_performance(self, tint):
+        from ..utils import native
+        a = self.a
+        toggle = self._toggle('use_native', "Use C# Backend", size=(200.0, 28.0), painter=_icon_bolt)
+
+        def status():
+            if not native.available():
+                return [native.status(), "Using the Python implementation."]
+            if a.wm_get('use_native', True):
+                return [native.status() + ": painting, filters, masks", "and selections run in C#."]
+            return [native.status() + ", but disabled:", "using the Python implementation."]
+
+        hint = self._hint(("Both backends give the same result; C# is much",
+                           "faster on large textures and large brushes."))
+        content = Column([toggle, TextBlock(status, size=9.0, width=PAGE_WIDTH - 20.0), hint], gap=6.0)
+        return [self._group("Backend", content, tint, _icon_bolt)]
 
     def _page_shortcuts(self, tint):
         groups = []

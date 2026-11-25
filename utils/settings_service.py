@@ -153,11 +153,9 @@ class PixelPainterSettingsService:
             img = blender_utils.get_paint_image(context)
             if img is None:
                 return None
-            w, h = img.size
-            if not (0 <= cx < w and 0 <= cy < h):
-                return None
-            idx = (cy * w + cx) * 4
-            return (img.pixels[idx], img.pixels[idx + 1], img.pixels[idx + 2])
+            from . import pixel_io
+            rgba = pixel_io.pixel(img, cx, cy)
+            return None if rgba is None else rgba[:3]
         except Exception:
             return None
 

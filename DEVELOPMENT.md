@@ -335,6 +335,67 @@ the N-panel / header; the pen menu has its own version of it (`ui/pen_settings.p
 a setting added here should be added there too.
 To add a category, add an entry to `SETTINGS_TABS` and a drawer to `_TAB_DRAWERS`.
 
+## Native backend (C#)
+
+Pixel-heavy work runs in a C# library when it is available and the setting
+**Use C# Backend** (`pixel_painter_use_native`, default on; settings popup and
+pen menu > *Performance*) is enabled. Every Python implementation stays in
+place as the fallback, so the addon works without the library.
+
+```
+native/
+  PixelPainterNative/   C# project (NativeAOT -> plain native library, no .NET runtime needed)
+    Exports.cs          C ABI entry points (pp_*), ApiVersion
+    Blend.cs            blend modes (mirrors tools/draw_blending.py)
+    Paint.cs            brush paint, alpha, erase, mask restore
+    Filters.cs          smooth (summed-area table), smear
+    Stamps.cs           brush footprints: kernel / spray stamps, max-merge, stroke grid
+    Regions.cs          selection region blend / blit
+    Raster.cs           UV triangle rasterization (mask, Paint Selected Faces)
+  build.ps1             build -> native/runtimes/<rid>/PixelPainterNative.{dll,so,dylib}
+  runtimes/<rid>/       the built library (committed)
+utils/native.py         ctypes loader + NumPy wrappers, enabled(), status()
+utils/pixel_io.py       image pixel access shared by both backends
+tools/native_paint.py   tool-level fast paths (footprint + paint of a whole draw step)
+```
+
+* **Build**: `powershell -ExecutionPolicy Bypass -File native/build.ps1` (.NET 10
+  SDK + MSVC Build Tools on Windows). NativeAOT does not cross-compile between
+  operating systems: build Linux / macOS libraries there. Blender keeps the
+  library loaded: restart Blender after rebuilding.
+* **Two layers**: the pixel kernels (`draw_functions.write_pixels_to_image`,
+  `set_pixels_alpha`, `draw_tool_smooth.*`, `mask.restore_blocked`,
+  `selection_ops.blit_region`, `draw_blending.blend_region_pixels`,
+  `mask_geometry.raster_triangles`, Paint Selected Faces) each start with an
+  `if native.enabled():` branch. On top of that, the stroke tools' `on_draw`
+  build the whole footprint in C# via `tools/native_paint.py` (not in the 3D
+  Viewport's Edge mode, where `env.expand` maps stamps over seams in Python).
+* **Same results**: the C# code mirrors the Python math (float32 where NumPy
+  uses float32, colorsys in double, Python rounding). `tests/test_native.py`
+  runs both paths on the same images; keep it passing when changing either side.
+* **Adding a function**: export it in `Exports.cs` (catch everything, return a
+  negative value on failure), add the signature to `_SIGNATURES` and a wrapper
+  in `utils/native.py`, call it behind `native.enabled()` with the Python code as
+  fallback, add a parity test. Bump `ApiVersion` / `API_VERSION` when a
+  signature changes.
+
+### Pixel access (`utils/pixel_io.py`)
+
+Never read `img.pixels` with `np.array(img.pixels)` / `img.pixels[i]` (both copy
+the whole image, the first element by element in Python) or write it directly
+in painting code. Use `pixel_io`:
+
+```python
+arr = pixel_io.read(img)      # private copy (safe to keep, e.g. a back buffer)
+buf = pixel_io.buffer(img)    # buffer to edit in place ...
+pixel_io.write(img, buf)      # ... then always write it back
+```
+
+A stroke (`StrokeTool.begin_stroke` .. `end_stroke`) keeps the image in a
+working buffer, read once; `StrokeTool.paint` wraps each draw step in
+`pixel_io.deferred(img)`, so the step uploads once after the paint mask.
+Code that writes `img.pixels` some other way must call `pixel_io.invalidate()`.
+
 ## Undo
 
 Pixel changes go through Blender's own undo (`core/history.py`), so Ctrl+Z

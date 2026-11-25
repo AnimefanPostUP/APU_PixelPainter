@@ -1,12 +1,11 @@
 """Filter tools that modify existing pixels: Smooth, Smear."""
 
-import numpy as np
-
 from . import draw_functions
 from . import draw_tool_smooth
+from . import native_paint
 from .base import SettingDefaults
 from .stroke import StrokeTool
-from ..utils import math_utils
+from ..utils import math_utils, pixel_io
 
 
 def _filter_visible_alpha_pixels(img, pixels, alpha_threshold=1e-6):
@@ -14,7 +13,7 @@ def _filter_visible_alpha_pixels(img, pixels, alpha_threshold=1e-6):
     if not pixels:
         return []
     w, h = img.size
-    arr = np.array(img.pixels, dtype=np.float32)
+    arr = pixel_io.buffer(img)   # read only
     visible = []
     for (px, py) in pixels:
         if 0 <= px < w and 0 <= py < h:
@@ -38,6 +37,9 @@ class SmoothTool(StrokeTool):
     def on_draw(self, env):
         smooth_radius = max(1, int(env.modifier * max(1, env.radius)))
         falloff, curve_sampler = env.falloff(self.falloff_property)
+        if native_paint.usable(env) and native_paint.smooth(env, smooth_radius, falloff, curve_sampler):
+            env.mark_painted()
+            return
         # Overlapping stamps along the stroke keep the strongest falloff weight.
         weights = {}
         for (sx, sy) in env.interpolation_steps():
@@ -79,6 +81,10 @@ class SmearTool(StrokeTool):
         prev_x = env.state['last_paint_cx']
         prev_y = env.state['last_paint_cy']
         smear_reach = modifier * max(1, env.radius)
+        if native_paint.usable(env) and native_paint.smear(
+                env, steps, smear_reach, falloff, curve_sampler, prev_x, prev_y):
+            env.mark_painted()
+            return
         for i, (sx, sy) in enumerate(steps):
             ox = (prev_x if prev_x is not None else sx) if i == 0 else steps[i - 1][0]
             oy = (prev_y if prev_y is not None else sy) if i == 0 else steps[i - 1][1]

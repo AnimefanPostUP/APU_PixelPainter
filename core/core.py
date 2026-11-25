@@ -15,7 +15,7 @@ import traceback
 import bpy
 from bpy.types import Operator
 
-from ..utils import blender_utils
+from ..utils import blender_utils, pixel_io
 from ..tools import blend_modes
 from ..tools import draw_functions
 from ..tools import draw_gridoverlay
@@ -251,6 +251,7 @@ def _end_session():
         MANAGER.end(ToolContext(bpy.context, MANAGER))  # tools restore temp modes, end strokes
     except Exception:
         traceback.print_exc()
+    pixel_io.end_stroke()   # never keep a working buffer past the session
     history.commit_all()
     try:
         bpy.context.window_manager.pixel_painter_temp_smooth_force_global = False

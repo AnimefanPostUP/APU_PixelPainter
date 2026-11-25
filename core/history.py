@@ -32,6 +32,8 @@ import bpy
 import numpy as np
 from bpy.app.handlers import persistent
 
+from ..utils import pixel_io
+
 
 STAMP_KEY = "pixel_painter_history"
 
@@ -270,6 +272,7 @@ def clear():
 def _on_undo_pre(*_args):
     # Uncommitted changes cannot become a step anymore; forget them.
     _pending.clear()
+    pixel_io.invalidate()
 
 
 @persistent
@@ -286,6 +289,7 @@ def _on_undo_redo_post(*_args):
         if pixels is not None and pixels.size == len(img.pixels):
             img.pixels.foreach_set(pixels)
             _refresh_display(img)
+            pixel_io.invalidate()
         _applied[key] = new
 
 

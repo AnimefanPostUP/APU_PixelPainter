@@ -2,7 +2,7 @@
 
 from ..core import history, view3d
 from ..core.framework import Shortcut
-from ..utils import blender_utils, math_utils
+from ..utils import blender_utils, math_utils, pixel_io
 from . import color_history, mask, pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
@@ -27,6 +27,8 @@ class StrokeTool(ToolBase):
         'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
         'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
         'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
+        'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (tools/native_paint.py)
+        'native_stroke_pixels': None,  # C# path: (N, 2) pixels covered by the stroke so far
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
         color_history.HISTORY_KEY: (),  # recently painted colors, newest first
@@ -78,6 +80,7 @@ class StrokeTool(ToolBase):
             self.on_cancel(ctx)
         self._buttons.clear()
         self._reset_stroke_state(ctx)
+        pixel_io.end_stroke()
         history.commit_all()
 
     # ---- stroke ------------------------------------------------------------------
@@ -93,6 +96,8 @@ class StrokeTool(ToolBase):
         img = ctx.image
         if img is not None:
             history.begin(img)
+            if not pixel_io.in_stroke(img):
+                pixel_io.begin_stroke(img)   # working buffer: one image read per stroke
             if self.paints_color:
                 self._record_color(ctx, button)
         self.on_press(ctx)
@@ -120,8 +125,10 @@ class StrokeTool(ToolBase):
         if button not in self._buttons:
             return False
         self.on_release(ctx)
-        history.commit_all()  # one Blender undo step per stroke
         self._buttons.discard(button)
+        if not self._buttons:
+            pixel_io.end_stroke()
+        history.commit_all()  # one Blender undo step per stroke
         self._reset_stroke_state(ctx)
         ctx.redraw()
 
@@ -249,11 +256,13 @@ class StrokeTool(ToolBase):
             return
 
         # Paint mask: protected pixels are put back after the draw step (every tool alike).
-        allowed = mask.allowed(context, img)
-        before = mask.snapshot(img) if allowed is not None else None
-        self.on_draw(env)
-        if before is not None:
-            mask.restore_blocked(img, before, allowed)
+        # The step's writes are uploaded once, after the mask (utils/pixel_io.py).
+        with pixel_io.deferred(img):
+            allowed = mask.allowed(context, img)
+            before = mask.snapshot(img) if allowed is not None else None
+            self.on_draw(env)
+            if before is not None:
+                mask.restore_blocked(img, before, allowed)
 
 
 class BrushTool(StrokeTool):

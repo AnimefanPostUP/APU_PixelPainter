@@ -4,6 +4,8 @@ import colorsys
 
 import numpy as np
 
+from ..utils import native
+
 
 def _apply_blend(dst, src, blend, opacity):
     """Apply a blend mode between destination [N,3] and source [3] arrays."""
@@ -173,6 +175,10 @@ def blend_region_pixels(dst_rgba, src_rgba, blend, opacity):
     """Blend matching RGBA regions and return a new RGBA array."""
     if dst_rgba.shape != src_rgba.shape or dst_rgba.ndim != 3 or dst_rgba.shape[2] != 4:
         raise ValueError("dst_rgba and src_rgba must both be [H, W, 4] arrays")
+    if np.ndim(opacity) == 0 and native.enabled():
+        out = native.blend_region(dst_rgba, src_rgba, blend, float(opacity))
+        if out is not None:
+            return out
 
     flat_dst = dst_rgba[..., :3].reshape(-1, 3)
     flat_src = src_rgba[..., :3].reshape(-1, 3)

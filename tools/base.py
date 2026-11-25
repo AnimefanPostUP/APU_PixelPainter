@@ -20,10 +20,8 @@ Adding a tool
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
-import numpy as np
-
 from ..core.framework import ToolFrame
-from ..utils import math_utils
+from ..utils import math_utils, pixel_io
 
 
 @dataclass(frozen=True)
@@ -110,7 +108,9 @@ class ToolBase(ToolFrame):
         """Called before the first :meth:`on_draw` of a stroke. Prepares stroke caches."""
         env.state['stroke_painted'] = set()
         env.state['stroke_weight_map'] = {}
-        env.state['stroke_back_buffer'] = np.array(env.img.pixels, dtype=np.float32)
+        env.state['stroke_back_buffer'] = pixel_io.read(env.img)
+        env.state['native_stroke_grid'] = None     # C# path equivalents (tools/native_paint.py)
+        env.state['native_stroke_pixels'] = None
 
     def on_draw(self, env: DrawEnvironment) -> None:
         """Apply one step of the tool at ``env.cursor_x/y`` into ``env.img``."""

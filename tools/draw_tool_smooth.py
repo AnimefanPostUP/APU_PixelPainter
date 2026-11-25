@@ -1,17 +1,7 @@
 """Smooth and smear tool paint helpers."""
 
-import bpy
-import numpy as np
-
-
-def _tag_redraw_all_image_views():
-    try:
-        for screen in bpy.data.screens:
-            for area in screen.areas:
-                if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
-                    area.tag_redraw()
-    except Exception:
-        pass
+from ..utils import native
+from ..utils import pixel_io
 
 
 def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=None):
@@ -20,7 +10,12 @@ def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=No
     ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel, e.g. a brush falloff.
     """
     w, h = img.size
-    arr = np.array(img.pixels, dtype=np.float32)
+    if native.enabled():
+        buf = pixel_io.buffer(img)
+        if native.smooth(buf, w, h, pixels, pixel_weights, smooth_radius, opacity) is not None:
+            pixel_io.write(img, buf)
+            return
+    arr = pixel_io.read(img)
     arr_4ch = arr.reshape(h, w, 4)
     result = arr_4ch.copy()
 
@@ -44,9 +39,7 @@ def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=No
         orig = arr_4ch[py, px, :3]
         result[py, px, :3] = orig + (avg - orig) * (opacity * weight)
 
-    img.pixels.foreach_set(result.ravel())
-    img.update()
-    _tag_redraw_all_image_views()
+    pixel_io.write(img, result)
 
 
 def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity, pixel_weights=None):
@@ -55,7 +48,12 @@ def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity, pixel_weigh
     ``pixel_weights`` (parallel to ``pixels``) scales the blend per pixel, e.g. a brush falloff.
     """
     w, h = img.size
-    arr = np.array(img.pixels, dtype=np.float32)
+    if native.enabled():
+        buf = pixel_io.buffer(img)
+        if native.smear(buf, w, h, pixels, pixel_weights, dx, dy, smear_reach, opacity) is not None:
+            pixel_io.write(img, buf)
+            return
+    arr = pixel_io.read(img)
     arr_4ch = arr.reshape(h, w, 4)
     result = arr_4ch.copy()
     if pixel_weights is None:
@@ -72,6 +70,4 @@ def smear_pixels_in_image(img, pixels, dx, dy, smear_reach, opacity, pixel_weigh
         orig = arr_4ch[py, px, :3]
         result[py, px, :3] = orig + (src_color - orig) * (opacity * weight)
 
-    img.pixels.foreach_set(result.ravel())
-    img.update()
-    _tag_redraw_all_image_views()
+    pixel_io.write(img, result)

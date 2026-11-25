@@ -33,6 +33,7 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..core.framework import Shortcut, ToolFrame
+from ..utils import native, pixel_io
 from . import mask_geometry as geo
 
 
@@ -302,22 +303,26 @@ def allowed(context, image, refresh_data=True):
 
 
 def snapshot(image):
-    buf = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
-    image.pixels.foreach_get(buf)
-    return buf
+    return pixel_io.read(image)
 
 
 def restore_blocked(image, before, allowed_pixels):
     """Put back the protected pixels a draw step changed."""
     if before is None or allowed_pixels is None or len(before) != len(allowed_pixels) * 4:
         return
+    if native.enabled():
+        after = pixel_io.buffer(image)
+        restored = native.restore_blocked(after, before, allowed_pixels)
+        if restored is not None:
+            if restored:
+                pixel_io.write(image, after)
+            return
     after = snapshot(image)
     a4, b4 = after.reshape(-1, 4), before.reshape(-1, 4)
     changed = ~allowed_pixels & np.any(a4 != b4, axis=1)
     if changed.any():
         a4[changed] = b4[changed]
-        image.pixels.foreach_set(after)
-        image.update()
+        pixel_io.write(image, after)
 
 
 # ---------------------------------------------------------------------------

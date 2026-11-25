@@ -180,3 +180,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 settings.json
+
+# C# native backend: build output (the built library in native/runtimes/ is committed)
+native/PixelPainterNative/bin/
+native/PixelPainterNative/obj/
+!native/runtimes/
+!native/runtimes/**

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pixel Painter native backend.
+
+    Compiled with NativeAOT into a plain native library (no .NET runtime needed
+    on the user's machine) that Blender's Python loads with ctypes. The exported
+    C functions are in Exports.cs; utils/native.py is the Python side.
+
+    Build: native/build.ps1 (copies the library to native/runtimes/<rid>/).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Library</OutputType>
+    <AssemblyName>PixelPainterNative</AssemblyName>
+    <RootNamespace>PixelPainterNative</RootNamespace>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <PublishAot>true</PublishAot>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <StripSymbols>true</StripSymbols>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

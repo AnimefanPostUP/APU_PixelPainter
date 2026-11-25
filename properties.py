@@ -195,6 +195,12 @@ def _static_properties():
                 ('EDGE', "Edge", "Brushes continue over mesh edges onto the connected face, even across UV seams"),
             ],
             default='UV', update=_persist),
+        'use_native': bpy.props.BoolProperty(
+            name="Use C# Backend",
+            description="Run pixel-heavy work (painting, smooth / smear, masks, selections) in the compiled "
+                        "C# library (native/). Off, or when the library is missing: the Python / NumPy "
+                        "implementation",
+            default=True, update=_persist),
         'protect_transparent': bpy.props.BoolProperty(
             name="Protect Transparent", description="Prevent painting on fully transparent pixels (alpha = 0)",
             default=False, update=_persist),

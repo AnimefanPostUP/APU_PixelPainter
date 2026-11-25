@@ -26,6 +26,7 @@ SETTINGS_TABS = (
     ('FALLOFF', "Falloff", 'SMOOTHCURVE'),
     ('PEN', "Pen", 'GREASEPENCIL'),
     ('DISPLAY', "Display", 'HIDE_OFF'),
+    ('PERFORMANCE', "Performance", 'MEMORY'),
     ('SHORTCUTS', "Shortcuts", 'INFO'),
 )
 
@@ -238,6 +239,25 @@ def _draw_display(layout, context):
     row.prop(wm, "pixel_painter_grid_opacity", text="Grid Opacity", slider=True)
 
 
+def _draw_performance(layout, context):
+    from ..utils import native
+    wm = context.window_manager
+    available = native.available()
+    row = layout.row()
+    row.enabled = available
+    row.prop(wm, "pixel_painter_use_native", toggle=True)
+    box = layout.box()
+    if not available:
+        box.label(text=native.status(), icon='ERROR')
+        box.label(text="Using the Python implementation.")
+    elif wm.pixel_painter_use_native:
+        box.label(text=native.status() + ": painting, filters, masks and selections run in C#.", icon='CHECKMARK')
+    else:
+        box.label(text=native.status() + ", but disabled: using the Python implementation.", icon='INFO')
+    _hints(layout, ("Both backends give the same result; the C# one is much faster on large textures",
+                    "and large brushes. Rebuild with native/build.ps1, then restart Blender."))
+
+
 _SHORTCUTS = (
     ("LMB", "Paint with primary color"),
     ("RMB", "Paint with secondary color"),
@@ -274,6 +294,7 @@ _TAB_DRAWERS = {
     'FALLOFF': _draw_falloff,
     'PEN': _draw_pen,
     'DISPLAY': _draw_display,
+    'PERFORMANCE': _draw_performance,
     'SHORTCUTS': _draw_shortcuts,
 }
 
