@@ -189,7 +189,6 @@ def _register_draw_handler(space, context):
                 if wm.pixel_painter_grid_show:
                     draw_gridoverlay.draw_pixel_grid_overlay(ctx, wm.pixel_painter_grid_opacity)
                 brush_outline.draw_brush_outline(ctx, _state)
-            cursor_overlays.draw_test_corner_label(ctx)
             MANAGER.draw(ToolContext(ctx, MANAGER))
         except Exception:
             traceback.print_exc()

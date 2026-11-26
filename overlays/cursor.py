@@ -1,9 +1,8 @@
 """Cursors drawn on the canvas: the 3D Viewport's off-mesh ring, a single-pixel
-outline, the editor corner label.
+outline.
 """
 
 
-import blf
 import gpu
 
 from ..utils import blender_utils
@@ -58,25 +57,3 @@ def draw_view3d_offmesh_cursor(context, state):
     draw_wide_circle_outline(mouse[0], mouse[1], 10.0, rgba, width=1.5, steps=32)
     gpu.state.blend_set('NONE')
     gpu.state.line_width_set(1.0)
-
-
-def draw_test_corner_label(context, text="test"):
-    """Draw a small text label in the top-left corner of the active editor region."""
-    area = context.area
-    if not area:
-        return
-    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-    if not region:
-        return
-
-    font_id = 0
-    blf.size(font_id, 18)
-    text_width, text_height = blf.dimensions(font_id, text)
-    pos_x = 20
-    pos_y = max(20, region.height - text_height - 20)
-
-    gpu.state.blend_set('ALPHA')
-    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
-    blf.position(font_id, pos_x, pos_y, 0)
-    blf.draw(font_id, text)
-    gpu.state.blend_set('NONE')
