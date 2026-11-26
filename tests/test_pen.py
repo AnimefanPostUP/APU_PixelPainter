@@ -671,3 +671,36 @@ class PaletteFromImageTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Tertiary color: gradient between primary and secondary, selected on the pen menu
+# ---------------------------------------------------------------------------
+
+tertiary_color = importlib.import_module(f'{_PACKAGE}.tools.tertiary_color')
+geometry = importlib.import_module('ui.kit.geometry')
+
+
+class TertiaryColorTests(unittest.TestCase):
+    def test_blend_runs_from_primary_to_secondary(self):
+        self.assertEqual(tertiary_color.blend((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.0), (1.0, 0.0, 0.0))
+        self.assertEqual(tertiary_color.blend((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 1.0), (0.0, 0.0, 1.0))
+        self.assertEqual(tertiary_color.blend((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.25), (0.75, 0.0, 0.25))
+
+    def test_position_defaults_and_clamps(self):
+        self.assertEqual(tertiary_color.position({}), tertiary_color.DEFAULT_T)
+        self.assertEqual(tertiary_color.position({tertiary_color.T_KEY: 3.0}), 1.0)
+
+    def test_snaps_to_the_middle(self):
+        self.assertEqual(tertiary_color.snapped(0.52), 0.5)
+        self.assertEqual(tertiary_color.snapped(0.6), 0.6)
+
+
+class DashRunsTests(unittest.TestCase):
+    def test_straight_line(self):
+        runs = geometry.dash_runs([(0.0, 0.0), (10.0, 0.0)], 2.0, 2.0)
+        self.assertEqual([(r[0][0], r[-1][0]) for r in runs], [(0.0, 2.0), (4.0, 6.0), (8.0, 10.0)])
+
+    def test_dash_follows_corners(self):
+        runs = geometry.dash_runs([(0.0, 0.0), (1.0, 0.0), (1.0, 5.0)], 3.0, 10.0)
+        self.assertEqual(runs, [[(0.0, 0.0), (1.0, 0.0), (1.0, 2.0)]])

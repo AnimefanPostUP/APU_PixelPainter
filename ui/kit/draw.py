@@ -7,7 +7,7 @@ unit-tested outside Blender.
 
 import math
 
-from . import aa
+from . import aa, geometry
 
 try:  # pragma: no cover - only unavailable outside Blender
     import blf
@@ -152,6 +152,27 @@ def ring_segment_outline(inner, outer, color, width=1.5):
     if len(inner) < 2:
         return
     polyline(list(inner) + list(reversed(outer)), color, width, closed=True)
+
+
+def ring_segment_dashed_outline(inner, outer, color, width=1.5, dash=4.0, gap=3.0):
+    """Dotted / dashed outline of a ring (or corner) segment: ``dash`` px on, ``gap`` px off."""
+    if len(inner) < 2:
+        return
+    for run in geometry.dash_runs(list(inner) + list(reversed(outer)), dash, gap, closed=True):
+        polyline(run, color, width)
+
+
+def gradient_ring_segment(inner, outer, colors):
+    """Ring segment filled with a gradient along it: ``colors[i]`` (RGBA) at the
+    ``i``-th point pair of ``inner`` / ``outer``."""
+    n = len(inner)
+    if n < 2 or n != len(outer) or len(colors) != n:
+        return
+    verts, cols = [], []
+    for i in range(n - 1):
+        verts += [inner[i], outer[i], outer[i + 1], inner[i], outer[i + 1], inner[i + 1]]
+        cols += [colors[i], colors[i], colors[i + 1], colors[i], colors[i + 1], colors[i + 1]]
+    shaded_tris(verts, cols)
 
 
 def gradient_line(p0, p1, c0, c1, width=1.5):

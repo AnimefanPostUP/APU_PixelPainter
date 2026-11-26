@@ -20,7 +20,8 @@ everything here works with press, drag and release only.
 
   - top right: *S* / *A* / *M* (Strength, Alpha, Modifier) radial sliders,
     as deep as both rings: press sets the value from the distance to the
-    center, drag keeps setting it;
+    center, drag keeps setting it; outside them, along the circle, the color
+    history (the last painted colors, newest at the top; tap paints with it);
   - top left: the tools (half in each ring; tap selects);
   - bottom left: the falloff -- in the outer ring the *falloff field* (the
     Shape falloff, swiped like the color selector: toward the center = hard,
@@ -37,14 +38,17 @@ everything here works with press, drag and release only.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
-  color history along the circle (the last painted colors, newest left; tap
-  paints with it), the secondary and primary color (tap a color: the pen
-  paints with it -- the secondary one sets the RMB lock; the color buttons have
-  round corners), each with its own
+  *gradient slider* along the circle (primary at the left end, secondary at the
+  top; press / drag picks the optional *tertiary color* on it and selects it --
+  the pen tip then paints with it), the secondary and primary color (tap a
+  color: the pen paints with it -- the secondary one sets the RMB lock; the
+  color buttons have round corners), each with its own
   *Picker* on its outer side (eyedropper for that color: arms it for the next canvas
-  press; the active color's picker is bright, the other grey), and between
-  them *Swap* with the *Mix* bubble behind it toward the corner (the two colors
-  half and half; tap: the active color becomes the mix);
+  press; the picker of the color the selector edits is bright, the other grey), and
+  between them *Swap* with the *tertiary bubble* behind it toward the corner (shows
+  the tertiary color; tap: selects it / back to the color before). With the
+  tertiary color selected, the color selector still edits the primary or the
+  secondary color: that one has a dotted outline, a tap on the other switches.
   bottom left the palette band (24 slots in two bands along the circle) and
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes);
@@ -57,7 +61,7 @@ everything here works with press, drag and release only.
   clipboard -- project and library are not synced. *From image...* turns an
   image file's pixel colors into a new project palette.
 * **Drag & drop** (setting *Drag Colors*): drag the primary / secondary color,
-  a history color, a palette color or the color selector's old / new bubble (a
+  the tertiary bubble, a history color, a palette color or the color selector's old / new bubble (a
   short press stays a tap). Drop it on a palette slot to store it (palette onto
   palette: the two swap), on the primary / secondary color to set it; drop a
   palette color off the menu to remove it. In the palette view, palettes are
@@ -80,7 +84,7 @@ everything here works with press, drag and release only.
   Triangle, Wheel), model (HSV / HSL) and optional RGB / HSV / HSL sliders
   come from the settings popup (Color Selector tab). Every part is swiped
   like a touchpad; a tap jumps. It edits the color the pen paints (secondary
-  with the RMB lock). The change applies when the pen is lifted; the color
+  with the RMB lock; with the tertiary color selected, the dotted one). The change applies when the pen is lifted; the color
   from before editing stays marked with a cross and shows in the old / new
   bubble at the top until the bubble is tapped (accept: the new color becomes
   the reference). With *Preview* on (settings popup, Color Selector tab) the
@@ -152,7 +156,7 @@ BLEND_GROUPS = (("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL/HSV", 'HSL'))
 DIAL_GAP = 2.5                 # spacing between segments of a category / rings / the Size knob
 GROUP_GAP = 14.0               # spacing between categories (a divider line runs through it)
 SQUARE_HALF = 172.0                  # half size of the enclosing square
-HISTORY_DEPTH = 14.0                 # the color history band / each palette band
+HISTORY_DEPTH = 14.0                 # the gradient slider / color history band / each palette band
 PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
 PALETTE_DEPTH = PALETTE_ROWS * HISTORY_DEPTH + (PALETTE_ROWS - 1) * DIAL_GAP
 CORNER_GAP = 4.0                     # circle -> first band (divider lines end in the bands' end gaps)
@@ -194,15 +198,17 @@ FIELD_GUIDE_ALPHA = 0.8
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
-# Top left: history band along the circle; then secondary's Picker | secondary |
-# Swap + Mix | primary | primary's Picker (the colors toward the corner; all with round
-# corners). Swap sits by the circle, the Mix bubble behind it toward the square's corner
-# (not cut: the menu's lock is bottom left).
+# Top left: the gradient slider (tertiary color) along the circle; then secondary's
+# Picker | secondary | Swap + tertiary bubble | primary | primary's Picker (the colors
+# toward the corner; all with round corners). Swap sits by the circle, the tertiary
+# bubble behind it toward the square's corner (not cut: the menu's lock is bottom left).
 COLORS_ARC = (90.0, 180.0)
+HISTORY_BAND_ARC = SLIDER_ARC        # top right: the color history, outside S / A / M
+GRADIENT_MARKER = 3.0                # the gradient slider's marker: half width, unscaled px
 COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
 SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix bubble sits past it
 COLOR_ROUND = 6.0                    # corner radius of the color section's buttons
-MIX_BUBBLE_MARGIN = 1.5              # the Mix bubble keeps this far from its slot's edges
+MIX_BUBBLE_MARGIN = 1.5              # the tertiary bubble keeps this far from its slot's edges
 COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
 # Palettes: around the diagonal, the only part of the corner with room left past the
 # palette bands. (Color / Library: the Windows ring.)
@@ -337,14 +343,15 @@ class _ColorDrag:
 
 class _ColorCorner(_ColorDrag, CornerSegment):
     """The primary or secondary color (``which``) as a corner segment; the active one
-    (the color the pen paints) is ringed. Drag source and drop target."""
+    (the color the pen paints) is ringed, with a dotted ring while the tertiary color is
+    selected and the color selector edits this one. Drag source and drop target."""
 
-    def __init__(self, bar, which, rgb, active, **kwargs):
+    def __init__(self, bar, which, rgb, role, **kwargs):
         super().__init__(**kwargs)
         self.bar = bar
         self.which = which      # 'PRIMARY' / 'SECONDARY'
         self.rgb = rgb          # () -> (r, g, b)
-        self.active = active    # () -> bool
+        self.role = role        # () -> 'ACTIVE' / 'TARGET' / None
 
     def drag_color(self):
         return _resolve(self.rgb, None)
@@ -362,22 +369,27 @@ class _ColorCorner(_ColorDrag, CornerSegment):
             return
         rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
         draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
-        if _resolve(self.active, False):
+        role = _resolve(self.role, None)
+        if role == 'ACTIVE':
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
+        elif role == 'TARGET':
+            draw.ring_segment_dashed_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha),
+                                             width=theme.px(2.0), dash=theme.px(3.0), gap=theme.px(3.0))
         elif self.hover_t > 0.5:
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
-class _MixBubble(_ColorDrag, CornerSegment):
-    """The primary and secondary color mixed half and half, as a bubble: the largest
-    circle that fits its corner slot (on the slot's middle ray). Tap: the active color
-    becomes the mix (tap again for the next step toward the other color); drag
-    source, not a drop target (it follows the two colors)."""
+class _TertiaryBubble(_ColorDrag, CornerSegment):
+    """The tertiary color (picked on the gradient slider) as a bubble: the largest
+    circle that fits its corner slot (on the slot's middle ray), ringed while selected.
+    Tap: select it / back to the color before; drag source, not a drop target (it
+    follows the two colors)."""
 
-    def __init__(self, bar, rgb, **kwargs):
+    def __init__(self, bar, rgb, active, **kwargs):
         super().__init__(**kwargs)
         self.bar = bar
         self.rgb = rgb          # () -> (r, g, b)
+        self.active = active    # () -> bool: the tertiary color is selected
         self._bubble = (0.0, 0.0, 0.0)   # screen cx, cy, radius
         self._hit = 0.0
 
@@ -402,8 +414,90 @@ class _MixBubble(_ColorDrag, CornerSegment):
             return
         rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
         draw.circle(x, y, r, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
-        if self.hover_t > 0.5:
+        if _resolve(self.active, False):
+            draw.circle_outline(x, y, r, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
+        elif self.hover_t > 0.5:
             draw.circle_outline(x, y, r, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _GradientSlider(RingSegment):
+    """The gradient from the primary color (at ``a1``, the left end) to the secondary
+    one (at ``a0``, the top) along the circle; a marker shows the tertiary color's spot.
+    A press sets it from the pointer's angle (and selects the tertiary color), dragging
+    keeps setting it: ``on_value(t)`` with t = 0 at the primary, 1 at the secondary end."""
+
+    draggable = True
+    _STEPS = 24
+
+    def __init__(self, label="", *, colors, value, active, on_value, **kwargs):
+        super().__init__(label, **kwargs)
+        self.colors = colors        # () -> (primary rgb, secondary rgb)
+        self.value = value          # () -> t
+        self.active = active        # () -> bool: the tertiary color is selected
+        self.on_value = on_value
+        self.dragging = False
+
+    def _span(self):
+        """Screen angles (radians) of the drawn ends: (secondary end, primary end)."""
+        a0, a1 = self.angles
+        r = max(1.0, (self.pr0 + self.pr1) * 0.5)
+        return (a0 + math.asin(min(1.0, self.insets[0] / r)),
+                a1 - math.asin(min(1.0, self.insets[1] / r)))
+
+    def value_at(self, x, y):
+        s0, s1 = self._span()
+        angle = math.atan2(y - self.cy, x - self.cx) % math.tau
+        mid = (s0 + s1) * 0.5    # unwrap around the slider's middle
+        angle = mid + (angle - mid + math.pi) % math.tau - math.pi
+        return max(0.0, min(1.0, (s1 - angle) / (s1 - s0)))
+
+    def drag_begin(self, x, y):
+        self.dragging = True
+        self.drag_update(x, y)
+
+    def drag_update(self, x, y):
+        if self.dragging and self.on_value is not None:
+            self.on_value(self.value_at(x, y))
+
+    def drag_end(self, x, y, cancelled=False):
+        self.dragging = False
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        alpha = self._alpha(dc)
+        primary, secondary = _resolve(self.colors, ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)))
+        if primary is None or secondary is None:
+            return
+        s0, s1 = self._span()
+        if s1 <= s0:
+            return
+        # Gradient: thin slices from the secondary end to the primary end.
+        steps = self._STEPS
+        inner, outer = [], []
+        for i in range(steps + 1):
+            a = s0 + (s1 - s0) * i / steps
+            ux, uy = math.cos(a), math.sin(a)
+            inner.append((self.cx + ux * self.pr0, self.cy + uy * self.pr0))
+            outer.append((self.cx + ux * self.pr1, self.cy + uy * self.pr1))
+        colors = []
+        for i in range(steps + 1):
+            t = 1.0 - i / steps
+            c = [p + (q - p) * t for p, q in zip(primary[:3], secondary[:3])]
+            colors.append((c[0], c[1], c[2], alpha))
+        draw.gradient_ring_segment(inner, outer, colors)
+        on = _resolve(self.active, False)
+        edge = with_alpha(theme.accent_light, alpha) if on else theme.edge_for((0.5, 0.5, 0.5), alpha)
+        draw.ring_segment_outline(inner, outer, edge, width=theme.px(1.5) if on else 1.0)
+        # Marker at the tertiary color's spot: a dark bar with a light core, past both edges.
+        t = max(0.0, min(1.0, float(_resolve(self.value, 0.5) or 0.0)))
+        a = s1 - (s1 - s0) * t
+        ux, uy = math.cos(a), math.sin(a)
+        reach = theme.px(2.0)
+        p0 = (self.cx + ux * (self.pr0 - reach), self.cy + uy * (self.pr0 - reach))
+        p1 = (self.cx + ux * (self.pr1 + reach), self.cy + uy * (self.pr1 + reach))
+        half = theme.px(GRADIENT_MARKER)
+        draw.polyline([p0, p1], (0.05, 0.05, 0.05, 0.9 * alpha), half * 2.0)
+        draw.polyline([p0, p1], (1.0, 1.0, 1.0, alpha) if on else (0.8, 0.8, 0.8, 0.85 * alpha), half * 0.8)
 
 
 class _BubbleDrag(_ColorDrag, ColorBubble):
@@ -1547,7 +1641,7 @@ class PenBar:
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         self.menu = self._window('bar', self._build_dial(),
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
-                                 tab=tab, lock_bottom=True)   # top left: the Mix color field
+                                 tab=tab, lock_bottom=True)   # top left: the tertiary bubble
         self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout,
                                            self.library_flyout], self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
@@ -1689,34 +1783,38 @@ class PenBar:
         return dial
 
     def _add_corners(self, dial):
-        """Top left the color section: the color history band, secondary's Picker /
-        secondary / Swap + Mix / primary / primary's Picker; bottom left the palette and its
-        buttons; bottom right, past the second falloff row, Curve and Settings."""
+        """Top left the color section: the gradient slider (tertiary color), secondary's
+        Picker / secondary / Swap + tertiary bubble / primary / primary's Picker; top right
+        the color history band; bottom left the palette and its buttons; bottom right, past
+        the favorites, Grid, Save and Windows."""
         a = self.actions
         corner = dict(chamfer=CORNER_CHAMFER)
 
-        # Color history along the circle, newest at the left end (next to the primary color).
+        # Top right, outside S / A / M: the color history, newest at the top end.
         swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
-        dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
-        primary_active = lambda: not a.rmb_lock()
-        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], primary_active, key='PRIMARY',
-                               round=COLOR_ROUND, on_click=lambda: a.set_rmb_lock(False))
-        secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
-                                 round=COLOR_ROUND, on_click=lambda: a.set_rmb_lock(True))
+        dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
+        # Top left along the circle: the gradient primary (left) -> secondary (top).
+        self.gradient_slider = _GradientSlider("Tertiary", key='GRADIENT', colors=a.colors, value=a.tertiary_t,
+                                               active=a.tertiary_active, on_value=a.set_tertiary_t)
+        dial.add_band([self.gradient_slider], CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
+        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], lambda: a.color_role('PRIMARY'),
+                               key='PRIMARY', round=COLOR_ROUND, on_click=lambda: a.select_color('PRIMARY'))
+        secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], lambda: a.color_role('SECONDARY'),
+                                 key='SECONDARY', round=COLOR_ROUND, on_click=lambda: a.select_color('SECONDARY'))
 
         def picker(which, rgb, active):
             kind = f'EYEDROPPER_{which}'
             return CornerSegment(f"Pick {which.title()}", key=f'PICKER_{which}',
                                  painter=_paint_target_picker(rgb, active), round=COLOR_ROUND,
                                  selected=lambda: a.armed() == kind, on_click=lambda: a.toggle_arm(kind))
-        pick_primary = picker('PRIMARY', lambda: a.colors()[0], primary_active)
-        pick_secondary = picker('SECONDARY', lambda: a.colors()[1], a.rmb_lock)
+        pick_primary = picker('PRIMARY', lambda: a.colors()[0], lambda: a.color_target() == 'PRIMARY')
+        pick_secondary = picker('SECONDARY', lambda: a.colors()[1], lambda: a.color_target() == 'SECONDARY')
         self.arm_buttons = {'EYEDROPPER_PRIMARY': pick_primary, 'EYEDROPPER_SECONDARY': pick_secondary}
-        mix = _MixBubble(self, a.mix_color, key='MIX', on_click=a.use_mix_color)
+        mix = _TertiaryBubble(self, a.tertiary_color, a.tertiary_active, key='TERTIARY', on_click=a.toggle_tertiary)
         dial.add_corner([pick_secondary, secondary, mix, primary, pick_primary], COLOR_CORNER_INNER, SQUARE_HALF,
                         *COLORS_ARC, weights=COLORS_WEIGHTS, chamfer=0.0)
-        # Swap by the circle in the middle; the Mix bubble behind it, toward the corner.
+        # Swap by the circle in the middle; the tertiary bubble behind it, toward the corner.
         swap_outer = COLOR_CORNER_INNER + SWAP_DEPTH
         swap = RingSegment("Swap", key='SWAP', painter=_paint_swap, round=COLOR_ROUND, on_click=a.swap_colors)
         dial.add_band([swap], COLOR_CORNER_INNER, swap_outer, mix.a0, mix.a1)

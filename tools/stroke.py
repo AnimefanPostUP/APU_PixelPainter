@@ -3,7 +3,7 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
-from . import color_history, mask, pen_pressure
+from . import color_history, mask, pen_pressure, tertiary_color
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
@@ -108,6 +108,9 @@ class StrokeTool(ToolBase):
         try:
             if button == 'RMB':
                 rgb = ctx.settings.get_brush_secondary_rgb(ctx.context)
+            elif tertiary_color.active(ctx.state):
+                rgb = tertiary_color.color(ctx.state, ctx.settings.get_brush_rgb(ctx.context),
+                                           ctx.settings.get_brush_secondary_rgb(ctx.context))
             else:
                 rgb = ctx.settings.get_brush_rgb(ctx.context)
             color_history.record(ctx.state, rgb)
@@ -161,7 +164,11 @@ class StrokeTool(ToolBase):
             brush = ctx.context.tool_settings.image_paint.brush
             if not brush:
                 return (1.0, 1.0, 1.0)
-            return brush.secondary_color if ctx.state['use_secondary'] else brush.color
+            if ctx.state['use_secondary']:
+                return brush.secondary_color
+            if tertiary_color.active(ctx.state):   # the left button paints the tertiary color
+                return tertiary_color.color(ctx.state, tuple(brush.color), tuple(brush.secondary_color))
+            return brush.color
         except Exception:
             return (1.0, 1.0, 1.0)
 

@@ -14,6 +14,9 @@ widgets it
   pending (the brush keeps its color) until the old / new bubble is tapped, and
 * with the RMB lock on, turns pen-tip (left button) presses into right
   button presses, so the pen paints with the secondary color / RMB settings.
+* keeps the optional tertiary color (``tools/tertiary_color.py``): selected, the
+  pen tip paints with it; the color selector then edits the primary or secondary
+  color named by ``pen_color_target`` (tap one of them to switch).
 """
 
 import colorsys
@@ -26,7 +29,7 @@ from ..core.framework import ToolFrame
 from ..ui.kit import Theme, UIEvent, hsv_for_rgb
 from ..ui.pen_bar import LAYOUT_STATE, PenBar
 from ..utils import blender_utils, palette_library
-from . import blend_modes, color_history, color_palette, falloff, mask, view_nav
+from . import blend_modes, color_history, color_palette, falloff, mask, tertiary_color, view_nav
 from .pen_layout import LayoutStore
 from .subtools.pen import PenEyedropperTool
 
@@ -60,6 +63,9 @@ class PenBarTool(ToolFrame):
         'pen_armed':         None,   # 'EYEDROPPER_PRIMARY' / '_SECONDARY': runs on the next canvas press
         'pen_pick_target':   None,   # the color the running pen eyedropper sets ('PRIMARY' / 'SECONDARY')
         'pen_rmb_lock':      False,  # the pen tip paints like the right mouse button
+        tertiary_color.ACTIVE_KEY: False,               # the pen tip paints the tertiary color
+        tertiary_color.T_KEY: tertiary_color.DEFAULT_T,  # its spot on the primary -> secondary gradient
+        tertiary_color.TARGET_KEY: 'PRIMARY',           # meanwhile the color selector edits this one
         'pen_bar_collapsed': False,
         'pen_color_panel':   True,   # the color selector is shown
         **LAYOUT_STATE,              # menu / color selector size and position (Reset Pen UI)
@@ -78,7 +84,8 @@ class PenBarTool(ToolFrame):
         'pen_color_original': None,  # (target, hsv) before the pad edits: bubble + cross compare to it
         'pen_color_pending': None,   # (target, hsv) Preview: pad color not yet applied to the brush
     }
-    persistent_state = ('pen_rmb_lock', 'pen_bar_collapsed', 'pen_color_panel',
+    persistent_state = ('pen_rmb_lock', tertiary_color.ACTIVE_KEY, tertiary_color.T_KEY, tertiary_color.TARGET_KEY,
+                        'pen_bar_collapsed', 'pen_color_panel',
                         *LAYOUT_STATE, 'pen_bar_locked', 'pen_color_locked', 'pen_palette_view',
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
                         'pen_view_autofit', 'pen_mask_help', 'pen_view_help')
@@ -224,11 +231,24 @@ class PenBarTool(ToolFrame):
         ctx.apply_tool_settings()
 
     def pen_rgb(self):
-        """The color the pen paints (the secondary one with the RMB lock)."""
+        """The color the pen paints (the secondary one with the RMB lock, the tertiary one
+        while selected)."""
+        if self.tertiary_active():
+            return tuple(self.tertiary_color())
         return tuple(self._pen_color(self._c()))
 
+    @staticmethod
+    def _target(ctx):
+        """The color the color selector edits: 'PRIMARY' / 'SECONDARY' (the RMB lock
+        decides; while the tertiary color is selected, the one tapped last)."""
+        state = ctx.state
+        if tertiary_color.active(state):
+            return 'SECONDARY' if state.get(tertiary_color.TARGET_KEY) == 'SECONDARY' else 'PRIMARY'
+        return 'SECONDARY' if state.get('pen_rmb_lock') else 'PRIMARY'
+
     def _pen_color(self, ctx):
-        if ctx.state.get('pen_rmb_lock'):
+        """The color the color selector edits (see :meth:`_target`)."""
+        if self._target(ctx) == 'SECONDARY':
             return ctx.settings.get_brush_secondary_rgb(ctx.context)
         return ctx.settings.get_brush_rgb(ctx.context)
 
@@ -246,7 +266,7 @@ class PenBarTool(ToolFrame):
         if not original:
             return None
         target, hsv = original
-        return hsv if target == self._button(ctx) else None  # RMB lock switched: other color
+        return hsv if target == self._target(ctx) else None  # target switched: other color
 
     def _pending(self, ctx):
         """Preview: HSV picked on the pad but not yet applied to the pen's color, or None."""
@@ -254,7 +274,7 @@ class PenBarTool(ToolFrame):
         if not pending or not self._preview_on(ctx):
             return None
         target, hsv = pending
-        return hsv if target == self._button(ctx) else None  # RMB lock switched: other color
+        return hsv if target == self._target(ctx) else None  # target switched: other color
 
     def pen_hsv(self):
         ctx = self._c()
@@ -267,10 +287,10 @@ class PenBarTool(ToolFrame):
         With Preview on the color is only kept pending; the bubble applies it."""
         ctx = self._c()
         if self._preview_on(ctx):
-            ctx.state['pen_color_pending'] = (self._button(ctx), (h, s, v))
+            ctx.state['pen_color_pending'] = (self._target(ctx), (h, s, v))
             return
         if self._original(ctx) is None:
-            ctx.state['pen_color_original'] = (self._button(ctx), self._applied_hsv(ctx))
+            ctx.state['pen_color_original'] = (self._target(ctx), self._applied_hsv(ctx))
         self._apply_hsv(ctx, h, s, v)
 
     def original_hsv(self):
@@ -323,7 +343,7 @@ class PenBarTool(ToolFrame):
 
     def _apply_hsv(self, ctx, h, s, v):
         rgb = colorsys.hsv_to_rgb(h, s, v)
-        if ctx.state.get('pen_rmb_lock'):
+        if self._target(ctx) == 'SECONDARY':
             ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
         else:
             ctx.settings.set_brush_rgb(ctx.context, *rgb)
@@ -364,18 +384,68 @@ class PenBarTool(ToolFrame):
         ctx = self._c()
         return ctx.settings.get_brush_rgb(ctx.context), ctx.settings.get_brush_secondary_rgb(ctx.context)
 
-    def mix_color(self):
-        """The primary and secondary color mixed half and half."""
-        primary, secondary = self.colors()
-        if primary is None or secondary is None:
-            return primary or secondary
-        return tuple((p + s) * 0.5 for p, s in zip(primary[:3], secondary[:3]))
+    # ---- tertiary color (tools/tertiary_color.py) ---------------------------------------
 
-    def use_mix_color(self):
-        """The active color (secondary with the RMB lock) becomes the mix."""
-        rgb = self.mix_color()
-        if rgb is not None:
-            self.set_color('SECONDARY' if self.rmb_lock() else 'PRIMARY', rgb)
+    def tertiary_active(self):
+        return tertiary_color.active(self._c().state)
+
+    def tertiary_t(self):
+        return tertiary_color.position(self._c().state)
+
+    def tertiary_color(self):
+        primary, secondary = self.colors()
+        return tertiary_color.color(self._c().state, primary, secondary)
+
+    def set_tertiary_t(self, t):
+        """The gradient slider: moves the tertiary color along it and selects it."""
+        self._c().state[tertiary_color.T_KEY] = tertiary_color.snapped(t)
+        self.select_tertiary()
+
+    def select_tertiary(self):
+        """The pen tip paints the tertiary color; the color selector keeps editing the
+        color it edited (no RMB lock meanwhile: the tip paints with the left button)."""
+        ctx = self._c()
+        state = ctx.state
+        if tertiary_color.active(state):
+            return
+        state[tertiary_color.TARGET_KEY] = self._target(ctx)
+        state[tertiary_color.ACTIVE_KEY] = True
+        state['pen_color_pending'] = None
+        if state.get('pen_rmb_lock'):
+            state['pen_rmb_lock'] = False
+            ctx.apply_tool_settings()
+
+    def toggle_tertiary(self):
+        """The tertiary bubble: select it, or (selected) back to the color the selector edits."""
+        if self.tertiary_active():
+            self.select_color(self._target(self._c()))
+        else:
+            self.select_tertiary()
+
+    def color_target(self):
+        """'PRIMARY' / 'SECONDARY': the color the color selector edits."""
+        return self._target(self._c())
+
+    def color_role(self, which):
+        """How the primary / secondary color is marked: 'ACTIVE' (the pen paints it),
+        'TARGET' (the tertiary color is selected; the color selector edits this one) or None."""
+        if self.color_target() != which:
+            return None
+        return 'TARGET' if self.tertiary_active() else 'ACTIVE'
+
+    def select_color(self, which):
+        """Tap on the primary / secondary color. With the tertiary color selected the
+        first tap only makes it the color the selector edits; a tap on that one (or
+        without the tertiary color) paints with it -- the secondary one sets the RMB lock."""
+        ctx = self._c()
+        state = ctx.state
+        if tertiary_color.active(state) and self._target(ctx) != which:
+            state[tertiary_color.TARGET_KEY] = which
+            state['pen_color_pending'] = None
+            return
+        state[tertiary_color.ACTIVE_KEY] = False
+        state['pen_color_pending'] = None
+        self.set_rmb_lock(which == 'SECONDARY')
 
     def swap_colors(self):
         ctx = self._c()
@@ -407,6 +477,8 @@ class PenBarTool(ToolFrame):
     def toggle_rmb_lock(self):
         state = self._c().state
         state['pen_rmb_lock'] = not state.get('pen_rmb_lock')
+        if state['pen_rmb_lock']:
+            state[tertiary_color.ACTIVE_KEY] = False   # the pen tip paints the secondary color
         self._c().apply_tool_settings()
 
     def tools(self):
@@ -463,13 +535,18 @@ class PenBarTool(ToolFrame):
         return color_history.colors(self._c().state)
 
     def use_history_color(self, rgb):
-        """Paint with ``rgb`` from the history (the secondary color with the RMB lock)."""
+        """Paint with ``rgb`` from the history / palette: it becomes the color the
+        selector edits (the secondary one with the RMB lock), which is then selected
+        (instead of the tertiary color)."""
         ctx = self._c()
-        if ctx.state.get('pen_rmb_lock'):
+        which = self._target(ctx)
+        if which == 'SECONDARY':
             ctx.settings.set_brush_secondary_rgb(ctx.context, *rgb)
         else:
             ctx.settings.set_brush_rgb(ctx.context, *rgb)
         ctx.state['pen_color_pending'] = None
+        if tertiary_color.active(ctx.state):
+            self.select_color(which)
 
     # ---- palettes: per project (the scene, saved in the .blend), library (palettes.json) ----
 

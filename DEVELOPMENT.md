@@ -206,14 +206,22 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
   extreme corners cut for the lock / X / resize triangle, except top left): top
-  left the color section -- the color history band (`tools/color_history.py`,
-  recorded by `StrokeTool.begin_stroke` for tools with `paints_color`), the
-  secondary / primary color each with its own picker (arm kinds
+  left the color section -- the gradient slider (`_GradientSlider`, primary at
+  the left end, secondary at the top), the secondary / primary color each with its own picker (arm kinds
   `EYEDROPPER_PRIMARY` / `_SECONDARY`; the press sets state `pen_pick_target`
-  for `PenEyedropperTool`), and between them Swap with the Mix bubble
-  (`_MixBubble`: the largest circle in its corner slot, `kit.geometry.best_circle`;
-  `PenBarTool.mix_color` / `use_mix_color`) behind it; these buttons have round
+  for `PenEyedropperTool`), and between them Swap with the tertiary bubble
+  (`_TertiaryBubble`: the largest circle in its corner slot, `kit.geometry.best_circle`)
+  behind it; these buttons have round
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
+  top right, outside S / A / M, the color history band (`HISTORY_BAND_ARC`,
+  `tools/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`).
+  The optional tertiary color (`tools/tertiary_color.py`, pure) is a point `t` on
+  the primary -> secondary gradient (state `pen_tertiary_t`); while selected
+  (`pen_tertiary`, set by the slider / bubble) `StrokeTool` paints left-button
+  strokes with it (no RMB lock meanwhile). The color selector, pickers and history
+  still edit primary / secondary: `PenBarTool._target` (state `pen_color_target`
+  while the tertiary color is selected, else the RMB lock); that color gets a dotted
+  outline (`kit.draw.ring_segment_dashed_outline`, `kit.geometry.dash_runs`);
   bottom left the palette band (24 slots in `PALETTE_ROWS` bands) and Palettes;
   bottom right Grid, Save and Windows (`BOTTOM_RIGHT_ARC`).
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24

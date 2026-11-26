@@ -408,3 +408,38 @@ def best_circle(r0, half, a0, a1, inset0, inset1, chamfer, samples=48):
         if room > best[1]:
             best = (p, room)
     return best
+
+
+def dash_runs(points, dash, gap, closed=False):
+    """``points`` (a polyline; ``closed``: back to the first) cut into dashes: a list
+    of point lists, each ``dash`` long, ``gap`` apart, following the line's corners."""
+    pts = list(points) + ([points[0]] if closed and points else [])
+    if len(pts) < 2 or dash <= 0.0:
+        return []
+    period = dash + max(0.0, gap)
+    runs, run, pos = [], None, 0.0      # pos: distance along the line
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        length = math.hypot(x1 - x0, y1 - y0)
+        if length <= 1e-9:
+            continue
+        start = 0.0
+        while start < length - 1e-9:
+            phase = (pos + start) % period
+            on = phase < dash
+            step = min(length - start, (dash - phase) if on else (period - phase))
+            if on:
+                a = start / length
+                b = (start + step) / length
+                pa = (x0 + (x1 - x0) * a, y0 + (y1 - y0) * a)
+                pb = (x0 + (x1 - x0) * b, y0 + (y1 - y0) * b)
+                if run is None:
+                    run = [pa]
+                run.append(pb)
+            elif run is not None:
+                runs.append(run)
+                run = None
+            start += step
+        pos += length
+    if run is not None:
+        runs.append(run)
+    return runs

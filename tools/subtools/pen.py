@@ -17,6 +17,8 @@ def _paints_secondary(ctx):
     target = ctx.state.get('pen_pick_target')
     if target is not None:
         return target == 'SECONDARY'
+    if ctx.state.get('pen_tertiary'):   # tertiary selected: the color the selector edits
+        return ctx.state.get('pen_color_target') == 'SECONDARY'
     return bool(ctx.state.get('pen_rmb_lock'))
 
 

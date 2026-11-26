@@ -112,12 +112,10 @@
   "pixel_painter_SQUARE_use_global_strength": true,
   "pixel_painter_SQUARE_use_global_strength_rmb": true,
   "pixel_painter_blend_favorites": [
-    "ADD",
-    "COLOR",
-    "DARKEN",
-    "LIGHTEN",
+    "HUE",
     "MIX",
-    "MUL"
+    "MUL",
+    "SOFTLIGHT"
   ],
   "pixel_painter_circle_falloff": "SHAPE",
   "pixel_painter_color_selector_layout": "SHEET",
