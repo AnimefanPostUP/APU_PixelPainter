@@ -248,7 +248,7 @@ TINT_GRID = (0.55, 0.78, 0.95)
 TINT_SAVE = (0.45, 0.80, 0.45)
 TINT_MASK = (0.78, 0.52, 1.00)
 TINT_VIEW = (0.40, 0.85, 0.95)
-MASK_PICK_HINT = "Tap islands / parts to toggle them (Pick again: done)"
+MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
@@ -715,7 +715,7 @@ def _paint_mask_invert(dc, x, y, size, alpha, caption=True):
 
 
 def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
-    """Pick: a target (tap islands)."""
+    """Edit (the mask): a target (tap islands)."""
     theme = dc.theme
     s = min(size * (0.4 if caption else 0.55), theme.px(15.0))
     color = with_alpha(theme.text, 0.92 * alpha)
@@ -726,7 +726,7 @@ def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
         draw.polyline([(x + dx * s * 0.55, cy + dy * s * 0.55), (x + dx * s * 0.8, cy + dy * s * 0.8)],
                       color, max(1.0, theme.px(1.0)))
     if caption:
-        _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
+        _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Edit", alpha)
 
 
 class _GridCorner(RingSegment):
@@ -1013,7 +1013,8 @@ class FalloffField(RingSegment):
 
     def drag_begin(self, x, y):
         start = self._current()
-        self._drag = {'start': start, 'value': start, 'press': (x, y), 'last': (x, y), 'travel': 0.0}
+        self._drag = {'start': start, 'value': start, 'press': (x, y), 'last': (x, y), 'travel': 0.0,
+                      'was_active': bool(_resolve(self.active, False))}
         self.dragging = True
         if self.on_drag_state is not None:
             self.on_drag_state(True)
@@ -1048,6 +1049,11 @@ class FalloffField(RingSegment):
             if drag['travel'] >= self._tap_travel():
                 self.on_value(*drag['start'])
         elif drag['travel'] < self._tap_travel():
+            if not drag['was_active']:
+                # Another falloff was in use: the first tap only switches back to Shape,
+                # keeping its values (the marker stays where it was).
+                self.on_value(*drag['start'])
+                return
             h, s = self.field_at(*drag['press'])
             self.on_value(max(0.0, min(1.0, h)), max(0.0, min(1.0, s)))
 

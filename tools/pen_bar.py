@@ -76,6 +76,7 @@ class PenBarTool(ToolFrame):
         'pen_view_panel':    False,  # the View window is shown
         'pen_view_locked':   False,
         'pen_view_autofit':  True,   # View window: re-fit the object after orient / orbit / roll
+        'pen_view_compact':  False,  # View window: only the Orient dial (the Orbit dial hidden)
         'pen_mask_help':     False,  # the window's '?' help text is shown
         'pen_view_help':     False,
         'pen_palette_view':  False,  # the palette band shows the project's palettes (else the active one's colors)
@@ -88,13 +89,14 @@ class PenBarTool(ToolFrame):
                         'pen_bar_collapsed', 'pen_color_panel',
                         *LAYOUT_STATE, 'pen_bar_locked', 'pen_color_locked', 'pen_palette_view',
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
-                        'pen_view_autofit', 'pen_mask_help', 'pen_view_help')
+                        'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help')
     # Saved per project (scene property, tools/pen_layout.py): the windows' open / collapsed
     # state, position, scale, lock and help.
     layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
                    'pen_color_panel', 'pen_color_locked',
                    'pen_mask_panel', 'pen_mask_locked', 'pen_mask_help',
-                   'pen_view_panel', 'pen_view_locked', 'pen_view_help', 'pen_view_autofit')
+                   'pen_view_panel', 'pen_view_locked', 'pen_view_help', 'pen_view_autofit',
+                   'pen_view_compact')
 
     def __init__(self, registry):
         super().__init__()
@@ -832,6 +834,14 @@ class PenBarTool(ToolFrame):
     def in_view3d(self):
         area = self._c().area
         return area is not None and area.type == 'VIEW_3D'
+
+    def view_compact(self):
+        """The View window shows only the Orient dial."""
+        return bool(self._c().state.get('pen_view_compact', False))
+
+    def toggle_view_compact(self):
+        state = self._c().state
+        state['pen_view_compact'] = not state.get('pen_view_compact', False)
 
     def view_autofit(self):
         return bool(self._c().state.get('pen_view_autofit', True))

@@ -97,12 +97,13 @@ class _Theme:
 
 class FalloffFieldTest(unittest.TestCase):
 
-    def make(self, warp=False):
+    def make(self, warp=False, active=True):
         self.values = [(0.25, 0.75)]
         self.warps, self.hidden = [], []
+        self.active = active
         field = pen_bar_ui.FalloffField(
             value=lambda: self.values[-1], on_value=lambda h, s: self.values.append((h, s)),
-            active=lambda: True, on_drag_state=self.hidden.append,
+            active=lambda: self.active, on_drag_state=self.hidden.append,
             warp=(lambda x, y: self.warps.append((x, y))) if warp else None)
         field.r0, field.r1 = 90.0, 170.0
         field.a0, field.a1 = pen_bar_ui.FALLOFF_FIELD_ARC
@@ -138,6 +139,20 @@ class FalloffFieldTest(unittest.TestCase):
     def test_tap_jumps(self):
         field = self.make()
         x, y = field.point_at(0.9, 0.1)
+        field.drag_begin(x, y)
+        field.drag_end(x, y)
+        self.assertAlmostEqual(self.values[-1][0], 0.9, places=6)
+        self.assertAlmostEqual(self.values[-1][1], 0.1, places=6)
+
+    def test_first_tap_while_inactive_keeps_values(self):
+        """Another falloff (e.g. Custom) in use: the first tap only switches back to
+        Shape (on_value with the unchanged values); the next tap jumps."""
+        field = self.make(active=False)
+        x, y = field.point_at(0.9, 0.1)
+        field.drag_begin(x, y)
+        field.drag_end(x, y)
+        self.assertEqual(self.values, [(0.25, 0.75), (0.25, 0.75)])
+        self.active = True
         field.drag_begin(x, y)
         field.drag_end(x, y)
         self.assertAlmostEqual(self.values[-1][0], 0.9, places=6)

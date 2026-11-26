@@ -123,11 +123,11 @@ def _draw_mask(layout, context):
     layout.prop(wm, "pixel_painter_mask_grow", text="Grow (px)")
     row = layout.row(align=True)
     picking = bool(STATE.get('mask_picking'))
-    row.operator("image.pixel_painter_mask_pick", text="Done Picking" if picking else "Pick on Canvas",
+    row.operator("image.pixel_painter_mask_pick", text="Done Editing" if picking else "Edit on Canvas",
                  icon='RESTRICT_SELECT_OFF', depress=picking)
     row.operator("image.pixel_painter_mask_clear", text="Clear", icon='X')
     _hints(layout, (
-        "Pick: tap islands / parts on the canvas to toggle them (drag: several).",
+        "Edit: tap islands / parts on the canvas to toggle them (drag: several).",
         "Only the chosen ones are painted; Invert protects them instead.",
         "Uses the active and the selected mesh objects. Chosen parts are saved",
         "in the .blend. Grow: extra pixels around each island (edge pixels).",

@@ -16,10 +16,11 @@ choice survives mesh edits that keep that face in the element).
   (*invert* swaps that). :func:`allowed` gives the paintable pixels;
   ``StrokeTool.paint`` puts protected pixels back after every draw step
   (:func:`restore_blocked`), so every tool is masked the same way.
-* Choosing: while *Pick* is on (state ``mask_picking``; the pen menu's Pick
-  button or ``image.pixel_painter_mask_pick``), a press on the canvas toggles
+* Choosing: while *Edit* is on (state ``mask_picking``; the Mask window's
+  center button or ``image.pixel_painter_mask_pick``), a press on the canvas toggles
   the element under the cursor; dragging sets every element it passes to the
-  same state. Esc / right click end picking.
+  same state. Esc / right click end editing. Meanwhile an orange frame runs
+  around the editor (``ui/viewport_frame.py``).
 """
 
 import json
@@ -572,5 +573,20 @@ class MaskTool(ToolFrame):
 
     def draw_overlay(self, ctx):
         # The shading itself is drawn by the core under all tool overlays (draw_2d / draw_3d).
-        if ctx.state.get('mask_picking') and not getattr(ctx.wm, 'pixel_painter_pen_bar', False):
+        if not ctx.state.get('mask_picking'):
+            return
+        _draw_edit_frame(ctx.context)
+        if not getattr(ctx.wm, 'pixel_painter_pen_bar', False):
             _draw_hint(ctx.context)
+
+
+def _draw_edit_frame(context):
+    """While editing the mask: an orange frame around the editor, labelled at the top."""
+    region = getattr(context, 'region', None)
+    if region is None:
+        return
+    from ..ui import viewport_frame   # late import: ui imports the tools
+    from ..ui.kit.theme import Theme
+    viewport_frame.draw_frame(region.width, region.height, viewport_frame.MASK_EDIT_COLOR,
+                              viewport_frame.MASK_EDIT_LABEL, Theme.for_context(context),
+                              top=viewport_frame.top_cover(getattr(context, 'area', None), region))

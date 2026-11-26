@@ -14,7 +14,7 @@ from ..tools import mask
 class PixelPainterMaskPickOperator(Operator):
     """Start / stop choosing UV islands or mesh parts on the canvas (tap to toggle, Esc: done)"""
     bl_idname = "image.pixel_painter_mask_pick"
-    bl_label = "Pick Mask"
+    bl_label = "Edit Mask"
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
