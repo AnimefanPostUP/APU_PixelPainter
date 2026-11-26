@@ -334,7 +334,7 @@ class Overlay:
 
     def draw_context(self):
         now = self.clock()
-        dt = anim.frame_dt(now, self._last_frame)
+        dt = anim.frame_dt(now, self._last_frame, idle=anim.IDLE_FRAME)
         self._last_frame = now
         close_t = self.close_progress(now)
         return DrawContext(

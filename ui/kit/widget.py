@@ -206,6 +206,8 @@ class Widget:
             target = 1.0
         speed = dc.dt / max(dc.theme.hover_duration, 1e-4)
         self.hover_t = anim.approach(self.hover_t, target, speed)
+        if self.hover_t != target:
+            anim.request_frame()
 
     def draw(self, dc):
         if not self.visible:

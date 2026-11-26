@@ -5,6 +5,7 @@ import time
 
 
 from ..core.state import declare as declare_state
+from ..ui.kit import anim
 from ..utils import blender_utils
 from ..utils import math_utils
 from .gpu_prims import draw_lines, draw_precision_pixel_guide, edges_to_screen_verts
@@ -94,6 +95,8 @@ def draw_brush_outline(context, state):
         to_cx = state.get('outline_to_cx', float(cx))
         to_cy = state.get('outline_to_cy', float(cy))
         t = min(1.0, max(0.0, (now - state.get('outline_anim_start', now)) / 0.018))
+        if t < 1.0:
+            anim.request_frame()   # the tween still runs: the session timer redraws
         te = t * t * (3.0 - 2.0 * t)
         cx = from_cx + (to_cx - from_cx) * te
         cy = from_cy + (to_cy - from_cy) * te

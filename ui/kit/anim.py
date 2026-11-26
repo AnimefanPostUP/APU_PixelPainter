@@ -41,8 +41,40 @@ def approach(current, target, step):
     return current
 
 
-def frame_dt(now, last, max_dt=0.1):
-    """Delta time between frames, clamped so a stalled frame does not jump."""
+IDLE_FRAME = 1.0 / 60.0   # dt of the first frame after an idle pause (no redraws)
+
+
+def frame_dt(now, last, max_dt=0.1, idle=None):
+    """Delta time between frames, clamped so a stalled frame does not jump.
+
+    ``idle``: dt to use for a gap longer than ``max_dt`` instead of ``max_dt`` --
+    for hosts that only redraw while :func:`request_frame` asks for it, where such
+    a gap means nothing was drawn meanwhile: an animation starting then begins
+    with one ordinary frame instead of jumping to its end."""
     if last is None:
         return 0.0
-    return max(0.0, min(max_dt, now - last))
+    gap = now - last
+    if idle is not None and gap > max_dt:
+        return idle
+    return max(0.0, min(max_dt, gap))
+
+
+# ---------------------------------------------------------------------------
+# Frame requests: a running animation asks for another frame. The host's timer
+# redraws only while one is pending, so an idle overlay costs no redraws.
+# ---------------------------------------------------------------------------
+
+_frame_requested = False
+
+
+def request_frame():
+    """Call while drawing an animation that has not reached its end yet."""
+    global _frame_requested
+    _frame_requested = True
+
+
+def take_frame_request():
+    """True (once) when an animation asked for another frame since the last call."""
+    global _frame_requested
+    requested, _frame_requested = _frame_requested, False
+    return requested

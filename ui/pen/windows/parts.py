@@ -132,7 +132,10 @@ class WindowGroup(Group):
         size = theme.px(self.title_size)
         p = self.plate
         speed = dc.dt / max(theme.hover_duration, 1e-4)
-        self.grab_t = anim.approach(self.grab_t, self._grab_target(dc), speed)
+        target = self._grab_target(dc)
+        self.grab_t = anim.approach(self.grab_t, target, speed)
+        if self.grab_t != target:
+            anim.request_frame()
         grab = anim.ease_in_out(self.grab_t)
         if grab > 0.01:
             draw.rounded_rect_outline(p, self.plate_round_px, with_alpha(theme.accent, grab * 0.8 * alpha),

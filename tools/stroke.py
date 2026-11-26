@@ -4,6 +4,7 @@ from ..core import history
 from ..core.view3d import footprint, islands as v3d_islands, patch, stroke_path
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
+from ..utils.settings_service import set_if_changed
 from ..model import color_history, tertiary_color
 from .mask import data as mask_data
 from .mask import guard as mask_guard
@@ -242,7 +243,7 @@ class StrokeTool(ToolBase):
         radius = settings.get_tool_size(context, mode, force_global=force_global)
         spacing = wm.pixel_painter_spacing
         # Apply the button-specific modifier so tools reading wm.pixel_painter_modifier see it.
-        wm.pixel_painter_modifier = modifier
+        set_if_changed(wm, 'pixel_painter_modifier', float(modifier))
         if self.uses_pen_pressure:
             radius, strength, alpha_opacity, modifier = pen_pressure.from_settings(wm, state).apply(
                 radius, strength, alpha_opacity, modifier)

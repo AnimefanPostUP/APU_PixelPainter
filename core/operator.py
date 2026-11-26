@@ -17,6 +17,7 @@ from bpy.types import Operator
 
 from ..utils import blender_utils, pixel_io
 from ..model import blend_modes
+from ..ui.kit import anim
 from ..overlays import brush_outline, cursor as cursor_overlays, handler as draw_handler
 from ..overlays import grid as draw_gridoverlay
 from ..tools.mask import overlay as mask_overlay
@@ -531,7 +532,8 @@ class PixelPainterOperator(Operator):
             apply_active_tool_settings(context)
 
             if event.type == 'TIMER':
-                if context.area:
+                # Redraw only while an animation (outline tween, hover fades) runs.
+                if anim.take_frame_request() and context.area:
                     context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
 

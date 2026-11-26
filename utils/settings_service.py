@@ -1,4 +1,22 @@
-"""Brush and tool-setting access helpers for Pixel Painter."""
+"""Brush and tool-setting access helpers for Pixel Painter.
+
+Writing a property from Python always runs its RNA update and sends a notifier
+(for add-on properties: a redraw of the whole window), even when the value is
+unchanged. Code that runs per event writes through :func:`set_if_changed`.
+"""
+
+
+def set_if_changed(owner, attr, value):
+    """``setattr(owner, attr, value)`` unless it already holds ``value`` (floats compared
+    at float32 precision, the precision RNA stores). True when written."""
+    current = getattr(owner, attr)
+    if isinstance(value, float) and isinstance(current, float):
+        if abs(current - value) <= 1e-7 * max(1.0, abs(value)):
+            return False
+    elif current == value:
+        return False
+    setattr(owner, attr, value)
+    return True
 
 
 def _persist_window_manager_settings(context):
@@ -37,9 +55,9 @@ class PixelPainterSettingsService:
             ups = context.tool_settings.unified_paint_settings
             brush = context.tool_settings.image_paint.brush
             if ups.use_unified_strength:
-                ups.strength = value
+                set_if_changed(ups, 'strength', value)
             elif brush:
-                brush.strength = value
+                set_if_changed(brush, 'strength', value)
         except Exception:
             pass
 
@@ -318,7 +336,8 @@ class PixelPainterSettingsService:
         """Load effective tool settings into runtime globals used by drawing paths."""
         try:
             wm = context.window_manager
-            wm.pixel_painter_modifier = self.get_tool_modifier(context, tool_mode, force_global=force_global)
+            set_if_changed(wm, 'pixel_painter_modifier',
+                           float(self.get_tool_modifier(context, tool_mode, force_global=force_global)))
             self.set_brush_strength(context, self.get_tool_strength(context, tool_mode, force_global=force_global))
         except Exception:
             pass
