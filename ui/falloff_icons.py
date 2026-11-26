@@ -23,7 +23,8 @@ _LUT_STEPS = 128          # radial samples per render (interpolated per pixel)
 _SIGNATURE_STEPS = 24     # samples used to detect custom-curve edits
 
 
-# Fixed Shape previews (hardness, sharpness) drawn in the pen menu's falloff field.
+# Fixed Shape previews (hardness, sharpness) in the corners of the pen menu's falloff
+# field: hard-linear, soft-linear, hard-sharp, soft-sharp.
 SHAPE_PREVIEWS = ((0.6, 0.0), (0.0, 0.0), (0.6, 1.0), (0.0, 1.0))
 
 

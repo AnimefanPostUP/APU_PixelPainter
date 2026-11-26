@@ -97,12 +97,15 @@ class _Theme:
 
 class FalloffFieldTest(unittest.TestCase):
 
-    def make(self):
+    def make(self, warp=False):
         self.values = [(0.25, 0.75)]
+        self.warps, self.hidden = [], []
         field = pen_bar_ui.FalloffField(
             value=lambda: self.values[-1], on_value=lambda h, s: self.values.append((h, s)),
-            active=lambda: True)
-        field.r0, field.r1, field.a0, field.a1 = 90.0, 170.0, 322.5, 375.0
+            active=lambda: True, on_drag_state=self.hidden.append,
+            warp=(lambda x, y: self.warps.append((x, y))) if warp else None)
+        field.r0, field.r1 = 90.0, 170.0
+        field.a0, field.a1 = pen_bar_ui.FALLOFF_FIELD_ARC
         field.place_on(0.0, 0.0, _Theme(), 2.5)
         field._theme = _Theme()
         return field
@@ -153,6 +156,63 @@ class FalloffFieldTest(unittest.TestCase):
             field.drag_update(*field.point_at(0.5 + 0.1 * i, 0.5))
         field.drag_end(None, None, cancelled=True)
         self.assertEqual(self.values[-1], (0.25, 0.75))
+
+    def test_cursor_hidden_while_pressed(self):
+        field = self.make()
+        x, y = field.point_at(0.5, 0.5)
+        field.drag_begin(x, y)
+        self.assertEqual(self.hidden, [True])
+        field.drag_end(x, y)
+        self.assertEqual(self.hidden, [True, False])
+        field.drag_begin(x, y)
+        field.drag_end(None, None, cancelled=True)
+        self.assertEqual(self.hidden[-1], False)
+
+    def test_warp_keeps_cursor_on_marker(self):
+        field = self.make(warp=True)
+        x, y = field.point_at(0.5, 0.2)                 # pressed away from the marker
+        field.drag_begin(x, y)
+        field.drag_update(x + 10.0, y)                  # past the tap travel: swipes
+        marker = field.point_at(*self.values[-1])
+        self.assertEqual(len(self.warps), 1)
+        self.assertAlmostEqual(self.warps[-1][0], marker[0], places=6)
+        self.assertAlmostEqual(self.warps[-1][1], marker[1], places=6)
+        # The next motion is measured from the marker (where the cursor now is).
+        before = self.values[-1]
+        mx, my = self.warps[-1]
+        field.drag_update(mx, my)
+        self.assertEqual(self.values[-1], before)
+        field.drag_end(mx, my)
+        self.assertEqual(self.values[-1], before)       # not a tap: no jump
+
+    def test_tap_uses_press_point(self):
+        field = self.make(warp=True)
+        x, y = field.point_at(0.8, 0.3)
+        field.drag_begin(x, y)
+        field.drag_end(x + 1.0, y)                       # release slightly off: still a tap there
+        self.assertAlmostEqual(self.values[-1][0], 0.8, places=6)
+        self.assertAlmostEqual(self.values[-1][1], 0.3, places=6)
+        self.assertEqual(self.warps, [])
+
+    def test_corners_point_into_the_field(self):
+        field = self.make()
+        corners = field.corners()
+        self.assertEqual(len(corners), 4)
+        step = 3.0
+        for (cx, cy), e1, e2 in corners:
+            self.assertAlmostEqual(e1[0] * e2[0] + e1[1] * e2[1], 0.0, places=3)   # perpendicular
+            px, py = cx + (e1[0] + e2[0]) * step, cy + (e1[1] + e2[1]) * step
+            self.assertTrue(field.contains(px, py), (cx, cy))
+        # Ordered hard-linear, soft-linear, hard-sharp, soft-sharp.
+        values = [field.field_at(*c) for c, _e1, _e2 in corners]
+        self.assertGreater(values[0][0], values[1][0])
+        self.assertLess(values[0][1], values[2][1])
+        self.assertGreater(values[2][0], values[3][0])
+
+    def test_preview_radius_scaled(self):
+        field = self.make()
+        self.assertGreater(field.preview_radius(), 0.0)
+        self.assertEqual(pen_bar_ui.FIELD_PREVIEW_SCALE, 1.6)
 
 
 if __name__ == '__main__':

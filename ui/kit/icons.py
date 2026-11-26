@@ -176,6 +176,34 @@ class IconSet:
         self._textures[key] = tex
         return tex
 
+    def draw_quad(self, key, corners, uvs, alpha=1.0):
+        """Draw part of an icon: the texture area ``uvs`` (4 points, 0..1) mapped onto the
+        screen quad ``corners`` (4 points, same order). Returns False if nothing was drawn."""
+        if key is None or alpha <= 0.05:
+            return False
+        tex = self.texture(key)
+        if tex is None:
+            return False
+        try:
+            from gpu_extras.batch import batch_for_shader
+            try:
+                shader, tinted = gpu.shader.from_builtin('IMAGE_COLOR'), True
+            except Exception:
+                shader, tinted = gpu.shader.from_builtin('IMAGE'), False
+            batch = batch_for_shader(shader, 'TRIS', {"pos": list(corners), "texCoord": list(uvs)},
+                                     indices=((0, 1, 2), (0, 2, 3)))
+            gpu.state.blend_set('ALPHA_PREMULT')
+            shader.bind()
+            shader.uniform_sampler("image", tex)
+            if tinted:
+                shader.uniform_float("color", (1.0, 1.0, 1.0, alpha))
+            batch.draw(shader)
+            return True
+        except Exception:
+            return False
+        finally:
+            gpu.state.blend_set('ALPHA')
+
     def draw(self, key, cx, cy, size, alpha=1.0):
         """Draw icon centered at ``(cx, cy)``. Returns False if nothing was drawn."""
         if key is None or size <= 1.0 or alpha <= 0.05:

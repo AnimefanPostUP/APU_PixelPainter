@@ -409,11 +409,15 @@ class PixelPainterOperator(Operator):
         return xmin <= event.mouse_region_x <= xmax and ymin <= event.mouse_region_y <= ymax
 
     def _set_modal_cursor(self, context):
-        if getattr(self, '_cursor_is_custom', False):
+        # State 'cursor_hidden': a UI element drawing its own pointer (e.g. the pen menu's
+        # falloff field while dragged) hides the OS cursor.
+        kind = 'NONE' if _state.get('cursor_hidden') else 'CROSSHAIR'
+        if getattr(self, '_cursor_is_custom', False) and getattr(self, '_cursor_kind', None) == kind:
             return
         try:
-            context.window.cursor_modal_set('CROSSHAIR')
+            context.window.cursor_modal_set(kind)
             self._cursor_is_custom = True
+            self._cursor_kind = kind
         except Exception:
             self._cursor_is_custom = False
 
@@ -425,6 +429,7 @@ class PixelPainterOperator(Operator):
         except Exception:
             pass
         self._cursor_is_custom = False
+        self._cursor_kind = None
 
     # ---- lifecycle ---------------------------------------------------------------
 
@@ -567,6 +572,7 @@ class PixelPainterOperator(Operator):
         _state['session_token'] = self._token
         _state['session_area'] = context.area.as_pointer()
         _state['running'] = True
+        _state['cursor_hidden'] = False
         _state['outline_anim_start'] = time.perf_counter()
         _state['last_observed_raw_radius'] = blender_utils.get_raw_brush_image_radius(context)
         self._set_modal_cursor(context)

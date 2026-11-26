@@ -230,8 +230,9 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu). The
   falloff controls fill the outer ring and the corner band bottom right (out to
   `FALLOFF_OUTER`): beside Redo the falloff field (`FalloffField`,
-  `FALLOFF_FIELD_ARC`), beside Undo Curve | Custom (`FALLOFF_CUSTOM_ARC`); past
-  them, around the diagonal, Settings (`SETTINGS_ARC`). The field sets the
+  `FALLOFF_FIELD_ARC`), under it in line with Redo Custom (outer ring) and Curve
+  (band) (`FALLOFF_CUSTOM_ARC`); beside Undo it is empty; past them, around the
+  diagonal, Settings (`SETTINGS_ARC`). The field sets the
   *Shape* falloff (`falloff.SHAPE_*`, `math_utils.shape_falloff`): global
   `pixel_painter_falloff_hardness` (radial: inner edge = 1 = constant, outer = 0)
   and `_sharpness` (along the circle: top = 0 = linear fade, bottom = 1 =
@@ -240,7 +241,10 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `('SHAPE', hardness, sharpness)` (rounded to `SHAPE_DECIMALS`), so the C#
   kernel cache keys on the values. It is swiped like the color selector
   (relative, `gain` 0.5; a tap jumps; ESC restores) and shows a readout plus a
-  preview disc while dragged. The curve button
+  preview disc while dragged. While pressed it hides the OS cursor (state
+  `cursor_hidden`, honored by the core's modal cursor) and warps it onto the marker
+  after every swipe step (`PenBarTool.warp_cursor`), so motion is measured from the
+  marker. Its corners show quarter preview discs (`IconSet.draw_quad`). The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
   (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`)
   and preset buttons (`falloff.CURVE_PRESETS`: the falloffs the field does not

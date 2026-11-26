@@ -29,8 +29,10 @@ everything here works with press, drag and release only.
     the outer ring and on into the corner, the falloff: beside Redo the
     *falloff field* (the Shape falloff, swiped like the color selector: toward
     the center = hard, outward = soft; top = linear fade, bottom = sharp; a tap
-    jumps; preview discs in its four quadrants, the marker shows the current
-    falloff), beside Undo *Custom* (in its own color) and *Curve*.
+    jumps; while pressed the cursor is hidden and kept on the marker; quarter
+    preview discs in its corners, the marker shows the current falloff); under
+    it, in line with Redo, *Custom* (in its own color) and *Curve*. Beside Undo
+    it is empty.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
@@ -167,9 +169,14 @@ TINT_FALLOFF = (0.30, 0.85, 0.72)
 TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
 CUSTOM_TINT_AMOUNT = 0.45
 # Falloff (bottom right, outside Undo / Redo): through the outer ring and the corner band
-# (out to FALLOFF_OUTER). The Shape field beside Redo; Curve | Custom beside Undo.
-FALLOFF_FIELD_ARC = (322.5, 375.0)
-FALLOFF_CUSTOM_ARC = (270.0, 322.5)
+# (out to FALLOFF_OUTER), all beside Redo: the Shape field, under it Custom and Curve;
+# beside Undo it stays empty.
+FALLOFF_FIELD_ARC = (340.0, 375.0)
+FALLOFF_CUSTOM_ARC = (322.5, 340.0)  # under the field, in line with Redo: Custom (outer ring), Curve (band)
+FIELD_MARKER_RADIUS = 9.0
+FIELD_PREVIEW_SCALE = 1.6            # corner preview discs (a quarter shows), relative to a quadrant icon
+FIELD_GUIDE_GRAY = (0.55, 0.55, 0.55)
+FIELD_GUIDE_ALPHA = 0.8
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
@@ -623,14 +630,17 @@ class FalloffField(RingSegment):
     values (setting them selects the Shape falloff); ``active()``: Shape is in use.
 
     A drag moves the marker by the pointer's motion (``gain``), not under the pen; a tap
-    jumps to the tapped spot; ESC / RMB restore the values from before the drag. The
-    quadrants show preview discs (``previews``: ``((hardness, sharpness), icon key)``),
-    the marker the current falloff (``marker_icon``)."""
+    jumps to the tapped spot; ESC / RMB restore the values from before the drag. While
+    pressed the OS cursor is hidden (``on_drag_state(True / False)``) and, once swiping,
+    kept on the marker (``warp(x, y)``, region px), so the marker is the pointer. Each
+    corner shows a quarter of a preview disc (``previews``: ``((hardness, sharpness),
+    icon key)`` listed hard-linear, soft-linear, hard-sharp, soft-sharp), the marker the
+    current falloff (``marker_icon``)."""
 
     draggable = True
 
     def __init__(self, label="", *, value, on_value, active, previews=(), marker_icon=None,
-                 gain=0.5, **kwargs):
+                 gain=0.5, on_drag_state=None, warp=None, **kwargs):
         super().__init__(label, selected=active, **kwargs)
         self.value = value
         self.on_value = on_value
@@ -638,6 +648,8 @@ class FalloffField(RingSegment):
         self.previews = tuple(previews)
         self.marker_icon = marker_icon
         self.gain = gain
+        self.on_drag_state = on_drag_state
+        self.warp = warp
         self.dragging = False
         self._drag = None
         self._theme = None
@@ -658,7 +670,10 @@ class FalloffField(RingSegment):
 
     def _marker_radius(self):
         theme = self._theme
-        return theme.px(9.0) if theme is not None else 9.0
+        return theme.px(FIELD_MARKER_RADIUS) if theme is not None else FIELD_MARKER_RADIUS
+
+    def _tap_travel(self):
+        return self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
 
     def _polar(self, x, y):
         """``(radius, angle in degrees)`` of a screen point, the angle unwrapped around the field."""
@@ -691,8 +706,10 @@ class FalloffField(RingSegment):
 
     def drag_begin(self, x, y):
         start = self._current()
-        self._drag = {'start': start, 'value': start, 'last': (x, y), 'travel': 0.0}
+        self._drag = {'start': start, 'value': start, 'press': (x, y), 'last': (x, y), 'travel': 0.0}
         self.dragging = True
+        if self.on_drag_state is not None:
+            self.on_drag_state(True)
 
     def drag_update(self, x, y):
         drag = self._drag
@@ -701,8 +718,7 @@ class FalloffField(RingSegment):
         lx, ly = drag['last']
         drag['last'] = (x, y)
         drag['travel'] += math.hypot(x - lx, y - ly)
-        tap = self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
-        if drag['travel'] < tap:
+        if drag['travel'] < self._tap_travel():
             return    # might still be a tap
         h0, s0 = self.field_at(lx, ly)
         h1, s1 = self.field_at(x, y)
@@ -710,21 +726,58 @@ class FalloffField(RingSegment):
         drag['value'] = (max(0.0, min(1.0, h + (h1 - h0) * self.gain)),
                          max(0.0, min(1.0, s + (s1 - s0) * self.gain)))
         self.on_value(*drag['value'])
+        if self.warp is not None:
+            # The cursor stays on the marker: the next motion is measured from there.
+            drag['last'] = self.point_at(*drag['value'])
+            self.warp(*drag['last'])
 
     def drag_end(self, x, y, cancelled=False):
         drag, self._drag = self._drag, None
         self.dragging = False
+        if self.on_drag_state is not None:
+            self.on_drag_state(False)
         if drag is None:
             return
-        tap = self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
         if cancelled:
-            if drag['travel'] >= tap:
+            if drag['travel'] >= self._tap_travel():
                 self.on_value(*drag['start'])
-        elif drag['travel'] < tap and x is not None:
-            h, s = self.field_at(x, y)
+        elif drag['travel'] < self._tap_travel():
+            h, s = self.field_at(*drag['press'])
             self.on_value(max(0.0, min(1.0, h)), max(0.0, min(1.0, s)))
 
     # ---- drawing -------------------------------------------------------------------
+
+    def corners(self):
+        """``(corner, unit vector into the field radially, unit vector into it along the
+        circle)`` of the drawn shape, ordered hard-linear, soft-linear, hard-sharp, soft-sharp."""
+        inner, outer = self.points()
+        if not inner:
+            return []
+        out = []
+        for index, side in ((-1, -1.0), (0, 1.0)):      # top (a1) side first, then bottom (a0)
+            p_in, p_out = inner[index], outer[index]
+            dx, dy = p_out[0] - p_in[0], p_out[1] - p_in[1]
+            d = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / d, dy / d                       # outward
+            tx, ty = -uy * side, ux * side                # toward the other side edge
+            out.append((p_in, (ux, uy), (tx, ty)))
+            out.append((p_out, (-ux, -uy), (tx, ty)))
+        return out
+
+    def preview_radius(self):
+        r0, r1, a0, a1 = self._track()
+        rm = (r0 + r1) * 0.5
+        cell = min((r1 - r0) * 0.5, rm * math.radians(a1 - a0) * 0.5)
+        return cell * 0.62 * FIELD_PREVIEW_SCALE * 0.5
+
+    def _draw_previews(self, alpha):
+        """A quarter of each preview disc in its corner (the disc's center on the corner)."""
+        radius = self.preview_radius()
+        for ((_hs, key), (c, e1, e2)) in zip(self.previews, self.corners()):
+            quad = [c, (c[0] + e1[0] * radius, c[1] + e1[1] * radius),
+                    (c[0] + (e1[0] + e2[0]) * radius, c[1] + (e1[1] + e2[1]) * radius),
+                    (c[0] + e2[0] * radius, c[1] + e2[1] * radius)]
+            self.icons.draw_quad(key, quad, ((0.5, 0.5), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0)), 0.45 * alpha)
 
     def draw_self(self, dc):
         self._theme = theme = dc.theme
@@ -732,19 +785,16 @@ class FalloffField(RingSegment):
         inner, _outer = self.points()
         if not inner:
             return
+        if self.icons is not None:
+            self._draw_previews(alpha)
         r0, r1, a0, a1 = self._track()
-        guide = with_alpha(theme.text_muted, 0.35 * alpha)
+        guide = (*FIELD_GUIDE_GRAY, FIELD_GUIDE_ALPHA * alpha)
         width = max(1.0, theme.px(1.0))
         # 2 x 2: the middle along the circle and across it.
         rm, am = (r0 + r1) * 0.5, math.radians((a0 + a1) * 0.5)
         draw.arc(self.cx, self.cy, rm, math.radians(a0), math.radians(a1), guide, width=width)
         draw.polyline([(self.cx + math.cos(am) * r0, self.cy + math.sin(am) * r0),
                        (self.cx + math.cos(am) * r1, self.cy + math.sin(am) * r1)], guide, width)
-        cell = min((r1 - r0) * 0.5, rm * math.radians(a1 - a0) * 0.5)
-        if self.icons is not None:
-            for (h, s), key in self.previews:
-                px, py = self.point_at(h, s)
-                self.icons.draw(key, px, py, cell * 0.62, 0.35 * alpha)
         # Marker: the current falloff in a ring (dimmed while another falloff is in use).
         on = bool(_resolve(self.active, False))
         mx, my = self.point_at(*self._current())
@@ -1353,14 +1403,15 @@ class PenBar:
             RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
             RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
         ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
-        # Falloff, through the outer ring and the corner band: the Shape field beside Redo,
-        # Custom and its Curve button beside Undo (Custom in its own color).
+        # Falloff, through the outer ring and the corner band, beside Redo: the Shape field,
+        # under it Custom (outer ring) and its Curve button (band); beside Undo: empty.
         from .falloff_icons import SHAPE_PREVIEWS, shape_preview_key
         self.falloff_field = FalloffField(
             "Falloff", key='FALLOFF_FIELD', icons=self.icons, value=a.falloff_shape,
             on_value=a.set_falloff_shape, active=lambda: a.active_falloff() == 'SHAPE',
             previews=[(hs, shape_preview_key(*hs)) for hs in SHAPE_PREVIEWS],
-            marker_icon=falloff.get('SHAPE').icon_key)
+            marker_icon=falloff.get('SHAPE').icon_key,
+            on_drag_state=a.set_cursor_hidden, warp=a.warp_cursor)
         dial.add_band([self.falloff_field], OUTER_RING[0], FALLOFF_OUTER, *FALLOFF_FIELD_ARC, tint=TINT_FALLOFF)
         custom_preset = falloff.get('CUSTOM')
         custom = RingSegment(custom_preset.label, key='FALLOFF_CUSTOM', icon=custom_preset.icon_key,
@@ -1371,7 +1422,8 @@ class PenBar:
                             tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
                             selected=lambda: self.flyout is self.curve_flyout,
                             on_click=lambda: self._open_curve(curve))
-        dial.add_band([curve, custom], OUTER_RING[0], FALLOFF_OUTER, *FALLOFF_CUSTOM_ARC, tint=TINT_FALLOFF)
+        dial.add_band([custom], OUTER_RING[0], DIAL_RADIUS, *FALLOFF_CUSTOM_ARC, tint=TINT_FALLOFF)
+        dial.add_band([curve], CORNER_INNER, FALLOFF_OUTER, *FALLOFF_CUSTOM_ARC, tint=TINT_FALLOFF)
         self._add_corners(dial)
         return dial
 

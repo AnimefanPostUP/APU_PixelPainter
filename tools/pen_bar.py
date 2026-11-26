@@ -652,6 +652,29 @@ class PenBarTool(ToolFrame):
         except Exception:
             return falloff.SHAPE_DEFAULT
 
+    def set_cursor_hidden(self, hidden):
+        """Hide / show the OS cursor (the falloff field draws its marker instead)."""
+        ctx = self._c()
+        hidden = bool(hidden)
+        if bool(ctx.state.get('cursor_hidden')) == hidden:
+            return
+        ctx.state['cursor_hidden'] = hidden
+        try:
+            ctx.context.window.cursor_modal_set('NONE' if hidden else 'CROSSHAIR')
+        except Exception:
+            pass
+
+    def warp_cursor(self, x, y):
+        """Move the OS cursor to region point ``x``/``y``."""
+        ctx = self._c()
+        region = ctx.region
+        if region is None:
+            return
+        try:
+            ctx.context.window.cursor_warp(int(round(x + region.x)), int(round(y + region.y)))
+        except Exception:
+            pass
+
     def set_falloff_shape(self, hardness, sharpness):
         """Set the Shape falloff's values and use it for the active tool."""
         _key, hardness, sharpness = falloff.shape_key(hardness, sharpness)
