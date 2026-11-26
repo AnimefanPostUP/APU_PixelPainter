@@ -230,13 +230,15 @@ class RingSlider(RingSegment):
     inner edge; ``label`` sits in the cap at the outer end. A press sets the value
     from the pointer's distance to the center, dragging keeps setting it:
     ``on_drag_begin()``, ``on_value(v)`` per change, ``on_drag_end(cancelled)``.
+    A press on the cap (the label) adjusts finely instead: no jump, the value
+    follows ``fine_gain`` (1/4) of the pointer's movement along the slider.
     """
 
     draggable = True
     gradient_dark = 0.62     # the value band's color at 0, relative to ``fill_color`` (at 1)
 
     def __init__(self, label="", *, value=0.0, fill_color=(0.66, 0.44, 0.92, 1.0), cap=16.0,
-                 on_drag_begin=None, on_value=None, on_drag_end=None, **kwargs):
+                 on_drag_begin=None, on_value=None, on_drag_end=None, fine_gain=0.25, **kwargs):
         super().__init__(label, **kwargs)
         self.value = value
         self.fill_color = fill_color
@@ -245,6 +247,8 @@ class RingSlider(RingSegment):
         self.on_value = on_value
         self.on_drag_end = on_drag_end
         self.dragging = False
+        self.fine_gain = fine_gain
+        self._fine = None        # fine drag (pressed on the cap): (start value, start radius)
         self._cap_px = 0.0
 
     def place_on(self, cx, cy, theme, gap):
@@ -260,18 +264,37 @@ class RingSlider(RingSegment):
         t0, t1 = self._track()
         return max(0.0, min(1.0, (math.hypot(x - self.cx, y - self.cy) - t0) / (t1 - t0)))
 
+    def _radius(self, x, y):
+        return math.hypot(x - self.cx, y - self.cy)
+
     def drag_begin(self, x, y):
         self.dragging = True
+        t0, t1 = self._track()
+        r = self._radius(x, y)
+        if r >= t1:   # on the cap: fine adjustment from the current value
+            start = max(0.0, min(1.0, float(_resolve(self.value, 0.0) or 0.0)))
+            self._fine = (start, r)
+        else:
+            self._fine = None
         if self.on_drag_begin is not None:
             self.on_drag_begin()
-        self.drag_update(x, y)
+        if self._fine is None:
+            self.drag_update(x, y)
 
     def drag_update(self, x, y):
-        if self.dragging and self.on_value is not None:
+        if not self.dragging or self.on_value is None:
+            return
+        if self._fine is None:
             self.on_value(self.value_at(x, y))
+            return
+        start, r0 = self._fine
+        t0, t1 = self._track()
+        moved = (self._radius(x, y) - r0) / max(1.0, t1 - t0)
+        self.on_value(max(0.0, min(1.0, start + moved * self.fine_gain)))
 
     def drag_end(self, x, y, cancelled=False):
         self.dragging = False
+        self._fine = None
         if self.on_drag_end is not None:
             self.on_drag_end(cancelled)
 

@@ -2006,6 +2006,7 @@ class PenBar:
         slider = RingSlider(
             label, key=f"SLIDER_{channel}", font_size=11.0, fill_color=color,
             value=lambda: self._value(channel),
+            enabled=lambda: self.actions.uses_value(channel),   # grayed out: the tool ignores it
             on_drag_begin=lambda: self._begin_drag(channel),
             on_value=lambda v: self.actions.set_value(channel, v),
             on_drag_end=self._end_drag,

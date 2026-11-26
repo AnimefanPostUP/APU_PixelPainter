@@ -107,6 +107,24 @@ class CircleBrushTool(WeightedBrushTool):
             x, y, env.radius, falloff, curve_sampler=curve_sampler)
 
 
+SPRAY_KNEE = (0.8, 0.08)   # M up to 80 % = density up to 8 % (the spray reacts strongly)
+
+
+def spray_density(modifier):
+    """Spray density (share of the circle per step) for the modifier ``modifier`` (0..1).
+
+    A hard curve: linear up to the knee (M 0..80 % -> 0..8 %), then a quadratic rise
+    to the full circle at M = 100 %, starting with the same slope (no kink)."""
+    m = min(1.0, max(0.0, float(modifier)))
+    km, kd = SPRAY_KNEE
+    slope = kd / km
+    if m <= km:
+        return m * slope
+    t = (m - km) / (1.0 - km)
+    linear = slope * (1.0 - km)          # the linear part's share of the rest
+    return min(1.0, kd + linear * t + (1.0 - kd - linear) * t * t)
+
+
 class SprayBrushTool(WeightedBrushTool):
     tool_id = 'SPRAY'
     label = "Spray"
@@ -115,18 +133,20 @@ class SprayBrushTool(WeightedBrushTool):
     outline_color = (1.0, 0.55, 0.0, 0.9)
     defaults = SettingDefaults(size=False, modifier=False, strength=False, alpha=False)
     falloff_property = 'pixel_painter_spray_falloff'
+    uses_values = frozenset({'strength', 'alpha', 'modifier'})   # modifier = how many sprinkles
+
+    @staticmethod
+    def density(env):
+        """Share of the circle sprinkled per step, from the tool modifier (M; pen pressure
+        applied): higher M = more sprinkles. See :func:`spray_density`."""
+        return spray_density(env.modifier)
 
     def native_draw(self, env, falloff, curve_sampler):
-        return native_paint.paint_weighted(env, falloff, curve_sampler,
-                                           spray_density=env.wm.pixel_painter_spray_strength)
+        return native_paint.paint_weighted(env, falloff, curve_sampler, spray_density=self.density(env))
 
     def sample(self, env, x, y, falloff, curve_sampler):
         return math_utils.get_spray_pixels(
-            x, y, env.radius, env.wm.pixel_painter_spray_strength, falloff,
-            curve_sampler=curve_sampler)
-
-    def draw_settings(self, context, layout):
-        layout.prop(context.window_manager, "pixel_painter_spray_strength", text="Density", slider=True)
+            x, y, env.radius, self.density(env), falloff, curve_sampler=curve_sampler)
 
 
 class LineBrushTool(BrushTool):
@@ -280,6 +300,7 @@ class EraserTool(BrushTool):
     icon = "Tool_Eraser.png"
     outline_color = (1.0, 0.1, 0.1, 0.9)
     defaults = SettingDefaults(size=True, modifier=False, strength=False, alpha=False)
+    uses_values = frozenset({'strength'})     # strength = how much alpha is erased
     line_tip_shape = 'CIRCLE'
 
     def on_draw(self, env):

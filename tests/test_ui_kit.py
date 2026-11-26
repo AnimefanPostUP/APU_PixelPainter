@@ -373,6 +373,18 @@ class DialTests(unittest.TestCase):
         self.assertTrue(math.isclose(self.values[-1], 1.0))
         self.assertFalse(self.slider.dragging)
 
+    def test_press_on_the_cap_adjusts_finely(self):
+        self.slider.value = 0.5
+        self.overlay.handle(ev('LEFTMOUSE', 'PRESS', 100, 100 - 45))      # on the cap (40..50)
+        self.assertEqual(self.values, [])                                 # no jump
+        self.overlay.handle(move(100, 100 - 27))                          # a whole track length inward
+        self.overlay.handle(ev('LEFTMOUSE', 'RELEASE', 100, 73))
+        self.assertTrue(math.isclose(self.values[-1], 0.25))              # 1/4 of the movement
+        self.overlay.handle(ev('LEFTMOUSE', 'PRESS', 100, 100 - 45))
+        self.overlay.handle(move(100, 100 - 99))                          # far out: clamps
+        self.overlay.handle(ev('LEFTMOUSE', 'RELEASE', 100, 1))
+        self.assertTrue(math.isclose(self.values[-1], 1.0))
+
 
 class CurveLogicTests(unittest.TestCase):
     def test_insert_keeps_order_and_ends(self):

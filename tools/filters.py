@@ -129,6 +129,7 @@ class SmoothTool(StrokeTool):
     icon = "Tool_Smooth.png"
     outline_color = (0.7, 0.3, 1.0, 0.9)
     defaults = SettingDefaults(size=True, modifier=True, strength=False, alpha=False)
+    uses_values = frozenset({'strength', 'alpha', 'modifier'})
     falloff_property = 'pixel_painter_smooth_falloff'
     line_tip_shape = 'CIRCLE'
 
@@ -172,6 +173,7 @@ class SmearTool(StrokeTool):
     icon = "Tool_Smear.png"
     outline_color = (1.0, 0.3, 0.7, 0.9)
     defaults = SettingDefaults(size=True, modifier=True, strength=False, alpha=False)
+    uses_values = frozenset({'strength', 'alpha', 'modifier'})
     falloff_property = 'pixel_painter_smear_falloff'
     line_tip_shape = 'CIRCLE'
 

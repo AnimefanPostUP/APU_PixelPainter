@@ -18,6 +18,7 @@ class SelectionTool(ToolBase):
     description = "Select, move, resize, copy and paste pixel regions"
     icon = "Tool_Select.png"
     defaults = SettingDefaults(size=True, modifier=True, strength=True, alpha=True)
+    uses_values = frozenset({'strength'})     # the opacity of pasted / stamped regions
     usable_as_line_tip = False
     shows_brush_outline = False
 

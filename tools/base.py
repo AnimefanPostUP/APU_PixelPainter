@@ -123,6 +123,9 @@ class ToolBase(ToolFrame):
     uses_pen_pressure: bool = True          # pen pressure scales the enabled channels
     shows_brush_outline: bool = True
     paints_color: bool = False              # paints with the brush color (recorded in the color history)
+    # The pen menu's S / A / M sliders this tool reads ('strength', 'alpha', 'modifier');
+    # the others are grayed out while it is active.
+    uses_values: frozenset = frozenset({'strength', 'alpha'})
 
     # ---- painting hooks (see tools.stroke.StrokeTool) -------------------------
 

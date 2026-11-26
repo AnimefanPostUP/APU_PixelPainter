@@ -500,6 +500,14 @@ class PenBarTool(ToolFrame):
     def active_tool(self):
         return self._c().mode
 
+    def uses_value(self, channel):
+        """Does the active tool read ``channel`` (its S / A / M slider is grayed out if not)?"""
+        try:
+            tool = self.registry.get(self.active_tool())
+        except Exception:
+            return True
+        return tool is None or channel in getattr(tool, 'uses_values', (channel,))
+
     def select_tool(self, tool_id):
         ctx = self._c()
         self.manager.select(ctx, tool_id)
