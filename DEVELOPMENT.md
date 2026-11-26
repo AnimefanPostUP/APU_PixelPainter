@@ -184,7 +184,8 @@ layout, hit-testing, hover/press/click, keyboard, animation, DPI scaling and dra
 | `color_pad.py` | `ColorPad` (the selector with the Sheet layout), `hsv_for_rgb` |
 | `overlay.py` | `Overlay` — interaction controller (pure Python, unit-tested) |
 | `modal.py` | `OverlayOperator` mixin — draw handler, timer, modal wiring |
-| `draw.py`, `icons.py`, `theme.py` | GPU primitives, image icons, colors/metrics/timings |
+| `draw.py`, `icons.py`, `theme.py` | GPU primitives, image icons, colors/metrics/timings. Every shape becomes `SMOOTH_COLOR` triangle arrays, cached at their position and relative to an integer origin (a moved shape is a cache hit); inside `draw.batched()` (`Overlay.draw`) they are drawn as one batch per run. Text and icons call `draw.flush()` first -- anything else drawing with raw `gpu` / `blf` inside an overlay must too, or it lands under shapes issued before it |
+| `anim.py` | easing helpers; `request_frame()`: an animation that has not reached its end asks for another frame. The Pixel Painter session redraws on its timer only while one is requested (no idle redraws), so every time-based animation must call it |
 | `aa.py` | geometric anti-aliasing for `draw.py` (no MSAA in overlays): a coverage ramp centered on every fill edge (0.5 px in / out, the solid part shrunk to meet it: sloped edges smooth, grid-aligned ones crisp; rects snap to whole pixels), lines as soft-edged triangle strips (any width, any GPU backend), vertex counts by on-screen size; meshes are memoized. `ring_segment` / `circle` / `sector` / `triangle` take `rim=` (a 1 px line: `theme.edge_for(fill)`, a darker shade of the fill -- never plain black). Draw through `draw.py`, not raw `gpu` lines, to keep it |
 
 A modal pie is a subclass plus an operator:
@@ -521,7 +522,14 @@ history.commit(img, "My Edit")   # records + pushes one Blender undo step
 
 `commit` stamps the image with an ID property and pushes a global undo step;
 undo/redo handlers restore the matching pixels. Operators with their own
-`UNDO` flag call `commit(img, push=False)` instead.
+`UNDO` flag call `commit(img, push=False)` instead. A step stores only the
+bounding box of the changed pixels (before and after); `begin` / `commit` read
+through `utils/pixel_io`, so call them while a stroke's working buffer is
+active (`pixel_io.begin_stroke` before `begin`, `commit` before `end_stroke`).
+
+Per-event code must not write add-on properties unconditionally: every write
+sends a window-wide redraw notifier, even for an unchanged value. Use
+`utils.settings_service.set_if_changed`.
 
 ## Tests
 
