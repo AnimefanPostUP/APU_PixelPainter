@@ -23,7 +23,14 @@ def _shader():
     return gpu.shader.from_builtin('UNIFORM_COLOR')
 
 
+def _alpha_blending():
+    """Every fill blends: text drawing (blf) and other code may turn GPU blending off
+    between our calls, which would draw translucent shapes opaque."""
+    gpu.state.blend_set('ALPHA')
+
+
 def _draw(prim, verts, color):
+    _alpha_blending()
     shader = _shader()
     batch = batch_for_shader(shader, prim, {'pos': verts})
     shader.bind()
@@ -75,6 +82,7 @@ def _snap(r):
 
 def shaded_tris(verts, colors):
     """Triangles with per-vertex colors (gradients): 3 verts / colors per triangle."""
+    _alpha_blending()
     shader = gpu.shader.from_builtin('SMOOTH_COLOR')
     batch_for_shader(shader, 'TRIS', {'pos': verts, 'color': colors}).draw(shader)
 

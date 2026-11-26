@@ -77,6 +77,10 @@ class PenBarTool(ToolFrame):
         'pen_view_locked':   False,
         'pen_view_autofit':  True,   # View window: re-fit the object after orient / orbit / roll
         'pen_view_compact':  False,  # View window: only the Orient dial (the Orbit dial hidden)
+        'pen_settings_panel':  False,  # the Settings window is shown
+        'pen_settings_locked': False,
+        'pen_library_panel':   False,  # the Palettes window is shown
+        'pen_library_locked':  False,
         'pen_mask_help':     False,  # the window's '?' help text is shown
         'pen_view_help':     False,
         'pen_palette_view':  False,  # the palette band shows the project's palettes (else the active one's colors)
@@ -89,14 +93,16 @@ class PenBarTool(ToolFrame):
                         'pen_bar_collapsed', 'pen_color_panel',
                         *LAYOUT_STATE, 'pen_bar_locked', 'pen_color_locked', 'pen_palette_view',
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
-                        'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help')
+                        'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help',
+                        'pen_settings_panel', 'pen_settings_locked', 'pen_library_panel', 'pen_library_locked')
     # Saved per project (scene property, tools/pen_layout.py): the windows' open / collapsed
     # state, position, scale, lock and help.
     layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
                    'pen_color_panel', 'pen_color_locked',
                    'pen_mask_panel', 'pen_mask_locked', 'pen_mask_help',
                    'pen_view_panel', 'pen_view_locked', 'pen_view_help', 'pen_view_autofit',
-                   'pen_view_compact')
+                   'pen_view_compact', 'pen_settings_panel', 'pen_settings_locked',
+                   'pen_library_panel', 'pen_library_locked')
 
     def __init__(self, registry):
         super().__init__()
@@ -819,10 +825,10 @@ class PenBarTool(ToolFrame):
     def set_state(self, key, value):
         self._c().state[key] = value
 
-    # ---- Mask / View windows ------------------------------------------------------------
+    # ---- Mask / View / Settings / Palettes windows ----------------------------------------
 
     def panel_open(self, name):
-        """Is the window ``name`` ('mask' / 'view') shown?"""
+        """Is the window ``name`` ('mask' / 'view' / 'settings' / 'library') shown?"""
         return bool(self._c().state.get(f'pen_{name}_panel'))
 
     def toggle_panel(self, name):

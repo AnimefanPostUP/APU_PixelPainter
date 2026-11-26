@@ -103,6 +103,7 @@ _MODULES = (
     'tools.brushes',
     'tools.filters',
     'ui.selection_actions',
+    'ui.pen_style',
     'ui.pen_settings',
     'ui.pen_bar',
     'ui.window_shapes',

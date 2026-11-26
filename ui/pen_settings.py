@@ -1,9 +1,11 @@
-"""Pen settings: the settings flyout of the pen menu (its *Settings* gear), built
-from UI-kit widgets like the curve flyout -- usable with a pen, no Blender popup.
+"""Pen settings: the Settings window of the pen menu (Windows ring > *Settings*; a
+movable window like Mask / View, kept open and in place per project), built from
+UI-kit widgets -- usable with a pen, no Blender popup.
 
-Layout: the tab's name, the tab's page (groups of related controls,
-:class:`~.kit.Group`, each page in its own color), then the row of icon tabs at
-the bottom (the flyout is bottom-anchored so the tabs don't move). The tabs
+Layout: the row of icon tabs at the top, the tab's name, then the tab's page
+(groups of related controls on soft neutral plates,
+:class:`~.pen_style.PlainGroup`). The look is
+the shared pen style (``ui/pen_style.py``): rounded buttons, one accent color. The tabs
 and the settings are the ones of the Blender settings popup
 (:mod:`.settings_menu`, still used by the N-panel / tool header) and share its
 remembered tab (``pixel_painter_settings_tab``).
@@ -16,7 +18,7 @@ Values are read and written through the pen menu's actions
 import colorsys
 import math
 
-from .kit import Button, Column, Grid, Group, IconButton, Panel, Rect, Row, Slider, TextBlock, Widget
+from .kit import Column, Grid, Rect, Row, Slider, TextBlock, Widget
 from .kit import draw
 from .kit.form import text_left
 from .kit.theme import with_alpha
@@ -24,6 +26,7 @@ from .kit.widget import _resolve
 from ..tools import blend_modes, falloff
 from .pen_bar import (TINT_FALLOFF, TINT_MODES, TINT_TOOLS, _paint_color_wheel, _paint_curve,
                       _paint_eyedropper, _paint_save, _thick_line)
+from .pen_style import PenButton, PlainGroup
 
 
 PAGE_WIDTH = 300.0       # unscaled width of every group
@@ -252,8 +255,8 @@ class _KeyRow(Widget):
         pad = theme.px(5.0)
         tw, _th = draw.text_size(self.keys, size, theme.font_id)
         cap = Rect(r.x0, r.y0 + theme.px(2.0), r.x0 + tw + pad * 2.0, r.y1 - theme.px(2.0))
-        draw.rect(cap, with_alpha(theme.surface_pressed, dc.alpha))
-        draw.rect_outline(cap, with_alpha(theme.border, dc.alpha), width=1.0)
+        draw.rounded_rect(cap, theme.px(5.0), with_alpha(theme.surface_pressed, dc.alpha),
+                          rim=theme.edge_for(theme.surface_pressed, dc.alpha))
         draw.text_centered(self.keys, cap.cx, cap.cy, size, with_alpha(theme.text, dc.alpha), theme.font_id)
         column = max(draw.text_size(k, size, theme.font_id)[0] for k in self.all_keys) + pad * 2.0 + theme.px(10.0)
         text_left(self.action, r.x0 + column, r.cy, size,
@@ -268,18 +271,17 @@ class SettingsMenu:
     def __init__(self, bar):
         self.bar = bar
         self.a = bar.actions
-        tabs = [IconButton(label, painter=painter, layout='icon', size=TAB_SIZE, key=f"SETTINGS_TAB_{tab_id}",
+        tabs = [PenButton(label, painter=painter, layout='icon', size=TAB_SIZE, key=f"SETTINGS_TAB_{tab_id}",
                            selected=lambda t=tab_id: self.current() == t,
                            on_click=lambda t=tab_id: self.select(t))
                 for tab_id, label, _tint, painter in TABS]
         title = TextBlock(lambda: [self._tab(self.current())[1]], size=13.0, color=(1.0, 1.0, 1.0, 1.0),
                           width=PAGE_WIDTH)
         pages = _Pages([(tab_id, self._page(tab_id, tint)) for tab_id, _label, tint, _p in TABS], self.current)
-        # Tabs at the bottom: the flyout is anchored by its bottom edge (tab row at the
-        # gear's height), so switching tabs only grows / shrinks the page above them.
-        self.panel = Panel(Column([title, pages, Row(tabs, gap=4.0)], gap=8.0), padding=8.0)
-        self.panel.key = 'SETTINGS_FLYOUT'
-        self.panel.anchor_bottom = 8.0 + TAB_SIZE[1] * 0.5   # unscaled: panel bottom -> tab row center
+        # The window's body (``PenBar`` puts it in the movable Settings window): the
+        # tabs at the top (the window is placed by its top-left corner, so they
+        # don't move when the page height changes), the tab's name, its page.
+        self.content = Column([Row(tabs, gap=4.0), title, pages], gap=8.0)
 
     # ---- tabs ------------------------------------------------------------------------
 
@@ -288,7 +290,7 @@ class SettingsMenu:
 
     def select(self, tab_id):
         self.a.wm_set('settings_tab', tab_id)
-        self.bar.overlay.layout()
+        self.bar._relayout()
 
     @staticmethod
     def _tab(tab_id):
@@ -303,23 +305,23 @@ class SettingsMenu:
 
     @staticmethod
     def _group(title, content, tint, painter=None):
-        return Group(title, content, tint=tint, painter=painter, width=PAGE_WIDTH)
+        return PlainGroup(title, content, painter=painter, width=PAGE_WIDTH)
 
     def _choice(self, prop, value, label, size=(64.0, 26.0), painter=None, layout='row'):
         """Button selecting ``value`` of the enum ``prop``."""
         a = self.a
-        return IconButton(label, painter=painter, layout=layout, size=size,
+        return PenButton(label, painter=painter, layout=layout, size=size,
                           key=f"SET_{prop}_{value}".upper(),
                           selected=lambda: a.wm_get(prop) == value, on_click=lambda: a.wm_set(prop, value))
 
     def _toggle(self, prop, label, size=(64.0, 26.0), painter=None):
         a = self.a
-        return IconButton(label, painter=painter, layout='row', size=size, key=f"SET_{prop}".upper(),
+        return PenButton(label, painter=painter, layout='row', size=size, key=f"SET_{prop}".upper(),
                           selected=lambda: bool(a.wm_get(prop)), on_click=lambda: a.wm_set(prop, not a.wm_get(prop)))
 
     def _flag(self, prop, item, label, size=(64.0, 26.0)):
         a = self.a
-        return IconButton(label, layout='row', size=size, key=f"SET_{prop}_{item}".upper(),
+        return PenButton(label, layout='row', size=size, key=f"SET_{prop}_{item}".upper(),
                           selected=lambda: a.wm_flag(prop, item), on_click=lambda: a.wm_toggle_flag(prop, item))
 
     def _slider(self, prop, label, size=(PAGE_WIDTH - 20.0, 24.0), **kwargs):
@@ -331,8 +333,9 @@ class SettingsMenu:
         def set_value(v):
             a.wm_set(name(), int(round(v)) if is_int() else v)
 
+        kwargs.pop('fill_color', None)     # one accent color for all sliders
         return Slider(label, lambda: a.wm_get(name(), 0.0) or 0.0, set_value,
-                      value_range=lambda: a.wm_range(name())[:2], size=size, **kwargs)
+                      value_range=lambda: a.wm_range(name())[:2], size=size, corner=size[1] * 0.5, **kwargs)
 
     @staticmethod
     def _hint(lines):
@@ -347,7 +350,7 @@ class SettingsMenu:
                        for kind, label in (('SHEET', "Sheet"), ('SQUARE', "Square"),
                                            ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))], gap=6.0)
         model = Row([self._choice('color_selector_model', m, m, size=(130.0, 26.0)) for m in ('HSV', 'HSL')], gap=6.0)
-        none = IconButton("None", layout='row', size=(62.0, 26.0), key='SET_SLIDERS_NONE',
+        none = PenButton("None", layout='row', size=(62.0, 26.0), key='SET_SLIDERS_NONE',
                           selected=lambda: not a.wm_get('color_selector_sliders'),
                           on_click=lambda: a.wm_set('color_selector_sliders', set()))
         sliders = Row([none] + [self._flag('color_selector_sliders', s, s, size=(62.0, 26.0))
@@ -363,7 +366,7 @@ class SettingsMenu:
 
         palette = Column([
             Row([self._toggle('pen_color_drag', "Drag & drop colors", size=(170.0, 28.0)),
-                 IconButton("Clear palette", painter=_icon_reset, layout='row', size=(110.0, 28.0),
+                 PenButton("Clear palette", painter=_icon_reset, layout='row', size=(110.0, 28.0),
                             key='SET_CLEAR_PALETTE', on_click=clear_active)], gap=6.0),
             self._hint(("Palettes are saved in the .blend (per project); the",
                         "Library button imports / exports them (palettes.json).",
@@ -381,7 +384,7 @@ class SettingsMenu:
 
     def _page_tools(self, tint):
         a = self.a
-        tools = Grid([Button(tool.label, key=f"SET_TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
+        tools = Grid([PenButton(tool.label, key=f"SET_TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
                              icons=self.bar.icons, size=(44.0, 44.0), icon_only=True,
                              selected=lambda t=tool.tool_id: a.active_tool() == t,
                              on_click=lambda t=tool.tool_id: a.select_tool(t))
@@ -390,7 +393,7 @@ class SettingsMenu:
         for channel, label in CHANNELS:
             use_global = lambda c=channel: f"{a.active_tool()}_use_global_{c}"
             value = lambda c=channel: f"{a.active_tool()}_{c}"
-            toggle = IconButton("Global", layout='row', size=(62.0, 24.0), key=f"SET_GLOBAL_{channel}".upper(),
+            toggle = PenButton("Global", layout='row', size=(62.0, 24.0), key=f"SET_GLOBAL_{channel}".upper(),
                                 selected=lambda g=use_global: bool(a.wm_get(g())),
                                 on_click=lambda g=use_global: a.wm_set(g(), not a.wm_get(g())))
             slider = self._slider(value, label, size=(PAGE_WIDTH - 90.0, 24.0), fill_color=(*TINT_TOOLS, 1.0),
@@ -399,7 +402,7 @@ class SettingsMenu:
             rows.append(Row([toggle, slider], gap=6.0))
         rows.append(self._hint(("Global: the tool uses the shared value.",)))
         per_tool = Column(rows, gap=5.0)
-        reset = IconButton("Reset Tool Settings", painter=_icon_reset, layout='row', size=(200.0, 28.0),
+        reset = PenButton("Reset Tool Settings", painter=_icon_reset, layout='row', size=(200.0, 28.0),
                            key='SET_RESET_TOOLS', on_click=a.reset_tool_settings)
         title = lambda: f"Per-Tool Settings: {self._tool_label(a.active_tool())}"
         return [
@@ -432,18 +435,18 @@ class SettingsMenu:
             if not tool.falloff_property:
                 continue
             prop = tool.falloff_property[len('pixel_painter_'):]
-            head = Button(tool.label, key=f"SET_FALLOFF_TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
+            head = PenButton(tool.label, key=f"SET_FALLOFF_TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
                           icons=icons, size=(30.0, 30.0), icon_only=True,
                           selected=lambda t=tool.tool_id: a.active_tool() == t,
                           on_click=lambda t=tool.tool_id: a.select_tool(t))
-            cells = [Button(p.label, key=f"SET_FALLOFF_{tool.tool_id}_{p.id}", icon=p.icon_key, icons=icons,
+            cells = [PenButton(p.label, key=f"SET_FALLOFF_{tool.tool_id}_{p.id}", icon=p.icon_key, icons=icons,
                             size=(30.0, 30.0), icon_only=True,
                             selected=lambda pr=prop, pid=p.id: a.wm_get(pr) == pid,
                             on_click=lambda pr=prop, pid=p.id: a.wm_set(pr, pid))
                      for p in presets]
             rows.append(Row([head, Grid(cells, columns=7, gap=3.0)], gap=12.0))
         per_tool = Column(rows + [self._hint(("Left: the tool (tap selects it); right: its falloff.",))], gap=5.0)
-        edit = IconButton("Edit Custom Curve", painter=_paint_curve, layout='row', size=(200.0, 30.0),
+        edit = PenButton("Edit Custom Curve", painter=_paint_curve, layout='row', size=(200.0, 30.0),
                           key='SET_EDIT_CURVE')
         edit.on_click = lambda: self.bar._open_curve(edit)
         return [
@@ -456,7 +459,7 @@ class SettingsMenu:
         side = Row([TextBlock(["Default side"], size=9.5, color=(1.0, 1.0, 1.0, 0.9)),
                     self._choice('pen_bar_side', 'LEFT', "Left", size=(70.0, 26.0)),
                     self._choice('pen_bar_side', 'RIGHT', "Right", size=(70.0, 26.0))], gap=8.0)
-        reset = IconButton("Reset Pen UI", painter=_icon_reset, layout='row', size=(200.0, 28.0),
+        reset = PenButton("Reset Pen UI", painter=_icon_reset, layout='row', size=(200.0, 28.0),
                            key='SET_RESET_PEN_UI', on_click=a.reset_layout)
         menu = Column([side, reset, self._hint(("Reset: default size and position of the",
                                                  "pen menu and the color selector."))], gap=6.0)

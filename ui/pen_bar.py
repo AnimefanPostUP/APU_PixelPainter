@@ -103,8 +103,11 @@ everything here works with press, drag and release only.
   lift anywhere and tap an entry. A tap outside or on Windows closes it.
 * **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
   onto an entry and lift -- or lift anywhere and tap an entry. A tap outside
-  closes the flyout. Columns Common / Contrast / Math / HSL/HSV; favorites are
-  checked. *Edit Favorites*: taps mark / unmark favorites (the flyout stays open).
+  closes the flyout. Columns Common / Contrast / Math / HSL/HSV; a star right of
+  each mode marks / unmarks it as a favorite (gold while it is one; the flyout
+  stays open).
+* **Look**: the windows and flyouts share the pen style (``ui/pen_style.py``):
+  neutral grays, one accent color, rounded shapes, titles on plates.
 
 This module builds, lays out and draws the widgets (two non-modal UI-kit
 layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
@@ -114,30 +117,35 @@ layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
 import colorsys
 import math
 
-from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect,
+from .kit import (ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect,
                   CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
 from .kit import anim, draw
 from .kit.events import PRESS, RUNNING
 from .kit.geometry import best_circle, clamp_box, ring_segment_points
 from .kit.theme import mix, with_alpha
 from .kit.widget import _resolve
+from .pen_style import PenButton, PenFlyoutButton, PenPanel
 from ..tools import blend_modes, color_history, color_palette, falloff
 from ..utils.math_utils import shape_falloff
 
 
 BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
 # Each element's own size (resize triangle), relative to BAR_SCALE.
-SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0)}
+SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0),
+                'settings': (0.4, 2.0), 'library': (0.4, 2.0)}
 # Tool state keys holding the elements' size and position; Reset Pen UI restores these.
 LAYOUT_STATE = {
     'pen_bar_scale': 1.0, 'pen_bar_pos': None,       # pos: (x0, y1) top-left in region px, None = default
     'pen_color_scale': 1.0, 'pen_color_pos': None,
     'pen_mask_scale': 0.8, 'pen_mask_pos': None,
     'pen_view_scale': 0.8, 'pen_view_pos': None,
+    'pen_settings_scale': 0.8, 'pen_settings_pos': None,
+    'pen_library_scale': 0.8, 'pen_library_pos': None,
 }
 # Windows besides the menu and the color selector, opened from the Windows ring
-# (content: ui/pen_windows.py); shown while the state 'pen_<name>_panel' is set.
-TOOL_WINDOWS = ('mask', 'view')
+# (content: ui/pen_windows.py, ui/pen_settings.py, ui/pen_palettes.py); shown while
+# the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
+TOOL_WINDOWS = ('mask', 'view', 'settings', 'library')
 COLOR_WIDTH = 220.0      # the color selector's width at scale 1, unscaled px
 _HANDLE_SIZE = 18.0      # resize triangle legs, unscaled px (follows the UI scale, not the element's)
 WINDOW_MARGIN = 4.0      # elements keep this far from the editor borders, unscaled px
@@ -251,6 +259,10 @@ TINT_VIEW = (0.40, 0.85, 0.95)
 MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
+BLEND_ENTRY_SIZE = (84.0, 26.0)      # Blend flyout: a mode ...
+BLEND_STAR_SIZE = (24.0, 26.0)       # ... and its favorite star on the right
+BLEND_STAR_GAP = 2.0
+STAR_COLOR = (1.00, 0.80, 0.25)      # a favorite's star (gold)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
 FALLOFF_PREVIEW_SIZE = 56.0          # the falloff disc beside the readout while the field is dragged
 CURVE_PRESET_SIZE = (52.0, 40.0)     # the curve flyout's preset buttons (icon + label)
@@ -274,28 +286,30 @@ def clamp_scale(name, scale):
     return max(lo, min(hi, scale))
 
 
-class FlyoutButton(Button):
-    """Flyout entry: also confirms when the pen is lifted over it after dragging in.
+class _StarButton(PenButton):
+    """Favorite toggle beside a flyout entry: a star, filled (gold) while ``marked()``."""
 
-    ``marked`` (bool or callable): a small check mark at the right end (e.g. favorites).
-    """
-
-    drag_release = True
-
-    def __init__(self, label="", *, marked=None, **kwargs):
-        super().__init__(label, **kwargs)
+    def __init__(self, *, marked, **kwargs):
+        super().__init__("", layout='icon', **kwargs)
         self.marked = marked
 
     def draw_self(self, dc):
         super().draw_self(dc)
-        if not _resolve(self.marked, False) or self._visual is None:
+        r = self._visual
+        if r is None:
             return
-        theme, r = dc.theme, self._visual
-        s = min(r.height * 0.28, theme.px(5.0))
-        x, y = r.x1 - theme.px(6.0) - s * 2.0, r.cy
-        draw.polyline([(x, y), (x + s * 0.7, y - s * 0.7), (x + s * 2.0, y + s * 0.8)],
-                      with_alpha(theme.text, 0.85 * dc.alpha), theme.px(1.5))
-
+        theme = dc.theme
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        on = bool(_resolve(self.marked, False))
+        outer = min(r.width, r.height) * 0.34
+        inner = outer * 0.45
+        pts = [(r.cx + math.cos(math.radians(90.0 + 36.0 * k)) * (outer if k % 2 == 0 else inner),
+                r.cy + math.sin(math.radians(90.0 + 36.0 * k)) * (outer if k % 2 == 0 else inner))
+               for k in range(10)]
+        if on:
+            draw.star_polygon(r.cx, r.cy, pts, (*STAR_COLOR, alpha), rim=theme.edge_for(STAR_COLOR, alpha))
+        else:
+            draw.polyline(pts, with_alpha(theme.text_muted, 0.8 * alpha), max(1.0, theme.px(1.0)), closed=True)
 
 
 class _ColorDrag:
@@ -1798,12 +1812,8 @@ class PenBar:
         self.curve_flyout.visible = False
         from .pen_settings import SettingsMenu  # late import: it imports this module
         self.settings_menu = SettingsMenu(self)
-        self.settings_flyout = self.settings_menu.panel
-        self.settings_flyout.visible = False
         from .pen_palettes import ConfirmDialog, PaletteLibrary  # late import: they import this module
         self.library_menu = PaletteLibrary(self)
-        self.library_flyout = self.library_menu.panel
-        self.library_flyout.visible = False
         self.confirm_dialog = ConfirmDialog(self)
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         from .window_shapes import dial_star   # late import: it imports the kit only
@@ -1811,8 +1821,7 @@ class PenBar:
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
                                  tab=tab, lock_bottom=True,   # top left: the tertiary bubble
                                  shape=lambda panel, theme: [dial_star(panel.content, theme.px(SHAPE_PAD))])
-        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout,
-                                           self.library_flyout], self.confirm_dialog.panel)
+        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout], self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
 
         # Color selector.
@@ -1827,16 +1836,28 @@ class PenBar:
                                          _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel))
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
-        # Mask / View windows (opened from the Windows ring).
+        # Mask / View / Settings / Palettes windows (opened from the Windows ring).
         # late import: they import this module
-        from .pen_windows import build_mask_window, build_view_window, window_shapes
-        builders = {'mask': build_mask_window, 'view': build_view_window}
+        from .pen_windows import body_shapes, build_body_window, build_mask_window, build_view_window, window_shapes
+        from .pen_palettes import paint_library
+        builders = {
+            'mask': (build_mask_window, window_shapes, True),
+            'view': (build_view_window, window_shapes, True),
+            'settings': (lambda bar: build_body_window("Settings", self.settings_menu.content, _paint_gear),
+                         body_shapes, False),
+            'library': (lambda bar: build_body_window("Palettes", self.library_menu.content, paint_library),
+                        body_shapes, False),
+        }
         self.tool_windows = {}
         for name in TOOL_WINDOWS:
+            build, shape, has_help = builders[name]
             close = _CornerButton('CLOSE', key=f'{name.upper()}_CLOSE', on_click=lambda n=name: self.toggle_window(n))
-            help_button = _CornerButton('HELP', key=f'{name.upper()}_HELP', selected=lambda n=name: self.help_shown(n),
-                                        on_click=lambda n=name: self.toggle_help(n))
-            window = self._window(name, builders[name](self), close, help=help_button, shape=window_shapes)
+            help_button = None
+            if has_help:
+                help_button = _CornerButton('HELP', key=f'{name.upper()}_HELP',
+                                            selected=lambda n=name: self.help_shown(n),
+                                            on_click=lambda n=name: self.toggle_help(n))
+            window = self._window(name, build(self), close, help=help_button, shape=shape)
             window.visible = False
             self.tool_windows[name] = (window, Overlay(window, modal=False, animate=False))
         self.windows = {'bar': (self.menu, self.overlay), 'color': (self.color_window, self.color_overlay),
@@ -2011,8 +2032,7 @@ class PenBar:
         grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
         windows = RingSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
-                              selected=lambda: self.flyout in (self.window_ring, self.settings_flyout,
-                                                                self.library_flyout),
+                              selected=lambda: self.flyout is self.window_ring,
                               on_click=lambda: self.toggle_flyout(self.window_ring, windows))
         windows.activate_on_press = True
         _add_capsule(dial, [windows, save, grid, blend], *BOTTOM_LEFT_RING, *BOTTOM_LEFT_ARC)
@@ -2022,7 +2042,8 @@ class PenBar:
         self.window_ring = dial.add(_WindowRing(*WINDOW_RING, cover=WINDOW_RING_COVER, key='WINDOW_RING'))
         self.window_ring.add_entries(dial, [
             RingSegment("Settings", key='RING_SETTINGS', painter=_captioned(_paint_gear, "Settings"),
-                        tint=TINT_WINDOWS, on_click=lambda: self.toggle_flyout(self.settings_flyout, windows)),
+                        tint=TINT_WINDOWS, selected=lambda: a.panel_open('settings'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('settings'))),
             RingSegment("Mask", key='RING_MASK', painter=_paint_mask_menu(a.mask_enabled), tint=TINT_MASK,
                         selected=lambda: a.panel_open('mask'),
                         on_click=self._flyout_action(lambda: self.toggle_window('mask'))),
@@ -2033,15 +2054,10 @@ class PenBar:
                         tint=TINT_WINDOWS, selected=a.color_panel_open,
                         on_click=self._flyout_action(a.toggle_color_panel)),
             RingSegment("Palettes", key='RING_PALETTES', painter=_captioned(paint_library, "Palettes"),
-                        tint=TINT_WINDOWS, on_click=lambda: self.open_library(windows)),
+                        tint=TINT_WINDOWS, selected=lambda: a.panel_open('library'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('library'))),
         ], WINDOW_RING_START)
 
-    def open_library(self, opener):
-        """The library flyout; the palette band switches to its palette view (drag targets)."""
-        if self.flyout is not self.library_flyout:
-            self.library_menu.opened()
-            self.actions.set_palette_view(True)
-        self.toggle_flyout(self.library_flyout, opener)
 
     def confirm(self, lines, action, label="Delete"):
         """Ask before ``action`` (deleting / replacing a palette): dialog over the menu."""
@@ -2087,17 +2103,24 @@ class PenBar:
                          lambda: self.actions.set_project_palette(index, None), "Delete")
 
     def _removes(self, x, y, payload):
-        """Released off the menu and the color selector: removes palette colors / project palettes."""
+        """Released off the menu, the color selector and the windows: removes palette colors /
+        project palettes."""
         origin = payload[2] or ('', None)
-        return (origin[0] in ('palette_color', 'project') and self.root.pick(x, y) is None
-                and not self._over_color_window(x, y))
+        return origin[0] in ('palette_color', 'project') and self._pick_any(x, y) is None
 
-    def _over_color_window(self, x, y):
-        return self.color_window.visible and self.color_window.pick(x, y) is not None
+    def _pick_any(self, x, y):
+        """The top-most widget under ``(x, y)`` in any element (windows, menu, color selector)."""
+        for overlay in self._stack():
+            if overlay.root.visible:
+                hit = overlay.root.pick(x, y)
+                if hit is not None:
+                    return hit
+        return None
 
     def _drop_target(self, x, y, source, payload):
-        """The widget under ``(x, y)`` -- or its nearest ancestor -- that accepts ``payload``."""
-        widget = self.root.pick(x, y)
+        """The widget under ``(x, y)`` -- or its nearest ancestor -- that accepts ``payload``
+        (in the menu or a window, e.g. the Palettes window's library)."""
+        widget = self._pick_any(x, y)
         while widget is not None:
             if widget is not source and hasattr(widget, 'accept_drop') and widget.accepts(payload):
                 return widget
@@ -2122,21 +2145,21 @@ class PenBar:
                                         key='CURVE_EDITOR')
 
         def mode_button(mode, label):
-            return Button(label, key=f"CURVE_{mode}", size=(52.0, 26.0),
-                          selected=lambda: self.curve_mode == mode,
-                          on_click=lambda: setattr(self, 'curve_mode', mode))
+            return PenButton(label, key=f"CURVE_{mode}", size=(52.0, 26.0),
+                             selected=lambda: self.curve_mode == mode,
+                             on_click=lambda: setattr(self, 'curve_mode', mode))
 
         buttons = [mode_button(mode, label) for mode, label in CURVE_MODES]
-        buttons.append(Button("Reset", key='CURVE_RESET', size=(52.0, 26.0), on_click=a.reset_custom_curve))
+        buttons.append(PenButton("Reset", key='CURVE_RESET', size=(52.0, 26.0), on_click=a.reset_custom_curve))
         hint = _HintLabel(lambda: CURVE_HINTS.get(self.curve_mode, ""), size=9.0)
         # Presets: the falloffs the Shape field does not cover, loaded into the curve.
-        presets = [Button(label, key=f"CURVE_PRESET_{pid}", icon=falloff.get(pid).icon_key, icons=self.icons,
-                          size=CURVE_PRESET_SIZE, on_click=lambda p=pid: a.load_curve_preset(p))
+        presets = [PenButton(label, key=f"CURVE_PRESET_{pid}", icon=falloff.get(pid).icon_key, icons=self.icons,
+                             layout='column', size=CURVE_PRESET_SIZE, on_click=lambda p=pid: a.load_curve_preset(p))
                    for pid, label, _points in falloff.CURVE_PRESETS]
-        return Panel(Column([self.curve_editor, Row(buttons, gap=4.0), hint,
-                             Label("Load a preset", size=9.0),
-                             Grid(presets, columns=CURVE_PRESET_COLUMNS, gap=4.0)], gap=6.0),
-                     title="Custom Falloff", padding=8.0)
+        return PenPanel(Column([self.curve_editor, Row(buttons, gap=4.0), hint,
+                                Label("Load a preset", size=9.0),
+                                Grid(presets, columns=CURVE_PRESET_COLUMNS, gap=4.0)], gap=6.0),
+                        title="Custom Falloff", padding=8.0)
 
     def _flyout_action(self, fn):
         def _run():
@@ -2146,36 +2169,30 @@ class PenBar:
 
     def _build_blend_flyout(self):
         """Same groups as the Shift+W blend pie, as four columns: Common, Contrast, Math,
-        HSL/HSV. Favorites (shown beside Redo in the dial) are check-marked; with
-        *Edit Favorites* on, a tap marks / unmarks a favorite instead of choosing the mode."""
+        HSL/HSV. Each mode has a star on its right: tap it to make the mode a favorite
+        (shown beside Redo in the dial) or not; a tap on the mode chooses it."""
         a = self.actions
-        self.blend_fav_edit = False
 
-        def tap(blend_id):
-            if self.blend_fav_edit:
-                a.wm_toggle_flag('blend_favorites', blend_id)
-            else:
-                a.set_blend(blend_id)
-                self.close_flyout()
+        def choose(blend_id):
+            a.set_blend(blend_id)
+            self.close_flyout()
 
         def entry(blend_id):
-            return FlyoutButton(
-                blend_modes.label(blend_id), key=f"BLEND_{blend_id}", size=(84.0, 26.0),
+            mode = PenFlyoutButton(
+                blend_modes.label(blend_id), key=f"BLEND_{blend_id}", size=BLEND_ENTRY_SIZE,
                 selected=lambda b=blend_id: a.active_blend() == b,
-                marked=lambda b=blend_id: b in a.blend_favorites(),
-                on_click=lambda b=blend_id: tap(b),
-            )
+                on_click=lambda b=blend_id: choose(b))
+            star = _StarButton(key=f"BLEND_STAR_{blend_id}", size=BLEND_STAR_SIZE,
+                               marked=lambda b=blend_id: b in a.blend_favorites(),
+                               on_click=lambda b=blend_id: a.wm_toggle_flag('blend_favorites', b))
+            return Row([mode, star], gap=BLEND_STAR_GAP)
 
         columns = []
         for title, group in (("Common", 'COMMON'),) + BLEND_GROUPS:
             columns.append(Column([Label(title, size=10.0)] + [entry(b) for b in blend_modes.ids(group)], gap=3.0))
-        edit = Button("Edit Favorites", key='BLEND_FAV_EDIT', size=(110.0, 26.0),
-                      selected=lambda: self.blend_fav_edit,
-                      on_click=lambda: setattr(self, 'blend_fav_edit', not self.blend_fav_edit))
-        hint = _HintLabel(lambda: ("Tap modes to mark / unmark them as favorites" if self.blend_fav_edit
-                                   else "Favorites (checked) show beside Redo"), size=9.0)
-        return Panel(Column([Row(columns, gap=10.0, align='top'), Row([edit, hint], gap=8.0)], gap=6.0),
-                     title="Blend Mode", padding=8.0)
+        hint = _HintLabel(lambda: "Star: favorite (shown beside Redo in the pen menu)", size=9.0)
+        return PenPanel(Column([Row(columns, gap=10.0, align='top'), hint], gap=6.0),
+                        title="Blend Mode", padding=8.0)
 
     # ---- state -----------------------------------------------------------------------
 
@@ -2225,8 +2242,6 @@ class PenBar:
             self.close_flyout()
             return
         self.close_flyout(relayout=False)
-        if flyout is self.blend_flyout:
-            self.blend_fav_edit = False
         flyout.visible = True
         self.flyout = flyout
         self.flyout_opener = opener
@@ -2251,8 +2266,14 @@ class PenBar:
         self._relayout()
 
     def toggle_window(self, name):
-        """Show / hide the Mask or View window."""
+        """Show / hide a window (Mask, View, Settings, Palettes). Opening the Palettes
+        window reloads the library and switches the palette band to its palette view
+        (the drag targets)."""
+        opening = not self.actions.panel_open(name)
         self.actions.toggle_panel(name)
+        if opening and name == 'library':
+            self.library_menu.opened()
+            self.actions.set_palette_view(True)
         self._relayout()
 
     def set_collapsed(self, collapsed):
@@ -2464,10 +2485,7 @@ class PenBar:
                 if hit is None:
                     self.close_flyout()
                     return True  # a tap outside only closes the flyout
-                in_menu = _is_inside(hit, self.menu)
-                if getattr(self.flyout, 'stays_open', False) and in_menu:
-                    pass   # e.g. the library: the menu's palette band is used together with it
-                elif not _is_inside(hit, self.flyout) and hit is not self.flyout_opener:
+                if not _is_inside(hit, self.flyout) and hit is not self.flyout_opener:
                     self.close_flyout()
         for overlay in stack:
             if overlay.handle(event) == RUNNING:

@@ -31,8 +31,8 @@ background but on a control moves it; outside the shapes presses go through. Val
 
 import math
 
-from .kit import Column, Dial, Group, IconButton, Rect, RingSegment, Row, TextBlock, Widget
-from .kit import anim, draw
+from .kit import Column, Dial, Group, Rect, RingSegment, Row, TextBlock, Widget
+from .kit import draw
 from .kit.form import text_left
 from .kit.geometry import ring_segment_points, round_strip
 from .kit.theme import mix, with_alpha
@@ -40,12 +40,11 @@ from .kit.widget import _resolve
 from .pen_bar import (TINT_MASK, TINT_VIEW, _captioned, _paint_mask, _paint_mask_invert, _paint_mask_pick,
                       _paint_view, _thick_line)
 from .pen_settings import _icon_eye, _icon_reset
+from .pen_style import BUTTON_ROUND, PenButton, pen_fill
 
 CELL = 32.0              # icon button size, unscaled px
 GAP = 4.0
 PAD_GAP = 12.0           # between the two View dials (their backgrounds stay apart: > 2 x SHAPE_PAD)
-BUTTON_ROUND = 7.0       # corner radius of the window buttons (pen-menu style)
-TINT_AMOUNT = 0.16       # category tint in the button fills (as the pen menu's segments)
 # View dials: a round button in the middle, eight 45-degree segments around it.
 CENTER_RADIUS = 17.0
 DIAL_RING = (CENTER_RADIUS + 2.5, 54.0)
@@ -66,6 +65,8 @@ PLATE_ROUND = 7.0
 PLATE_LEFT = 26.0        # room for the lock
 PLATE_RIGHT = 62.0       # room for '?', X and the resize triangle
 SHAPE_PAD = 5.0          # backgrounds reach this far past the parts
+BODY_PAD = 4.0           # Settings / Palettes: their body's background past its content (= the panel padding)
+BODY_ROUND = 10.0
 FONT = 10.0              # button labels
 TITLE_INDENT = 14.0      # the group title clears the window's padlock
 HELP_SIZE = 9.0
@@ -154,6 +155,27 @@ class _WindowGroup(Group):
                   theme.font_id)
 
 
+TINT_NEUTRAL = (0.75, 0.75, 0.75)   # Settings / Palettes: no category color in the title
+
+
+def build_body_window(title, content, painter=None):
+    """A window around a rectangular body (Settings, Palettes): the title plate on top,
+    ``content`` below it on one rounded background (:func:`body_shapes`)."""
+    return _WindowGroup(title, content, tint=TINT_NEUTRAL, painter=painter)
+
+
+def body_shapes(panel, theme):
+    """Background of a :func:`build_body_window` window: the title plate and one rounded
+    plate behind the whole body."""
+    from .window_shapes import Plate, plate_around
+    group = panel.content
+    pad = theme.px(BODY_PAD)
+    shapes = [plate_around(group.content, pad, theme.px(BODY_ROUND))]
+    if group.plate is not None:
+        shapes.insert(0, Plate(group.plate, group.plate_round_px))
+    return shapes
+
+
 def _drawn_top(widget, theme):
     """Top of ``widget``'s background (a dial's silhouette, a row of dials), or None."""
     if widget is None:
@@ -204,48 +226,14 @@ class _Help(TextBlock):
     visible = property(lambda self: bool(self._shown()), lambda self, value: None)
 
 
-def _pen_fill(dc, widget, tint, base=None, tint_amount=TINT_AMOUNT):
-    """A pen-menu segment's fill: the surface with the category tint mixed in, lighter
-    while hovered / pressed, accent-tinted while selected (see ``RingSegment._fill``)."""
-    theme = dc.theme
-    base = base or theme.surface
-    if tint is not None:
-        base = mix(base, (*tint[:3], base[3]), tint_amount)
-    pressed = dc.pressed is widget and dc.hot is widget
-    t = anim.ease_in_out(widget.hover_t)
-    fill = mix(base, theme.surface_pressed if pressed else theme.surface_hover, t * 0.8)
-    if widget.is_selected:
-        fill = mix(fill, theme.accent, 0.4)
-    return fill, t
+_pen_fill = pen_fill
 
 
-class _Btn(IconButton):
-    """Window button in the pen menu's style: rounded, tinted fill with a darker rim,
-    an accent outline while hovered and an accent band along the bottom while selected."""
+class _Btn(PenButton):
+    """Window button (the shared pen style, ``ui/pen_style.py``), larger label."""
 
-    outline = 1.0
-    corner = BUTTON_ROUND
-
-    def __init__(self, label="", *, font_size=FONT, tint=None, **kwargs):
-        super().__init__(label, font_size=font_size, **kwargs)
-        self.tint = tint
-
-    def _colors(self, dc):
-        fill, border, icon = super()._colors(dc)
-        return fill, border, max(icon, 0.9)
-
-    def draw_frame(self, dc, rect, fill, border, alpha):
-        theme = dc.theme
-        radius = theme.px(self.corner)
-        fill, t = _pen_fill(dc, self, self.tint)
-        draw.rounded_rect(rect, radius, with_alpha(fill, alpha), rim=theme.edge_for(fill, alpha))
-        if self.is_selected:
-            band = theme.px(3.0)
-            inset = max(radius * 0.6, band)
-            draw.rounded_rect(Rect(rect.x0 + inset, rect.y0 + band * 0.7, rect.x1 - inset, rect.y0 + band * 1.7),
-                              band, with_alpha(theme.accent, alpha))
-        if t > 0.01:
-            draw.rounded_rect_outline(rect, radius, with_alpha(theme.accent, t * alpha), width=theme.px(1.5))
+    def __init__(self, label="", *, font_size=FONT, layout='column', **kwargs):
+        super().__init__(label, font_size=font_size, layout=layout, **kwargs)
 
 
 class _DialCenter(Widget):

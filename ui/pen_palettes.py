@@ -1,6 +1,7 @@
 """Pen menu palettes: the palette library window and the confirmation dialog.
 
-* :class:`PaletteLibrary` -- flyout of the pen menu's *Library* button for the
+* :class:`PaletteLibrary` -- the Palettes window (Windows ring > *Palettes*; movable,
+  kept open and in place per project) for the
   palettes in ``palettes.json`` (shared by all projects, see
   ``utils/palette_library.py``). Project palettes and library palettes are not
   synced: palettes are copied between them by drag & drop (a project palette
@@ -16,13 +17,13 @@ Drag payloads are ``('palette', palette, origin)`` with origin ``('project', i)`
 or ``('library', i)`` (see ``ui.pen_bar._ColorDrag``).
 """
 
-from .kit import Column, Group, IconButton, Panel, Rect, Row, TextBlock, Widget
+from .kit import Column, Rect, Row, TextBlock, Widget
 from .kit import draw
 from .kit.theme import mix, with_alpha
 from .kit.widget import _resolve
-from .kit.widgets import Button
 from ..tools import color_palette
 from .pen_bar import _ColorDrag
+from .pen_style import DangerButton, PenButton, PenPanel, PlainGroup
 
 PAGE_WIDTH = 300.0
 ROWS_PER_PAGE = 8
@@ -148,11 +149,11 @@ class PalettePreview(_ColorDrag, Widget):
         if pal is None:
             return
         draw_palette_cells(self.rect, pal, dc.alpha, theme)
-        border = theme.accent if self.hover_t > 0.5 else theme.border
-        draw.rect_outline(self.rect, with_alpha(border, dc.alpha), width=1.0)
+        border = theme.accent if self.hover_t > 0.5 else theme.edge_for(theme.surface)
+        draw.rounded_rect_outline(self.rect, theme.px(3.0), with_alpha(border, dc.alpha), width=1.0)
 
 
-class _DropGroup(Group):
+class _DropGroup(PlainGroup):
     """A group that takes dropped palettes: ``accept(payload) -> bool`` / ``on_drop(payload)``."""
 
     def __init__(self, title, content, *, accept, on_drop, **kwargs):
@@ -167,13 +168,8 @@ class _DropGroup(Group):
         self.on_drop(payload)
 
 
-class _DangerButton(IconButton):
-    """Red action button (delete / replace)."""
-
-    def _colors(self, dc):
-        theme = dc.theme
-        t = self.hover_t
-        return mix(mix(DANGER, theme.surface, 0.35), DANGER, t), DANGER, 1.0
+class _DangerButton(DangerButton):
+    """Red-tinted action button (delete / replace), the shared pen style."""
 
 
 # ---- library window ---------------------------------------------------------------------
@@ -191,11 +187,11 @@ class PaletteLibrary:
         active_preview = PalettePreview(bar, active, lambda: ('project', a.active_palette_index()),
                                         size=(PAGE_WIDTH - 20.0, 26.0), key='LIB_ACTIVE_PREVIEW')
         active_buttons = Row([
-            IconButton("Copy", painter=paint_copy, layout='row', size=(66.0, 26.0), key='LIB_ACTIVE_COPY',
+            PenButton("Copy", painter=paint_copy, layout='row', size=(66.0, 26.0), key='LIB_ACTIVE_COPY',
                        on_click=self.copy_active),
-            IconButton("Paste", painter=paint_paste, layout='row', size=(66.0, 26.0), key='LIB_ACTIVE_PASTE',
+            PenButton("Paste", painter=paint_paste, layout='row', size=(66.0, 26.0), key='LIB_ACTIVE_PASTE',
                        on_click=self.paste_active),
-            IconButton("Save to library", painter=paint_save, layout='row', size=(140.0, 26.0),
+            PenButton("Save to library", painter=paint_save, layout='row', size=(140.0, 26.0),
                        key='LIB_ACTIVE_SAVE', on_click=self.save_active),
         ], gap=4.0)
         active_group = _DropGroup(lambda: f"Active palette: {(active() or {}).get('name', '(empty slot)')}",
@@ -206,16 +202,16 @@ class PaletteLibrary:
 
         rows = [self._row(k) for k in range(ROWS_PER_PAGE)]
         pager = Row([
-            IconButton("", painter=_arrow(-1), layout='icon', size=(28.0, 24.0), key='LIB_PREV',
+            PenButton("", painter=_arrow(-1), layout='icon', size=(28.0, 24.0), key='LIB_PREV',
                        on_click=lambda: self.turn(-1)),
             TextBlock(lambda: [f"{self.page + 1} / {self.pages()}"], size=9.5, color=(1, 1, 1, 0.9)),
-            IconButton("", painter=_arrow(1), layout='icon', size=(28.0, 24.0), key='LIB_NEXT',
+            PenButton("", painter=_arrow(1), layout='icon', size=(28.0, 24.0), key='LIB_NEXT',
                        on_click=lambda: self.turn(1)),
         ], gap=8.0)
         imports = Row([
-            IconButton("Paste as new", painter=paint_paste, layout='row', size=(130.0, 26.0),
+            PenButton("Paste as new", painter=paint_paste, layout='row', size=(130.0, 26.0),
                        key='LIB_PASTE_NEW', on_click=self.paste_new),
-            IconButton("From image...", painter=paint_image, layout='row', size=(130.0, 26.0),
+            PenButton("From image...", painter=paint_image, layout='row', size=(130.0, 26.0),
                        key='LIB_FROM_IMAGE', on_click=self.from_image),
         ], gap=6.0)
         library_group = _DropGroup(lambda: f"Library ({len(a.library())} palettes, palettes.json)",
@@ -229,10 +225,8 @@ class PaletteLibrary:
                            "Drag a library palette onto a palette slot to load it.",
                            "From image: its pixel colors become a new project palette."],
                           size=8.5, width=PAGE_WIDTH)
-        self.panel = Panel(Column([active_group, library_group, status, hints], gap=8.0),
-                           title="Palette Library", padding=8.0)
-        self.panel.key = 'LIBRARY_FLYOUT'
-        self.panel.stays_open = True      # presses in the menu (dragging palettes) keep it open
+        # The window's body (``PenBar`` puts it in the movable Palettes window).
+        self.content = Column([active_group, library_group, status, hints], gap=8.0)
 
     # ---- status: shared state, so operators (palette from image) can report here too ------
 
@@ -262,9 +256,9 @@ class PaletteLibrary:
         name = TextBlock(lambda: [(self._entry(k)[1] or {}).get("name", "")[:18]], size=9.0, width=78.0,
                          color=(1, 1, 1, 0.9))
         filled = lambda: self._entry(k)[1] is not None
-        copy = IconButton("", painter=paint_copy, layout='icon', size=(26.0, 22.0), key=f"LIB_COPY_{k}",
+        copy = PenButton("", painter=paint_copy, layout='icon', size=(26.0, 22.0), key=f"LIB_COPY_{k}",
                           enabled=filled, on_click=lambda: self.copy_entry(k))
-        delete = IconButton("", painter=paint_trash, layout='icon', size=(26.0, 22.0), key=f"LIB_DELETE_{k}",
+        delete = PenButton("", painter=paint_trash, layout='icon', size=(26.0, 22.0), key=f"LIB_DELETE_{k}",
                             enabled=filled, on_click=lambda: self.delete_entry(k))
         return Row([preview, name, copy, delete], gap=4.0)
 
@@ -361,10 +355,10 @@ class ConfirmDialog:
         message = TextBlock(lambda: self.lines, size=11.0, color=(1, 1, 1, 0.95))
         buttons = Row([
             _DangerButton("", layout='row', size=(110.0, 30.0), key='CONFIRM_YES', on_click=self.confirm),
-            IconButton("Cancel", layout='row', size=(110.0, 30.0), key='CONFIRM_NO', on_click=self.close),
+            PenButton("Cancel", layout='row', size=(110.0, 30.0), key='CONFIRM_NO', on_click=self.close),
         ], gap=8.0)
         buttons.children[0].label = lambda: self.label
-        self.panel = Panel(Column([message, buttons], gap=10.0), title="Please confirm", padding=12.0)
+        self.panel = PenPanel(Column([message, buttons], gap=10.0), title="Please confirm", padding=12.0)
         self.panel.key = 'CONFIRM_DIALOG'
         self.panel.visible = False
 

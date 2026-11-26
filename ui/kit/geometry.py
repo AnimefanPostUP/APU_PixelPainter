@@ -428,17 +428,30 @@ def dash_runs(points, dash, gap, closed=False):
     pts = list(points) + ([points[0]] if closed and points else [])
     if len(pts) < 2 or dash <= 0.0:
         return []
-    period = dash + max(0.0, gap)
-    runs, run, pos = [], None, 0.0      # pos: distance along the line
+    gap = max(0.0, gap)
+    eps = 1e-6
+    # The state (on = in a dash) and the length left in it are tracked directly, not
+    # recomputed from the distance travelled (a modulo of a long distance can leave a
+    # step below float precision -- the loop would never advance). Every pass either
+    # finishes the segment or ends the current dash / gap, so the loop always ends.
+    runs, run = [], None
+    on, left = True, dash
     for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
         length = math.hypot(x1 - x0, y1 - y0)
         if length <= 1e-9:
             continue
         start = 0.0
-        while start < length - 1e-9:
-            phase = (pos + start) % period
-            on = phase < dash
-            step = min(length - start, (dash - phase) if on else (period - phase))
+        while length - start > eps:
+            if left <= eps:                      # this dash / gap is used up
+                if on and gap > eps:
+                    if run is not None:
+                        runs.append(run)
+                        run = None
+                    on, left = False, gap
+                else:
+                    on, left = True, dash
+                continue
+            step = min(length - start, left)
             if on:
                 a = start / length
                 b = (start + step) / length
@@ -447,11 +460,8 @@ def dash_runs(points, dash, gap, closed=False):
                 if run is None:
                     run = [pa]
                 run.append(pb)
-            elif run is not None:
-                runs.append(run)
-                run = None
             start += step
-        pos += length
+            left -= step
     if run is not None:
         runs.append(run)
     return runs
