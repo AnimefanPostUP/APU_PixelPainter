@@ -129,11 +129,17 @@ class ToolBase(ToolFrame):
 
     # ---- painting hooks (see tools.stroke.StrokeTool) -------------------------
 
+    def uses_stroke_snapshot(self, env: DrawEnvironment) -> bool:
+        """True when :meth:`on_draw` reads ``state['stroke_back_buffer']``, the image as
+        it was when the stroke began (taken by :meth:`on_stroke_begin`)."""
+        return False
+
     def on_stroke_begin(self, env: DrawEnvironment) -> None:
         """Called before the first :meth:`on_draw` of a stroke. Prepares stroke caches."""
         env.state['stroke_painted'] = set()
         env.state['stroke_weight_map'] = {}
-        env.state['stroke_back_buffer'] = pixel_io.read(env.img)
+        # A full image copy: only for tools that repaint the stroke from it.
+        env.state['stroke_back_buffer'] = pixel_io.read(env.img) if self.uses_stroke_snapshot(env) else None
         env.state['native_stroke_grid'] = None     # C# path equivalents (paint/native_paths.py)
         env.state['native_stroke_pixels'] = None
 

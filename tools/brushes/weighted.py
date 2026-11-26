@@ -22,6 +22,10 @@ class WeightedBrushTool(BrushTool):
         """Return ``(pixels, weights)`` for one stamp at ``(x, y)``."""
         raise NotImplementedError
 
+    def uses_stroke_snapshot(self, env):
+        # 'Pixel' spacing repaints the stroke onto the pre-stroke snapshot.
+        return env.spacing == 'PIXEL'
+
     def rewrites_stroke(self, env):
         # 'Pixel' spacing re-applies the whole stroke's weight map every step.
         return env.spacing == 'PIXEL'
