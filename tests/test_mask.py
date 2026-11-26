@@ -1,4 +1,4 @@
-"""Unit tests for the paint mask geometry (tools/mask_geometry.py, pure numpy).
+"""Unit tests for the paint mask geometry (tools/mask/geometry.py, pure numpy).
 
     python -m unittest discover -s tests -v
 """
@@ -16,7 +16,7 @@ _PACKAGE = os.path.basename(_ADDON_DIR)
 sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-geo = importlib.import_module(f'{_PACKAGE}.tools.mask_geometry')
+geo = importlib.import_module(f'{_PACKAGE}.tools.mask.geometry')
 
 
 def quad_mesh(quads, uvs):

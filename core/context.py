@@ -1,7 +1,7 @@
 """Per-event context handed to every tool callback (``ctx`` in tool code)."""
 
 from ..utils.blender_utils import get_paint_image
-from . import view3d
+from .view3d import raycast
 from .state import SETTINGS, STATE
 
 
@@ -86,7 +86,7 @@ class ToolContext:
         return is_shift_smooth_global(self.context)
 
     def apply_tool_settings(self):
-        from . import core  # late import: core imports the tools
+        from . import operator as core  # late import: core imports the tools
         core.apply_active_tool_settings(self.context)
 
     # ---- cursor ------------------------------------------------------------------
@@ -106,16 +106,16 @@ class ToolContext:
             return None
         rx, ry = event.mouse_x - region.x, event.mouse_y - region.y
         if self.is_3d:
-            hit = view3d.ray_hit(self.context, rx, ry)
+            hit = raycast.ray_hit(self.context, rx, ry)
             if hit is None:
                 return None
-            self.state['view3d_uv_tile'] = view3d.hit_tile(hit)
+            self.state['view3d_uv_tile'] = raycast.hit_tile(hit)
             self.state['view3d_hit_tri'] = hit.tri
             self.state['view3d_hit_local'] = tuple(hit.local)
-            texel_px = view3d.texel_screen_size(self.context, hit, image)
+            texel_px = raycast.texel_screen_size(self.context, hit, image)
             if texel_px is not None:
                 self.state['view3d_texel_px'] = texel_px
-            return view3d.hit_to_pixel(hit, w, h)
+            return raycast.hit_to_pixel(hit, w, h)
         u, v = region.view2d.region_to_view(rx, ry)
         return int(u * w), int(v * h)
 

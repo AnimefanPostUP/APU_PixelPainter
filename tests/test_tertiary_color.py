@@ -1,4 +1,4 @@
-"""Tests for the pen menu's tertiary color actions (tools/pen_bar.py): selecting it,
+"""Tests for the pen menu's tertiary color actions (tools/pen/tool.py): selecting it,
 the color the selector edits meanwhile, and leaving it again.
 
 Runs with plain Python (no Blender needed) from the addon root:
@@ -56,8 +56,9 @@ for _name in ('bpy_extras', 'bpy_extras.view3d_utils', 'mathutils', 'mathutils.g
     sys.modules.setdefault(_name, _AnyModule(_name))
 _stub('bpy', types=_Anything(), props=_Anything(), utils=_Anything(), app=_Anything(), context=_Anything())
 
-pen_bar_tool = importlib.import_module(f'{_PACKAGE}.tools.pen_bar')
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen_bar')
+pen_bar_tool = importlib.import_module(f'{_PACKAGE}.tools.pen.tool')
+pen_color_widgets = importlib.import_module(f'{_PACKAGE}.ui.pen.widgets.color')
+pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
@@ -145,12 +146,12 @@ class PenTertiaryActionTests(unittest.TestCase):
 class GradientSliderTests(unittest.TestCase):
     def setUp(self):
         self.values = []
-        self.slider = pen_bar_ui._GradientSlider("T", colors=lambda: ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
+        self.slider = pen_color_widgets.GradientSlider("T", colors=lambda: ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
                                                  value=lambda: 0.5, active=lambda: True,
                                                  on_value=self.values.append)
-        dial = kit.Dial(kit.RingSegment("Center", key='CENTER'), gap=pen_bar_ui.DIAL_GAP)
-        dial.add_band([self.slider], pen_bar_ui.CORNER_INNER, pen_bar_ui.CORNER_INNER + pen_bar_ui.HISTORY_DEPTH,
-                      *pen_bar_ui.COLORS_ARC)
+        dial = kit.Dial(kit.RingSegment("Center", key='CENTER'), gap=pen_metrics.DIAL_GAP)
+        dial.add_band([self.slider], pen_metrics.CORNER_INNER, pen_metrics.CORNER_INNER + pen_metrics.HISTORY_DEPTH,
+                      *pen_metrics.COLORS_ARC)
         dial.arrange(kit.Rect(-400.0, -400.0, 400.0, 400.0), kit.Theme())
         self.r = (self.slider.pr0 + self.slider.pr1) * 0.5
 

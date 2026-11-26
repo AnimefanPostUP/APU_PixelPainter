@@ -16,7 +16,10 @@ from ui.kit import (  # noqa: E402
     BubbleButton, Button, Dial, Grid, Overlay, Panel, RadialMenu, Rect, RingSegment, RingSlider, Theme, UIEvent,
 )
 from ui.kit.events import CANCELLED, FINISHED, PASS_THROUGH, RUNNING  # noqa: E402
-from ui.kit.geometry import clamp_box, corner_contains, corner_segment_points, fit_offset, ring_contains, ring_segment_points  # noqa: E402
+from ui.kit.geometry import (
+    clamp_box, corner_contains, corner_segment_points, fit_offset, ring_contains,
+    ring_segment_points  # noqa: E402,
+)
 from ui.kit import aa  # noqa: E402
 from ui.kit.curve import CurveEditor, insert_anchor, move_anchor, simplify, stroke_to_curve  # noqa: E402
 from ui.kit.radial import Connector  # noqa: E402

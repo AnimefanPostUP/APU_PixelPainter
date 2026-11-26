@@ -1,4 +1,4 @@
-"""Unit tests for the pen menu's Windows popup ring (ui/pen_bar._WindowRing).
+"""Unit tests for the pen menu's Windows popup ring (ui/pen_bar.WindowRing).
 
     python -m unittest discover -s tests -v
 """
@@ -15,7 +15,8 @@ _PACKAGE = os.path.basename(_ADDON_DIR)
 sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen_bar')
+pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
+pen_window_ring = importlib.import_module(f'{_PACKAGE}.ui.pen.widgets.window_ring')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 events = importlib.import_module(f'{_PACKAGE}.ui.kit.events')
 
@@ -28,20 +29,20 @@ class WindowRingTest(unittest.TestCase):
 
     def setUp(self):
         self.clicked = []
-        dial = kit.Dial(kit.RingSegment("Center", key='CENTER'), gap=pen_bar_ui.DIAL_GAP)
+        dial = kit.Dial(kit.RingSegment("Center", key='CENTER'), gap=pen_metrics.DIAL_GAP)
         self.inner = kit.RingSegment("Inner", key='INNER', on_click=lambda: self.clicked.append('inner'))
-        dial.add_arc([self.inner], *pen_bar_ui.INNER_RING, 0.0, 360.0)
+        dial.add_arc([self.inner], *pen_metrics.INNER_RING, 0.0, 360.0)
         self.tool = kit.RingSegment("Tool", key='TOOL', on_click=lambda: self.clicked.append('tool'))
-        dial.add_arc([self.tool], *pen_bar_ui.OUTER_RING, *pen_bar_ui.TOOL_ARC)
+        dial.add_arc([self.tool], *pen_metrics.OUTER_RING, *pen_metrics.TOOL_ARC)
         self.opener = kit.CornerSegment("Windows", key='WINDOWS',
                                         on_click=lambda: setattr(self.ring, 'visible', not self.ring.visible))
         self.opener.activate_on_press = True
-        dial.add_corner([self.opener], pen_bar_ui.BOTTOM_LEFT_INNER, pen_bar_ui.SQUARE_HALF,
-                        *pen_bar_ui.WINDOWS_ARC)
-        self.ring = dial.add(pen_bar_ui._WindowRing(*pen_bar_ui.WINDOW_RING, cover=pen_bar_ui.WINDOW_RING_COVER))
+        dial.add_corner([self.opener], pen_metrics.BOTTOM_LEFT_INNER, pen_metrics.SQUARE_HALF,
+                        *pen_metrics.WINDOWS_ARC)
+        self.ring = dial.add(pen_window_ring.WindowRing(*pen_metrics.WINDOW_RING, cover=pen_metrics.WINDOW_RING_COVER))
         self.entries = [kit.RingSegment(name, key=name, on_click=lambda n=name: self.clicked.append(n))
                         for name in ("Settings", "Mask", "View", "Color", "Palettes")]
-        self.ring.add_entries(dial, self.entries, pen_bar_ui.WINDOW_RING_START)
+        self.ring.add_entries(dial, self.entries, pen_metrics.WINDOW_RING_START)
         self.overlay = kit.Overlay(dial, modal=False, animate=False)
         self.theme = self.overlay.theme
 
@@ -51,10 +52,10 @@ class WindowRingTest(unittest.TestCase):
 
     def test_entries_fill_the_circle_over_the_inner_ring(self):
         spans = [(e.a0, e.a1) for e in self.entries]
-        self.assertAlmostEqual(spans[0][0], pen_bar_ui.WINDOW_RING_START)
+        self.assertAlmostEqual(spans[0][0], pen_metrics.WINDOW_RING_START)
         self.assertAlmostEqual(spans[-1][1] - spans[0][0], 360.0)
         for entry in self.entries:
-            self.assertEqual((entry.r0, entry.r1), tuple(pen_bar_ui.INNER_RING))
+            self.assertEqual((entry.r0, entry.r1), tuple(pen_metrics.INNER_RING))
             self.assertIs(entry.parent, self.ring)
 
     def test_hidden_ring_lets_the_inner_ring_through(self):

@@ -7,13 +7,13 @@ registered tool gets its settings automatically.
 
 import bpy
 
-from .tools import blend_modes
-from .tools import falloff
+from .model import blend_modes
+from .model import falloff
 from .tools.catalog import TOOLS
 from .tools.registry import SETTING_CHANNELS
 from .utils import persistence_settings
 from .utils import settings_service
-from .ui import settings_menu
+from .ui.panels import settings_popup as settings_menu
 from .ui.kit import color_selector
 
 
@@ -55,7 +55,7 @@ def _falloff_updater(prop_name):
 def _update_mode(self, context):
     """Load the effective settings of the newly selected tool."""
     try:
-        from .core import core
+        from .core import operator as core
         core.apply_active_tool_settings(context)
     except Exception:
         pass
@@ -105,7 +105,7 @@ def _active_proxy(channel, cast, fallback):
     def _set(self, value):
         try:
             setter_fn(bpy.context, self.pixel_painter_mode, value, force_global=_force_global(self))
-            from .core import core
+            from .core import operator as core
             core.apply_active_tool_settings(bpy.context)
         except Exception:
             pass
@@ -116,7 +116,7 @@ def _active_proxy(channel, cast, fallback):
 def _selection_state_flag(key):
     def _get(self):
         try:
-            from .core import core
+            from .core import operator as core
             return bool(core._state.get(key))
         except Exception:
             return False
@@ -267,7 +267,7 @@ def _static_properties():
             description="Pen menu: drag colors (primary / secondary, history, palette, the old / new bubble) "
                         "onto palette slots or the primary / secondary color",
             default=True, update=_persist),
-        # ---- saving the painted image (pen menu Save button, ui/image_save_ops.py) ----
+        # ---- saving the painted image (pen menu Save button, ui/operators/image_save.py) ----
         'save_image_method': bpy.props.EnumProperty(
             name="Save Method", description="How the pen menu's Save button stores the painted image",
             items=[
@@ -284,7 +284,7 @@ def _static_properties():
             name="Also Save .blend",
             description="Save the .blend file after the image (packed pixels only reach the disk with the .blend)",
             default=False, update=_persist),
-        # ---- paint mask (tools/mask.py) ----
+        # ---- paint mask (tools/mask/) ----
         'mask_enabled': bpy.props.BoolProperty(
             name="Mask", description="Only paint on the chosen UV islands / mesh parts",
             default=False, update=_redraw_mask),

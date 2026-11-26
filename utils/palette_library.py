@@ -6,11 +6,12 @@ edits from other Blender instances show up), written on every change.
 import os
 import traceback
 
-from ..tools import color_palette
+from ..model import color_palette
+from ..paths import PALETTE_LIBRARY_FILE
 
 
 def library_path():
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'palettes.json')
+    return PALETTE_LIBRARY_FILE
 
 
 def load():

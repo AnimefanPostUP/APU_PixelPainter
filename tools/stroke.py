@@ -1,14 +1,37 @@
 """Stroke tools: press-drag-release painting plus the standard modifier subtools."""
 
-from ..core import history, view3d
+from ..core import history
+from ..core.view3d import footprint, islands as v3d_islands, patch, stroke_path
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
-from . import color_history, mask, pen_pressure, tertiary_color
+from ..model import color_history, tertiary_color
+from .mask import data as mask_data
+from .mask import guard as mask_guard
+from .pen import pressure as pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
 from .subtools.strength import StrengthTool
 from .subtools.tool_switch import ShiftToolSwitch, TemporaryToolSwitch
+
+
+REGION_MARGIN = 2        # px added around a step's stamps for its written region
+_ANYWHERE = object()     # _stroke_region: some step could write anywhere
+
+
+def _memoize_steps(env):
+    """Compute ``env.interpolation_steps`` once per draw step (the tool and the
+    written region both need them); returns the memoized function."""
+    compute = env.interpolation_steps
+    cache = []
+
+    def steps():
+        if not cache:
+            cache.append(list(compute()))
+        return list(cache[0])
+
+    env.interpolation_steps = steps
+    return steps
 
 
 class StrokeTool(ToolBase):
@@ -27,7 +50,7 @@ class StrokeTool(ToolBase):
         'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
         'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
         'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
-        'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (tools/native_paint.py)
+        'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (paint/native_paths.py)
         'native_stroke_pixels': None,  # C# path: (N, 2) pixels covered by the stroke so far
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
@@ -131,6 +154,7 @@ class StrokeTool(ToolBase):
         self._buttons.discard(button)
         if not self._buttons:
             pixel_io.end_stroke()
+            mask_guard.GUARD.reset()   # drop the stroke's reference copy
         history.commit_all()  # one Blender undo step per stroke
         self._reset_stroke_state(ctx)
         ctx.redraw()
@@ -193,7 +217,7 @@ class StrokeTool(ToolBase):
         end = state.get('mouse_region')
         if state['last_paint_cx'] is None or start is None or end is None:
             return [(cx, cy)]
-        return view3d.pixel_path(ctx.context, start, end, img) or [(cx, cy)]
+        return stroke_path.pixel_path(ctx.context, start, end, img) or [(cx, cy)]
 
     def paint(self, ctx):
         """Build the :class:`DrawEnvironment` and run one :meth:`on_draw` step."""
@@ -244,22 +268,23 @@ class StrokeTool(ToolBase):
             modifier=modifier,
         )
         if ctx.is_3d and not ctx.edge_mode:
-            islands = view3d.island_map(context, img)
+            islands = v3d_islands.island_map(context, img)
             if islands is not None:
-                env.islands = view3d.IslandClip(islands, (cx, cy), state.get('view3d_hit_tri'))
+                env.islands = v3d_islands.IslandClip(islands, (cx, cy), state.get('view3d_hit_tri'))
         if ctx.edge_mode:
             env.edge_mode = True
             tile = state.get('view3d_uv_tile') or (0, 0)
             hit_tri = state.get('view3d_hit_tri')
-            env.expand_stamp = lambda x, y, pixels, weights: view3d.edge_expand(
+            env.expand_stamp = lambda x, y, pixels, weights: footprint.edge_expand(
                 context, img, x, y, pixels, weights, tile,
                 prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
-            env.edge_patch = lambda x, y, pixels, pad: view3d.edge_patch(
+            env.edge_patch = lambda x, y, pixels, pad: patch.edge_patch(
                 context, img, x, y, pixels, pad, tile,
                 prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
 
         # First draw call of a stroke: let the tool prepare its caches.
         if state['last_paint_cx'] is None:
+            self._stroke_region = None
             self.on_stroke_begin(env)
 
         # Pixel spacing: skip if the cursor hasn't moved to a new pixel.
@@ -269,14 +294,49 @@ class StrokeTool(ToolBase):
                 and cy == state['last_paint_cy']):
             return
 
-        # Paint mask: protected pixels are put back after the draw step (every tool alike).
+        # Paint mask: protected pixels are put back after the draw step (every tool alike),
+        # only inside the region the step can have written (tools/mask/guard.py).
         # The step's writes are uploaded once, after the mask (utils/pixel_io.py).
         with pixel_io.deferred(img):
-            allowed = mask.allowed(context, img)
-            before = mask.snapshot(img) if allowed is not None else None
+            allowed = mask_data.allowed(context, img)
+            steps = _memoize_steps(env)
+            if allowed is not None:
+                mask_guard.GUARD.before_step(img)
             self.on_draw(env)
-            if before is not None:
-                mask.restore_blocked(img, before, allowed)
+            if allowed is not None or self.rewrites_stroke(env):   # keeps the stroke union current
+                region = self._written_region(ctx, env, steps())
+                if allowed is not None:
+                    mask_guard.GUARD.after_step(img, allowed, region)
+
+    # ---- written region (paint mask) ------------------------------------------------
+
+    _stroke_region = None   # union of this stroke's step regions (rewrites_stroke tools)
+
+    def rewrites_stroke(self, env):
+        """True when a draw step may rewrite pixels of earlier steps of the stroke
+        (e.g. re-applying a stroke-wide weight map): the written region then is the
+        whole stroke so far."""
+        return False
+
+    def step_region(self, ctx, env, steps):
+        """End-exclusive ``(x0, y0, x1, y1)`` holding every pixel one draw step can
+        write, or None (anywhere). Default: the stamps around ``steps`` (and the
+        cursor), grown by the radius. Tools that write elsewhere override this."""
+        if env.edge_mode or env.expand_stamp is not None:
+            return None   # stamps are carried over UV seams: anywhere in the texture
+        return mask_guard.bounds_of(list(steps) + [(env.cursor_x, env.cursor_y)],
+                                    max(0, int(env.radius)) + REGION_MARGIN)
+
+    def _written_region(self, ctx, env, steps):
+        region = self.step_region(ctx, env, steps)
+        if not self.rewrites_stroke(env):
+            return region
+        previous = self._stroke_region
+        if previous is _ANYWHERE or region is None:
+            self._stroke_region = _ANYWHERE
+            return None
+        self._stroke_region = region if previous is None else mask_guard.union(previous, region)
+        return self._stroke_region
 
 
 class BrushTool(StrokeTool):

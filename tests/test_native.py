@@ -75,9 +75,11 @@ _stub('bpy', app=sys.modules['bpy.app'])
 _stub('bpy.app', handlers=sys.modules['bpy.app.handlers'])
 
 _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
-    'utils.native', 'utils.pixel_io', 'utils.math_utils', 'tools.draw_blending', 'tools.draw_functions',
-    'tools.draw_tool_smooth', 'tools.native_paint', 'tools.mask', 'tools.mask_geometry',
-    'tools.selection_ops', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
+    'utils.native', 'utils.pixel_io', 'utils.math_utils', 'paint.blending', 'paint.pixels',
+    'paint.smooth', 'paint.native_paths', 'tools.mask.data', 'tools.mask.guard', 'tools.mask.geometry',
+    'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
+    'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
+    'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -87,6 +89,20 @@ for _module, _attr in _ADDED_ATTRS:
 
 def _mod(name):
     return _LOADED[name]
+
+
+# the tool classes by group (one module per tool)
+BRUSHES = SimpleNamespace(
+    SquareBrushTool=_mod('tools.brushes.square').SquareBrushTool,
+    CircleBrushTool=_mod('tools.brushes.circle').CircleBrushTool,
+    SprayBrushTool=_mod('tools.brushes.spray').SprayBrushTool,
+    EraserTool=_mod('tools.brushes.eraser').EraserTool)
+V3D = SimpleNamespace(   # the 3D Viewport modules (core/view3d/)
+    mesh=_mod('core.view3d.mesh'), islands=_mod('core.view3d.islands'),
+    footprint=_mod('core.view3d.footprint'), patch=_mod('core.view3d.patch'))
+FILTERS = SimpleNamespace(
+    SmoothTool=_mod('tools.filters.smooth').SmoothTool,
+    SmearTool=_mod('tools.filters.smear').SmearTool)
 
 
 native = _mod('utils.native')
@@ -169,8 +185,8 @@ class NativeTestCase(unittest.TestCase):
 
 class KernelParityTest(NativeTestCase):
     def setUp(self):
-        self.draw_functions = _mod('tools.draw_functions')
-        self.smooth_mod = _mod('tools.draw_tool_smooth')
+        self.pixel_writer = _mod('paint.pixels')
+        self.smooth_mod = _mod('paint.smooth')
 
     def test_write_pixels_every_blend_mode(self):
         w, h = 23, 17
@@ -180,7 +196,7 @@ class KernelParityTest(NativeTestCase):
         for blend in BLENDS:
             for protect in (False, True):
                 for wts in (None, weights):
-                    py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+                    py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
                         img, pixels, (0.8, 0.25, 0.6), blend=blend, opacity=0.7, alpha_opacity=0.9,
                         pixel_weights=wts, protect_transparent=protect), base, w, h)
                     self.assertClose(py, cs, msg=f"{blend} protect={protect} weights={wts is not None}")
@@ -190,11 +206,11 @@ class KernelParityTest(NativeTestCase):
         base = random_image(w, h, 3)
         back = random_image(w, h, 4)
         pixels = random_pixels(w, h, 60, 5)
-        py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+        py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
             img, pixels, (0.1, 0.9, 0.3), base_buffer=back, blend='OVERLAY', opacity=0.5), base, w, h)
         self.assertClose(py, cs)
         # all pixels outside: nothing written, not even the base buffer
-        py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+        py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
             img, [(-5, 2), (40, 40)], (1, 1, 1), base_buffer=back), base, w, h)
         self.assertClose(py, base)
         self.assertClose(cs, base)
@@ -205,7 +221,7 @@ class KernelParityTest(NativeTestCase):
         pixels = random_pixels(w, h, 150, 7, margin=2)
         weights = [((i * 37) % 100) / 100.0 for i in range(len(pixels))]
         for protect in (False, True):
-            py, cs = self.both(lambda img: self.draw_functions.set_pixels_alpha(
+            py, cs = self.both(lambda img: self.pixel_writer.set_pixels_alpha(
                 img, pixels, 0.2, opacity=0.8, protect_transparent=protect, pixel_weights=weights), base, w, h)
             self.assertClose(py, cs)
 
@@ -291,7 +307,7 @@ class KernelParityTest(NativeTestCase):
 
 class FootprintTest(NativeTestCase):
     def setUp(self):
-        self.np_paint = _mod('tools.native_paint')
+        self.np_paint = _mod('paint.native_paths')
 
     @staticmethod
     def python_merge(centers, radius, falloff):
@@ -358,7 +374,7 @@ class FootprintTest(NativeTestCase):
 
 class RegionMaskRasterTest(NativeTestCase):
     def test_restore_blocked(self):
-        mask = _mod('tools.mask')
+        guard = _mod('tools.mask.guard')
         w, h = 25, 20
         before = random_image(w, h, 12)
         after = before.copy()
@@ -368,13 +384,17 @@ class RegionMaskRasterTest(NativeTestCase):
         results = []
         for use_native in (False, True):
             native.set_override(use_native)
-            img = FakeImage(w, h, after)
-            mask.restore_blocked(img, before.copy(), allowed)
-            results.append(img.arr.copy())
+            buf = after.copy()
+            guard.restore_all(buf, before.copy(), allowed)
+            results.append(buf)
         np.testing.assert_array_equal(results[0], results[1])
+        # protected pixels back to ``before``, the others untouched
+        b4, a4, r4 = before.reshape(-1, 4), after.reshape(-1, 4), results[0].reshape(-1, 4)
+        np.testing.assert_array_equal(r4[~allowed], b4[~allowed])
+        np.testing.assert_array_equal(r4[allowed], a4[allowed])
 
     def test_blend_region_every_mode(self):
-        blending = _mod('tools.draw_blending')
+        blending = _mod('paint.blending')
         dst = random_image(9, 7, 14).reshape(7, 9, 4)
         src = random_image(9, 7, 15).reshape(7, 9, 4)
         for blend in BLENDS:
@@ -386,7 +406,7 @@ class RegionMaskRasterTest(NativeTestCase):
                 self.assertClose(py, cs, msg=f"{blend} {opacity}")
 
     def test_blit_region(self):
-        selection_ops = _mod('tools.selection_ops')
+        selection_ops = _mod('tools.selection.geometry')
         w, h = 30, 26
         base = random_image(w, h, 16)
         region = random_image(7, 5, 17).reshape(5, 7, 4)
@@ -401,7 +421,7 @@ class RegionMaskRasterTest(NativeTestCase):
             self.assertClose(py, cs, msg=str(case))
 
     def test_raster_triangles(self):
-        geo = _mod('tools.mask_geometry')
+        geo = _mod('tools.mask.geometry')
         rng = np.random.default_rng(18)
         tris = rng.random((40, 3, 2))
         for (w, h, grow) in ((64, 48, 0.0), (33, 70, 1.5), (128, 128, 0.0)):
@@ -437,8 +457,8 @@ class ToolParityTest(NativeTestCase):
 
     def setUp(self):
         self.base_mod = _mod('tools.base')
-        self.brushes = _mod('tools.brushes')
-        self.filters = _mod('tools.filters')
+        self.brushes = BRUSHES
+        self.filters = FILTERS
 
     def run_tool(self, tool, base, w, h, step_lists, spacing='FREE', protect=False, **env_kw):
         results = []
@@ -489,7 +509,7 @@ class ToolParityTest(NativeTestCase):
                 self.assertFalse(np.allclose(cs, base), "tool painted nothing")
 
     def test_native_path_is_taken(self):
-        np_paint = _mod('tools.native_paint')
+        np_paint = _mod('paint.native_paths')
         calls = []
         original = np_paint.paint_weighted
         np_paint.paint_weighted = lambda *a, **k: calls.append(1) or original(*a, **k)
@@ -524,24 +544,24 @@ class IslandClipTest(NativeTestCase):
     W = H = 40
 
     def setUp(self):
-        self.view3d = _mod('core.view3d')
+        self.view3d = V3D
         self.base_mod = _mod('tools.base')
-        self.brushes = _mod('tools.brushes')
-        self.filters = _mod('tools.filters')
+        self.brushes = BRUSHES
+        self.filters = FILTERS
         self.cache = quad_island_mesh()
-        self._orig_cache = self.view3d._mesh_cache
-        self.view3d._mesh_cache = lambda context: self.cache
-        self.view3d._island_map = None
+        self._orig_cache = self.view3d.mesh.mesh_cache
+        self.view3d.mesh.mesh_cache = lambda context: self.cache
+        self.view3d.islands._island_map = None
 
     def tearDown(self):
-        self.view3d._mesh_cache = self._orig_cache
-        self.view3d._island_map = None
+        self.view3d.mesh.mesh_cache = self._orig_cache
+        self.view3d.islands._island_map = None
         super().tearDown()
 
     def island_map(self, use_native):
         native.set_override(use_native)
-        self.view3d._island_map = None
-        return self.view3d.island_map(None, SimpleNamespace(size=(self.W, self.H)))
+        self.view3d.islands._island_map = None
+        return self.view3d.islands.island_map(None, SimpleNamespace(size=(self.W, self.H)))
 
     def test_labels_both_backends(self):
         maps = [self.island_map(False), self.island_map(True)]
@@ -571,7 +591,7 @@ class IslandClipTest(NativeTestCase):
             opacity=1.0, alpha_opacity=1.0, protect_transparent=False, radius=8, spacing='FREE', wm=wm,
             cursor_x=cursor[0], cursor_y=cursor[1], interpolation_steps=lambda: list(steps),
             curve_sampler_factory=lambda ctx: None, modifier=0.5)
-        env.islands = self.view3d.IslandClip(islands, cursor, cursor_tri)
+        env.islands = self.view3d.islands.IslandClip(islands, cursor, cursor_tri)
         pixel_io.begin_stroke(img)
         tool.on_stroke_begin(env)
         with pixel_io.deferred(img):
@@ -610,7 +630,7 @@ class IslandClipTest(NativeTestCase):
 def seam_strip_mesh():
     """Two quads side by side in 3D (sharing the edge x = 1), cut apart in UV:
     A at u, v in 0.1..0.4, B at 0.6..0.9 (same orientation)."""
-    view3d = _mod('core.view3d')
+    view3d = V3D
     verts = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)], dtype=np.float32)
     tri_verts = np.array([(0, 1, 2), (0, 2, 3), (1, 4, 5), (1, 5, 2)], dtype=np.int32)
     a = {0: (0.1, 0.1), 1: (0.4, 0.1), 2: (0.4, 0.4), 3: (0.1, 0.4)}
@@ -618,7 +638,7 @@ def seam_strip_mesh():
     uvs = [a[v] for v in (0, 1, 2, 0, 2, 3)] + [b[v] for v in (1, 4, 5, 1, 5, 2)]
     uvs = np.array(uvs, dtype=np.float32)
     tri_loops = np.arange(12, dtype=np.int32).reshape(-1, 3)
-    return view3d._MeshCache('seam-strip', None, tri_verts, tri_loops, verts, uvs, np.ones(4))
+    return view3d.mesh.MeshCache('seam-strip', None, tri_verts, tri_loops, verts, uvs, np.ones(4))
 
 
 class EdgeFilterTest(NativeTestCase):
@@ -627,15 +647,15 @@ class EdgeFilterTest(NativeTestCase):
     RED, BLUE, GREEN = (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)
 
     def setUp(self):
-        self.view3d = _mod('core.view3d')
+        self.view3d = V3D
         self.base_mod = _mod('tools.base')
-        self.filters = _mod('tools.filters')
+        self.filters = FILTERS
         self.cache = seam_strip_mesh()
-        self._orig_cache = self.view3d._mesh_cache
-        self.view3d._mesh_cache = lambda context: self.cache
+        self._orig_cache = self.view3d.mesh.mesh_cache
+        self.view3d.mesh.mesh_cache = lambda context: self.cache
 
     def tearDown(self):
-        self.view3d._mesh_cache = self._orig_cache
+        self.view3d.mesh.mesh_cache = self._orig_cache
         super().tearDown()
 
     def image(self):
@@ -661,9 +681,9 @@ class EdgeFilterTest(NativeTestCase):
                 cursor_x=cx, cursor_y=cy, interpolation_steps=(lambda s=steps: list(s)),
                 curve_sampler_factory=lambda ctx: None, modifier=1.0)
             env.edge_mode = True
-            env.expand_stamp = lambda x, y, p, wt, tri=tri, cx=cx, cy=cy: self.view3d.edge_expand(
+            env.expand_stamp = lambda x, y, p, wt, tri=tri, cx=cx, cy=cy: self.view3d.footprint.edge_expand(
                 None, img, x, y, p, wt, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
-            env.edge_patch = lambda x, y, p, pad, tri=tri, cx=cx, cy=cy: self.view3d.edge_patch(
+            env.edge_patch = lambda x, y, p, pad, tri=tri, cx=cx, cy=cy: self.view3d.patch.edge_patch(
                 None, img, x, y, p, pad, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
             if i == 0:
                 tool.on_stroke_begin(env)
@@ -683,7 +703,7 @@ class EdgeFilterTest(NativeTestCase):
     def test_patch_unfolds_neighbour(self):
         img = SimpleNamespace(size=(self.W, self.H))
         pixels = [(x, 10) for x in range(12, 20)]
-        patch = self.view3d.edge_patch(None, img, 15, 10, pixels, 2, (0, 0), prefer_tri=0)
+        patch = self.view3d.patch.edge_patch(None, img, 15, 10, pixels, 2, (0, 0), prefer_tri=0)
         self.assertIsNotNone(patch)
         # texel 17 lies right of A's edge (x = 16): on the surface it is B's texel 25 (row 30)
         f = patch.flat([(17, 10)])[0]

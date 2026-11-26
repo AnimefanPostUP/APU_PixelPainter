@@ -22,7 +22,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from ..core.framework import ToolFrame
 from ..utils import math_utils, pixel_io
-from . import falloff as falloff_presets
+from ..model import falloff as falloff_presets
 
 
 @dataclass(frozen=True)
@@ -60,11 +60,11 @@ class DrawEnvironment:
     # mode, where it carries the stamp over UV seams.
     expand_stamp: Optional[Callable[..., Tuple[list, list]]] = None
     edge_mode: bool = False   # 3D Viewport, Edge mode
-    # Edge mode: (x, y, pixels, pad) -> core.view3d.EdgePatch | None -- the surface
+    # Edge mode: (x, y, pixels, pad) -> core.view3d.patch.EdgePatch | None -- the surface
     # around a stamp unfolded across UV seams, for filters that read neighbours.
     edge_patch: Optional[Callable[..., object]] = None
     modifier: float = 0.5     # tool modifier (button-specific, pen pressure applied)
-    # 3D Viewport, UV mode: core.view3d.IslandClip -- every stamp stays on the
+    # 3D Viewport, UV mode: core.view3d.islands.IslandClip -- every stamp stays on the
     # UV island under its center (None = no clipping).
     islands: Optional[object] = None
 
@@ -134,7 +134,7 @@ class ToolBase(ToolFrame):
         env.state['stroke_painted'] = set()
         env.state['stroke_weight_map'] = {}
         env.state['stroke_back_buffer'] = pixel_io.read(env.img)
-        env.state['native_stroke_grid'] = None     # C# path equivalents (tools/native_paint.py)
+        env.state['native_stroke_grid'] = None     # C# path equivalents (paint/native_paths.py)
         env.state['native_stroke_pixels'] = None
 
     def on_draw(self, env: DrawEnvironment) -> None:
