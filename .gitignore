@@ -187,3 +187,4 @@ native/PixelPainterNative/obj/
 !native/runtimes/
 !native/runtimes/**
 native/runtimes/**/*.old
+settings.json
