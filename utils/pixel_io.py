@@ -72,10 +72,12 @@ def _match(img):
 
 
 def _tag_redraw():
+    """Redraw the editors that can show the image: only the screens shown in a window
+    (``bpy.data.screens`` also holds every workspace's hidden ones)."""
     try:
         import bpy
-        for screen in bpy.data.screens:
-            for area in screen.areas:
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
                 if area.type in {'VIEW_3D', 'IMAGE_EDITOR'}:
                     area.tag_redraw()
     except Exception:
