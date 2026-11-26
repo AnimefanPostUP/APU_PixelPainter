@@ -200,9 +200,9 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
   the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
   S / A / M radial sliders top right, the tools top left (two rings), the
-  falloff controls bottom left, Undo / Redo with Alphalock / Pixel-Free / Blend
-  outside Undo (`BRUSH_MODE_ARC`, `BRUSH_MODE_WEIGHTS`) and the favorite blend
-  modes outside Redo bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
+  bottom Undo / Redo (inner ring, `HISTORY_ARC`) with the favorite blend modes
+  outside them (outer ring), bottom right
+  the falloff controls (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
   extreme corners cut for the lock / X / resize triangle, except top left): top
@@ -214,7 +214,8 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   behind it; these buttons have round
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
   top right, outside S / A / M, the color history band (`HISTORY_BAND_ARC`,
-  `tools/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`).
+  `tools/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`)
+  and past it Pixel-Free / Alphalock corner buttons (`BRUSH_MODE_ARC`).
   The optional tertiary color (`tools/tertiary_color.py`, pure) is a point `t` on
   the primary -> secondary gradient (state `pen_tertiary_t`); while selected
   (`pen_tertiary`, set by the slider / bubble) `StrokeTool` paints left-button
@@ -222,8 +223,10 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   still edit primary / secondary: `PenBarTool._target` (state `pen_color_target`
   while the tertiary color is selected, else the RMB lock); that color gets a dotted
   outline (`kit.draw.ring_segment_dashed_outline`, `kit.geometry.dash_runs`);
-  bottom left the palette band (24 slots in `PALETTE_ROWS` bands) and Palettes;
-  bottom right Grid, Save and Windows (`BOTTOM_RIGHT_ARC`).
+  bottom right the palette band (24 slots in `PALETTE_ROWS` bands) and Palettes;
+  bottom left Windows, Save, Grid and Blend (`BOTTOM_LEFT_ARC`, from the circle out;
+  Blend is a `_BlendButton` corner: a `BLEND_GRADIENT` dark-to-light gray fill with
+  the mode's name).
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
   the .blend); the band shows the active palette's colors or, in the palette view
@@ -240,21 +243,19 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
   take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
   palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu). The
-  falloff controls sit bottom left (`FALLOFF_FIELD_ARC`): the falloff field
+  falloff controls sit bottom right (`FALLOFF_FIELD_ARC`): the falloff field
   (`FalloffField`; swipes map through `motion_delta`: two fixed straight axes along /
   across the field's middle ray, so a straight swipe changes one value; the marker
   may reach `FIELD_EDGE_MARGIN` of its radius over the edges) in the outer ring,
-  reaching in to the inner ring (no gap), and
-  Custom | Curve in the inner ring. Outside Redo (`FAVORITES_ARC`) the favorite
-  blend modes (`_BlendFavorites`: one `_BlendFavorite` per mode, the favorites
-  shown in two equally deep columns (`FAVORITE_COLUMNS`, from the outer ring's inner
-  edge out to `FALLOFF_OUTER`), each
-  split into its own rows; re-placed on draw when `pixel_painter_blend_favorites`
-  changes; labels run radially from just past the inner edge, `FAVORITE_TEXT_PAD`,
-  two-word names on two lines, via `draw.text_along`). `PenBarTool.blend_favorites` may be empty (the defaults only while the
+  reaching in through the inner ring's outer half (`FALLOFF_SPLIT`, no gap), and
+  Custom | Curve in the inner ring's inner half. Outside Undo / Redo (`FAVORITES_ARC`,
+  outer ring) `_BlendFavorites`: the favorite blend modes (one `_BlendFavorite`
+  per mode) split evenly into `FAVORITE_ROWS` rings (the outer ring takes the odd one);
+  re-placed on draw when `pixel_painter_blend_favorites` changes; labels run along
+  the circle, kept upright, two-word names on two lines, via `draw.text_along`). `PenBarTool.blend_favorites` may be empty (the defaults only while the
   property is missing). The Blend flyout: Common / Contrast / Math / HSL/HSV,
   favorites check-marked, *Edit Favorites* (`PenBar.blend_fav_edit`) makes taps
-  toggle favorites (`wm_toggle_flag`). Past the favorites, around the diagonal,
+  toggle favorites (`wm_toggle_flag`). Bottom left, first of its corner buttons,
   Windows (`activate_on_press`). It opens the Windows ring
   (`_WindowRing`, `WINDOW_RING` = the inner ring's radii): Settings / Mask / View /
   Color / Palettes (library) as `drag_release` `RingSegment`s over the full circle

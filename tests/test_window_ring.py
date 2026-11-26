@@ -36,7 +36,7 @@ class WindowRingTest(unittest.TestCase):
         self.opener = kit.CornerSegment("Windows", key='WINDOWS',
                                         on_click=lambda: setattr(self.ring, 'visible', not self.ring.visible))
         self.opener.activate_on_press = True
-        dial.add_corner([self.opener], pen_bar_ui.FALLOFF_CORNER_INNER, pen_bar_ui.SQUARE_HALF,
+        dial.add_corner([self.opener], pen_bar_ui.BOTTOM_LEFT_INNER, pen_bar_ui.SQUARE_HALF,
                         *pen_bar_ui.WINDOWS_ARC)
         self.ring = dial.add(pen_bar_ui._WindowRing(*pen_bar_ui.WINDOW_RING, cover=pen_bar_ui.WINDOW_RING_COVER))
         self.entries = [kit.RingSegment(name, key=name, on_click=lambda n=name: self.clicked.append(n))

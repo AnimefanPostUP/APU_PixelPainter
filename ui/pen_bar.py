@@ -23,18 +23,17 @@ everything here works with press, drag and release only.
     center, drag keeps setting it; outside them, along the circle, the color
     history (the last painted colors, newest at the top; tap paints with it);
   - top left: the tools (half in each ring; tap selects);
-  - bottom left: the falloff -- in the outer ring the *falloff field* (the
-    Shape falloff, swiped like the color selector: toward the center = hard,
-    outward = soft; the bottom end = linear fade, the left end = sharp; a swipe
-    moves along two fixed straight axes -- a cross through the field's middle --
-    not along the arc; a tap jumps; while pressed the cursor is hidden and kept on the marker; quarter
-    preview discs in its corners, the marker shows the current falloff),
-    reaching in to the inner ring with *Custom* (in its own color) and *Curve*;
-  - bottom right: *Undo* / *Redo* arrows (inner ring); outside Undo *Alphalock*
-    (protect transparent pixels), *Pixel* / *Free* (spacing) and *Blend* (opens
-    the flyout; shows the mode); outside Redo the favorite blend modes (tap:
-    paint with it) in two equally deep columns from the outer ring out to the
-    corner band, each with as many rows as it holds.
+  - bottom: *Undo* / *Redo* arrows (inner ring); outside them (outer ring)
+    the favorite blend modes (tap: paint with it) in rows, names written
+    across (upright);
+  - bottom right: the falloff -- the *falloff field* (the Shape falloff, swiped
+    like the color selector: toward the center = hard, outward = soft; the
+    upper end = linear fade, the lower end = sharp; a swipe moves along two
+    fixed straight axes -- a cross through the field's middle -- not along the
+    arc; a tap jumps; while pressed the cursor is hidden and kept on the marker;
+    quarter preview discs in its corners, the marker shows the current falloff)
+    in the outer ring and the inner ring's outer half; *Custom* (in its own
+    color) and *Curve* in the inner ring's inner half.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
@@ -49,13 +48,15 @@ everything here works with press, drag and release only.
   the tertiary color; tap: selects it / back to the color before). With the
   tertiary color selected, the color selector still edits the primary or the
   secondary color: that one has a dotted outline, a tap on the other switches.
-  bottom left the palette band (24 slots in two bands along the circle) and
+  bottom right the palette band (24 slots in two bands along the circle) and
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes);
-  bottom right, past the favorites, the pixel *Grid* (opacity %; tap: on / off,
-  drag up / down: opacity), *Save* (saves / packs the painted image as set in
-  settings > Pen > Save Image; a green dot while it has unsaved changes) and
-  *Windows* (opens the Windows ring on the press). The top-right corner is empty.
+  bottom left *Windows* (opens the Windows ring on the press), *Save* (saves /
+  packs the painted image as set in settings > Pen > Save Image; a green dot
+  while it has unsaved changes) and the pixel *Grid* (opacity %; tap: on / off,
+  drag up / down: opacity) and, ending at the bottom, *Blend* (opens the
+  flyout; a dark-to-light gray gradient with the mode's name). Top right, past the color history, *Pixel* /
+  *Free* (spacing) and *Alphalock* (protect transparent pixels).
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -169,10 +170,14 @@ INNER_RING = (SIZE_RADIUS + DIAL_GAP, 72.5 * _RING_SCALE)
 OUTER_RING = (INNER_RING[1] + DIAL_GAP, DIAL_RADIUS)
 SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
 TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
-HISTORY_ARC = (270.0, 375.0)   # Undo / Redo (inner ring)
-BRUSH_MODE_ARC = (270.0, 322.5)  # outer ring outside Undo: Alphalock, Pixel / Free, Blend
-BRUSH_MODE_WEIGHTS = (1.0, 1.0, 1.6)  # Blend is wider: it shows the mode's name
-FAVORITES_ARC = (322.5, 375.0)   # outside Redo: the favorite blend modes (outer ring + band)
+# Bottom: Undo / Redo in the inner ring; outside them (outer ring) the favorite blend
+# modes in rows; right of them the falloff. (Blend: the bottom-left corner.)
+HISTORY_ARC = (210.0, 322.5)   # Undo / Redo (inner ring)
+FAVORITES_ARC = HISTORY_ARC    # the favorite blend modes (outer ring)
+FAVORITE_ROWS = 2              # the favorites split into this many rings (the outer one takes the odd one)
+# Top-right corner, past the color history: Pixel / Free (spacing) and Alphalock.
+BRUSH_MODE_ARC = (22.0, 68.0)
+BLEND_GRADIENT = ((0.16, 0.16, 0.16), (0.78, 0.78, 0.78))   # the Blend button: dark gray -> light gray
 _INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
 # Category tints (mixed lightly into the segment fills).
 TINT_TOOLS = (0.35, 0.58, 1.00)
@@ -181,11 +186,12 @@ TINT_HISTORY = (0.95, 0.40, 0.45)
 TINT_FALLOFF = (1.00, 0.55, 0.15)    # orange
 TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
 CUSTOM_TINT_AMOUNT = 0.45
-# Falloff (bottom left): the Shape field in the outer ring, reaching in to the inner
-# ring (no gap), and in the inner ring Custom | Curve.
-FALLOFF_FIELD_ARC = (210.0, 270.0)
-FAVORITE_FONT = 24.0                 # favorite blend modes: largest label size (they fill their button)
-FAVORITE_TEXT_PAD = 6.0              # their labels keep this far from the segment's inner / outer edge
+# Falloff (bottom right): the Shape field in the outer ring, reaching in through the
+# outer half of the inner ring (no gap), and in the inner half Custom | Curve.
+FALLOFF_FIELD_ARC = (322.5, 375.0)
+FALLOFF_SPLIT = (INNER_RING[0] + INNER_RING[1]) * 0.5   # Custom / Curve end here, the field starts here
+FAVORITE_FONT = 16.0                 # favorite blend modes: largest label size
+FAVORITE_TEXT_PAD = 2.0              # their labels keep this far from the segment's side edges
 FAVORITE_CAPS_LETTERS = 4            # names this short (or shorter) are written in capitals
 # One label size for all: made so the widest of these fits (five letters / four capitals).
 FAVORITE_SIZE_TEXTS = ("Dodge", "LUMI", "NORM")
@@ -209,30 +215,24 @@ COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
 SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix bubble sits past it
 COLOR_ROUND = 6.0                    # corner radius of the color section's buttons
 MIX_BUBBLE_MARGIN = 1.5              # the tertiary bubble keeps this far from its slot's edges
-COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
+COLOR_WHEEL_ARC = (270.0, 360.0)     # bottom right: the palette (2 bands along the circle)
 # Palettes: around the diagonal, the only part of the corner with room left past the
 # palette bands. (Color / Library: the Windows ring.)
-PALETTE_BUTTON_ARC = (200.0, 250.0)
+PALETTE_BUTTON_ARC = (290.0, 340.0)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
-FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the favorites' band (bottom right) is as deep as the palette's
-FALLOFF_OUTER = CORNER_INNER + FALLOFF_BAND_DEPTH
-FALLOFF_CORNER_INNER = FALLOFF_OUTER + DIAL_GAP
-# The favorite blend modes' two columns: from the outer ring's inner edge out to the band's
-# outer edge, split into two equally deep rings (the inner one shorter than the outer ring).
-_FAVORITE_DEPTH = (FALLOFF_OUTER - OUTER_RING[0] - DIAL_GAP) * 0.5
-FAVORITE_COLUMNS = ((OUTER_RING[0], OUTER_RING[0] + _FAVORITE_DEPTH),
-                    (FALLOFF_OUTER - _FAVORITE_DEPTH, FALLOFF_OUTER))
-# Bottom right past the favorites' band, around the diagonal: Grid, Save, Windows.
-BOTTOM_RIGHT_ARC = (293.0, 337.0)
-_BR_THIRD = (BOTTOM_RIGHT_ARC[1] - BOTTOM_RIGHT_ARC[0]) / 3.0
-WINDOWS_ARC = (BOTTOM_RIGHT_ARC[1] - _BR_THIRD, BOTTOM_RIGHT_ARC[1])   # Windows' share
+# Bottom left, from the circle out to the square: Windows, Save, Grid, Blend (Blend ends
+# at the bottom, where the palette band starts).
+BOTTOM_LEFT_INNER = CORNER_INNER
+BOTTOM_LEFT_ARC = (192.0, 270.0)
+_BL_SHARE = (BOTTOM_LEFT_ARC[1] - BOTTOM_LEFT_ARC[0]) / 4.0
+WINDOWS_ARC = (BOTTOM_LEFT_ARC[0], BOTTOM_LEFT_ARC[0] + _BL_SHARE)   # Windows' share
 # The Windows popup: a ring over the dial's inner ring (around the Size knob, hiding the
 # inner ring while open). Entries counter-clockwise from WINDOW_RING_START, each the same
 # angle; their order roughly follows where the old corner buttons sat.
 WINDOW_RING = INNER_RING
 WINDOW_RING_COVER = OUTER_RING[1]    # the backdrop reaches this far: hides both rings (the tools too)
-WINDOW_RING_START = 279.0            # Settings at the bottom right, by the Windows button
+WINDOW_RING_START = 165.0            # Settings at the bottom left, by the Windows button
 WINDOW_RING_BACKDROP = (0.16, 0.16, 0.16, 0.97)
 TINT_WINDOWS = (0.62, 0.70, 0.95)
 GRID_DRAG_PX = 120.0                 # unscaled px of vertical drag for 0 -> 100 % grid opacity
@@ -778,9 +778,9 @@ class _GridCorner(CornerSegment):
 
 
 class _BlendFavorite(RingSegment):
-    """A favorite blend mode beside Redo: its name along the segment (radially, reading
-    outward), from just past the inner edge; names of several words on two lines. The
-    text shrinks to fit the segment's depth and width."""
+    """A favorite blend mode in the bottom middle: its name across the segment (along the
+    circle, upright), centered; names of several words on two lines. The text shrinks to
+    fit the segment's depth and width."""
 
     def label_lines(self):
         words = self.label.split()
@@ -795,58 +795,54 @@ class _BlendFavorite(RingSegment):
         theme = dc.theme
         lines = self.label_lines()
         pad = theme.px(FAVORITE_TEXT_PAD)
-        start_r = self.pr0 + pad
-        length = self.pr1 - start_r - pad                # room along the text
-        r = start_r + length * 0.3                       # the narrow (inner) part decides the height
-        width = 2.0 * r * math.sin(math.radians(self.a1 - self.a0) * 0.5) - sum(self.insets)
+        depth = self.pr1 - self.pr0
+        r = self.pr0 + depth * 0.35                      # the narrow (inner) part decides the width
+        width = 2.0 * r * math.sin(math.radians(self.a1 - self.a0) * 0.5) - sum(self.insets) - 2.0 * pad
         line_gap = 1.1
-        # One size for every name: as large as a name of about five letters
-        # (FAVORITE_SIZE_TEXTS) allows along the button, with some room across it.
-        fill = 0.85 if len(lines) == 1 else 0.8 / (len(lines) * line_gap)
-        size = min(theme.px(self.font_size), width * fill)
-        if size < 3.0 or length <= 4.0:
+        size = min(theme.px(self.font_size), depth * 0.62 / (len(lines) * line_gap))
+        if size < 3.0 or width <= 4.0:
             return
         if max(len(line) for line in lines) <= FAVORITE_CAPS_LETTERS:
             lines = [line.upper() for line in lines]     # short names in capitals
+        # One size for every name of a row: as large as a name of about five letters
+        # (FAVORITE_SIZE_TEXTS) allows across the button.
         reference = max(draw.text_size(text, size, theme.font_id)[0] for text in FAVORITE_SIZE_TEXTS)
-        if reference > length:
-            size *= length / reference
+        if reference > width:
+            size *= width / reference
         longest = max(draw.text_size(line, size, theme.font_id)[0] for line in lines)
-        if longest > length:      # longer names than the reference still fit
-            size *= length / longest
-        # Direction: from the center through the segment's (drawn) middle.
-        mx, my = self.middle(start_r)
-        angle = math.atan2(my - self.cy, mx - self.cx)
+        if longest > width:       # longer names than the reference still fit
+            size *= width / longest
+        # Direction: along the circle at the segment's (drawn) middle, kept upright.
+        mx, my = self.middle()
+        angle = math.atan2(my - self.cy, mx - self.cx) + math.pi * 0.5
+        if math.cos(angle) < -1e-6:
+            angle += math.pi
         ux, uy = math.cos(angle), math.sin(angle)
-        flip = ux < -1e-6                                # left half: keep the text upright
-        up = (-uy, ux) if not flip else (uy, -ux)        # "up" on screen for the reading direction
+        up = (-uy, ux)                                   # "up" on screen for the reading direction
         color = (*FAVORITE_TEXT_COLOR, alpha)
         step = size * line_gap
         for i, line in enumerate(lines):
             off = ((len(lines) - 1) * 0.5 - i) * step   # first line on top
-            x, y = mx + up[0] * off, my + up[1] * off
-            if flip:   # reads inward: start where the text ends, at the outer end of its run
-                w = draw.text_size(line, size, theme.font_id)[0]
-                x, y = x + ux * w, y + uy * w
-                draw.text_along(line, x, y, size, color, angle + math.pi, theme.font_id)
-            else:
-                draw.text_along(line, x, y, size, color, angle, theme.font_id)
+            w = draw.text_size(line, size, theme.font_id)[0]
+            x = mx + up[0] * off - ux * w * 0.5
+            y = my + up[1] * off - uy * w * 0.5
+            draw.text_along(line, x, y, size, color, angle, theme.font_id)
 
 
 class _BlendFavorites(Widget):
-    """The favorite blend modes as two columns (``columns``: two ``(r0, r1)`` rings),
-    each split along ``arc`` into as many rows as it holds; the first column gets the
-    larger half, the first favorite sits at the top. Owns one segment per blend mode
-    (only the favorites are shown) and re-places them when the favorites change.
-    Added to the dial's ``corners`` so the dial places it."""
+    """The favorite blend modes in ``rows`` rings stacked from ``r0`` out to ``r1``, each a
+    band across ``arc``, equally deep and split as evenly as possible (the outer, longer
+    rows take the extra ones; fewer favorites than rows: one per row). Rows read from
+    ``a0`` (left at the bottom). Owns one segment per blend mode (only the favorites are
+    shown) and re-places them when the favorites change. Added to the dial's
+    ``corners`` so the dial places it."""
 
-    def __init__(self, dial, entries, columns, arc, favorites, **kwargs):
+    def __init__(self, dial, entries, r0, r1, arc, favorites, rows=FAVORITE_ROWS, **kwargs):
         super().__init__(**kwargs)
         self.dial = dial
         self.entries = dict(entries)        # blend id -> _BlendFavorite
-        self.columns = tuple(columns)
-        self.r0 = min(r0 for r0, _r1 in self.columns)     # the dial's measure reads r1
-        self.r1 = max(r1 for _r0, r1 in self.columns)
+        self.r0, self.r1 = r0, r1           # the dial's measure reads r1
+        self.row_count = max(1, int(rows))
         self.arc = arc
         self.favorites = favorites          # () -> set of blend ids
         self._shown = None
@@ -864,15 +860,25 @@ class _BlendFavorites(Widget):
             favorites = set()
         return tuple(b for b in self.entries if b in favorites)
 
+    def rows(self, count):
+        """``[((r0, r1), buttons)]`` for ``count`` favorites, inner row first."""
+        if count <= 0:
+            return []
+        n = min(self.row_count, count)
+        depth = (self.r1 - self.r0 - (n - 1) * DIAL_GAP) / n
+        bands = [(self.r0 + i * (depth + DIAL_GAP), self.r0 + i * (depth + DIAL_GAP) + depth) for i in range(n)]
+        base, extra = divmod(count, n)
+        counts = [base + (1 if i >= n - extra else 0) for i in range(n)]
+        return list(zip(bands, counts))
+
     def _assign(self, ids):
         self._shown = ids
         for segment in self.entries.values():
             segment.visible = False
-        first = (len(ids) + 1) // 2
-        for (r0, r1), column in zip(self.columns, (ids[:first], ids[first:])):
-            if not column:
-                continue
-            segments = [self.entries[b] for b in reversed(column)]   # listed from a0 (bottom)
+        start = 0
+        for (r0, r1), count in self.rows(len(ids)):
+            segments = [self.entries[b] for b in ids[start:start + count]]   # listed from a0 (left)
+            start += count
             extra, spans = self.dial._split(len(segments), r0, r1, *self.arc)
             for i, (segment, (b0, b1)) in enumerate(zip(segments, spans)):
                 segment.r0, segment.r1, segment.a0, segment.a1 = r0, r1, b0, b1
@@ -1585,22 +1591,48 @@ def _paint_spacing(mode):
     return paint
 
 
-def _paint_blend(label):
-    """Blend: a black-to-white disc with the active blend mode under it."""
-    def paint(dc, x, y, size, alpha):
+class _BlendButton(CornerSegment):
+    """Blend (opens the flyout), a corner button: filled with a gradient from dark to
+    light gray along the circle (``BLEND_GRADIENT``), the active blend mode's name
+    (``mode()``) on it."""
+
+    def __init__(self, label="", *, mode, **kwargs):
+        super().__init__(label, **kwargs)
+        self.mode = mode
+
+    def draw_self(self, dc):
         theme = dc.theme
-        r = min(size * 0.3, theme.px(15.0))
-        cy = y + r * 0.35
-        draw.gradient_circle(x, cy, r, (0.0, 0.0, 0.0, alpha), (1.0, 1.0, 1.0, alpha))
-        draw.circle_outline(x, cy, r, with_alpha(theme.border, alpha), width=theme.px(1.0))
-        text = str(_resolve(label, ""))
-        font = theme.px(8.0)
+        alpha = self._alpha(dc)
+        inner, outer = self.points()
+        if not inner:
+            return
+        lo, hi = BLEND_GRADIENT
+        pressed = dc.pressed is self and dc.hot is self
+        shade = 0.8 if pressed else 1.0
+        last = max(1, len(inner) - 1)
+        colors = []
+        for i in range(len(inner)):
+            t = i / last
+            colors.append(tuple((lo[k] + (hi[k] - lo[k]) * t) * shade for k in range(3)) + (alpha,))
+        draw.gradient_ring_segment(inner, outer, colors)
+        draw.ring_segment_outline(inner, outer, theme.edge_for((0.45, 0.45, 0.45), alpha), width=1.0)
+        if self.is_selected:
+            self.draw_selection(dc, alpha)
+        if self.hover_t > 0.01:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, self.hover_t * alpha),
+                                      width=theme.px(1.5))
+        text = str(_resolve(self.mode, ""))
+        room = self.content_size()
+        if room <= 4.0 or not text:
+            return
+        x, y = self.middle()
+        font = min(theme.px(12.0), room * 0.45)
         width, _h = draw.text_size(text, font, theme.font_id)
-        if width > size * 1.1:
-            font *= size * 1.1 / width
-        draw.text_centered(text, x, cy - r - theme.px(7.0), font,
-                           with_alpha(theme.text_muted, alpha), theme.font_id)
-    return paint
+        if width > room * 1.1:
+            font *= room * 1.1 / width
+        shadow = max(1.0, theme.px(1.0))
+        draw.text_centered(text, x + shadow, y - shadow, font, (0.0, 0.0, 0.0, 0.85 * alpha), theme.font_id)
+        draw.text_centered(text, x, y, font, (1.0, 1.0, 1.0, alpha), theme.font_id)
 
 
 
@@ -1737,29 +1769,18 @@ class PenBar:
             RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
             RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
         ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
-        # Outside Undo: Alphalock, Pixel / Free and Blend (opens the flyout; shows the mode).
-        blend = RingSegment("Blend", key='BLEND', painter=_paint_blend(lambda: blend_modes.short_label(a.active_blend())),
-                            on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
-                            selected=lambda: self.flyout is self.blend_flyout)
-        blend.activate_on_press = True
-        dial.add_band([
-            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
-                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
-            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing),
-                        on_click=a.toggle_spacing),
-            blend,
-        ], *OUTER_RING, *BRUSH_MODE_ARC, tint=TINT_MODES, weights=BRUSH_MODE_WEIGHTS)
-        # Outside Redo: the favorite blend modes, two columns (outer ring, band).
+        # Outside Undo / Redo: the favorite blend modes in rows (Blend: bottom-left corner).
         favorites = {
             b: _BlendFavorite(blend_modes.short_label(b), key=f"FAVORITE_{b}", font_size=FAVORITE_FONT,
                               selected=lambda b=b: a.active_blend() == b,   # plain gray buttons
                               on_click=lambda b=b: a.set_blend(b))
             for b in blend_modes.ids()
         }
-        self.favorites_ring = _BlendFavorites(dial, favorites, FAVORITE_COLUMNS, FAVORITES_ARC, a.blend_favorites)
+        self.favorites_ring = _BlendFavorites(dial, favorites, *OUTER_RING, FAVORITES_ARC,
+                                              a.blend_favorites)
 
-        # Bottom left, the falloff: the Shape field in the outer ring (reaching in to the
-        # inner ring: no gap to Custom / Curve), in the inner ring Custom | Curve.
+        # Bottom right, the falloff: the Shape field in the outer ring (reaching in through
+        # the inner ring's outer half: no gap to Custom / Curve), in its inner half Custom | Curve.
         from .falloff_icons import SHAPE_PREVIEWS, shape_preview_key
         self.falloff_field = FalloffField(
             "Falloff", key='FALLOFF_FIELD', icons=self.icons, value=a.falloff_shape,
@@ -1767,7 +1788,7 @@ class PenBar:
             previews=[(hs, shape_preview_key(*hs)) for hs in SHAPE_PREVIEWS],
             marker_icon=falloff.get('SHAPE').icon_key,
             on_drag_state=a.set_cursor_hidden, warp=a.warp_cursor)
-        dial.add_arc([self.falloff_field], INNER_RING[1], OUTER_RING[1], *FALLOFF_FIELD_ARC, tint=TINT_FALLOFF)
+        dial.add_arc([self.falloff_field], FALLOFF_SPLIT, OUTER_RING[1], *FALLOFF_FIELD_ARC, tint=TINT_FALLOFF)
         custom_preset = falloff.get('CUSTOM')
         custom = RingSegment(custom_preset.label, key='FALLOFF_CUSTOM', icon=custom_preset.icon_key,
                              icons=self.icons, font_size=8.0, fill=_INNER_FILL,
@@ -1778,15 +1799,15 @@ class PenBar:
                             tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
                             selected=lambda: self.flyout is self.curve_flyout,
                             on_click=lambda: self._open_curve(curve))
-        dial.add_arc([custom, curve], *INNER_RING, *FALLOFF_FIELD_ARC)
+        dial.add_arc([custom, curve], INNER_RING[0], FALLOFF_SPLIT, *FALLOFF_FIELD_ARC)
         self._add_corners(dial)
         return dial
 
     def _add_corners(self, dial):
         """Top left the color section: the gradient slider (tertiary color), secondary's
         Picker / secondary / Swap + tertiary bubble / primary / primary's Picker; top right
-        the color history band; bottom left the palette and its buttons; bottom right, past
-        the favorites, Grid, Save and Windows."""
+        the color history band and past it Pixel / Free and Alphalock; bottom right the palette and its button; bottom left
+        Windows, Save, Grid and Blend."""
         a = self.actions
         corner = dict(chamfer=CORNER_CHAMFER)
 
@@ -1794,6 +1815,12 @@ class PenBar:
         swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
+        # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock.
+        dial.add_corner([
+            CornerSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing), on_click=a.toggle_spacing),
+            CornerSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
+                          selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
+        ], COLOR_CORNER_INNER, SQUARE_HALF, *BRUSH_MODE_ARC, tint=TINT_MODES, **corner)
         # Top left along the circle: the gradient primary (left) -> secondary (top).
         self.gradient_slider = _GradientSlider("Tertiary", key='GRADIENT', colors=a.colors, value=a.tertiary_t,
                                                active=a.tertiary_active, on_value=a.set_tertiary_t)
@@ -1834,9 +1861,13 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # Past the favorites' band, around the diagonal: Grid (tap: on / off, drag:
-        # opacity), Save, Windows (opens the popup ring on the press -- keep the pen down, drag
-        # onto an entry, lift).
+        # Bottom left, from the circle out to the square: Windows (opens the popup ring on
+        # the press -- keep the pen down, drag onto an entry, lift), Save, Grid (tap: on /
+        # off, drag: opacity), Blend (opens the flyout on the press; shows the mode).
+        blend = _BlendButton("Blend", key='BLEND', mode=lambda: blend_modes.short_label(a.active_blend()),
+                             on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
+                             selected=lambda: self.flyout is self.blend_flyout)
+        blend.activate_on_press = True
         save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
                              tint=TINT_SAVE, on_click=a.save_image)
         grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
@@ -1846,7 +1877,7 @@ class PenBar:
                                                                   self.library_flyout),
                                 on_click=lambda: self.toggle_flyout(self.window_ring, windows))
         windows.activate_on_press = True
-        dial.add_corner([grid, save, windows], FALLOFF_CORNER_INNER, SQUARE_HALF, *BOTTOM_RIGHT_ARC, **corner)
+        dial.add_corner([windows, save, grid, blend], BOTTOM_LEFT_INNER, SQUARE_HALF, *BOTTOM_LEFT_ARC, **corner)
         self.windows_button = windows
 
         # The Windows popup ring (added last: over everything else of the dial).
