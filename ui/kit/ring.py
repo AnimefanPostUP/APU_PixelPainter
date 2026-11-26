@@ -24,7 +24,7 @@ import math
 from . import anim
 from . import draw
 from .geometry import (Rect, corner_contains, corner_room, corner_segment_points, polygon_centroid,
-                       ring_contains, ring_segment_points)
+                       ring_contains, ring_segment_points, round_strip)
 from .theme import mix, with_alpha
 from .widget import Widget, _resolve
 
@@ -36,15 +36,18 @@ class RingSegment(Widget):
 
     ``fill``: base color (theme surface when None); ``tint`` (RGB) is mixed into
     it by ``tint_amount``. Selected segments get an accent tint and an accent
-    band along the outer edge.
+    band along the outer edge. ``round`` (unscaled px): corner radius of the
+    drawn shape (0: sharp corners; hit-testing is unaffected).
     """
 
     interactive = True
 
     def __init__(self, label="", *, icon=None, icons=None, painter=None, fill=None,
-                 tint=None, tint_amount=0.16, font_size=10.0, **kwargs):
+                 tint=None, tint_amount=0.16, font_size=10.0, round=0.0, **kwargs):
         super().__init__(**kwargs)
         self.label = label
+        self.round = round
+        self._round_px = 0.0
         self.icon = icon
         self.icons = icons
         self.painter = painter
@@ -69,6 +72,7 @@ class RingSegment(Widget):
 
     def place_on(self, cx, cy, theme, gap):
         self.cx, self.cy = cx, cy
+        self._round_px = theme.px(self.round)
         self.pr0, self.pr1 = theme.px(self.r0), theme.px(self.r1)
         half = theme.px(gap) * 0.5
         self.insets = (half + theme.px(self.edge_extra[0]), half + theme.px(self.edge_extra[1]))
@@ -82,9 +86,10 @@ class RingSegment(Widget):
         return ring_contains(self.cx, self.cy, self.pr0, self.pr1, *self.angles, x, y)
 
     def points(self, r0=None, r1=None):
-        return ring_segment_points(self.cx, self.cy, self.pr0 if r0 is None else r0,
-                                   self.pr1 if r1 is None else r1, *self.angles,
-                                   self.insets[0], inset1=self.insets[1])
+        inner, outer = ring_segment_points(self.cx, self.cy, self.pr0 if r0 is None else r0,
+                                           self.pr1 if r1 is None else r1, *self.angles,
+                                           self.insets[0], inset1=self.insets[1])
+        return round_strip(inner, outer, self._round_px)
 
     def middle(self, r=None):
         """Point in the middle of the drawn segment at radius ``r`` (default: mid radius)."""
@@ -169,11 +174,13 @@ class CornerSegment(RingSegment):
         self.chamfer = 0.0
         self._geo = None        # (r0, half, chamfer) screen px
         self._inner = self._outer = []
+        self._drawn = ([], [])
         self._center = (0.0, 0.0)
         self._room = 0.0
 
     def place_on(self, cx, cy, theme, gap):
         self.cx, self.cy = cx, cy
+        self._round_px = theme.px(self.round)
         self.pr0 = theme.px(self.r0)
         self.pr1 = half = theme.px(self.half)
         chamfer = theme.px(self.chamfer)
@@ -184,6 +191,7 @@ class CornerSegment(RingSegment):
         inner, outer = corner_segment_points(self.pr0, half, a0, a1, *self.insets, chamfer)
         self._inner = [(cx + x, cy + y) for x, y in inner]
         self._outer = [(cx + x, cy + y) for x, y in outer]
+        self._drawn = round_strip(self._inner, self._outer, self._round_px)
         if not inner:
             self._room = 0.0
             return
@@ -201,7 +209,7 @@ class CornerSegment(RingSegment):
         return corner_contains(r0, half, *self.angles, chamfer, x - self.cx, y - self.cy)
 
     def points(self, r0=None, r1=None):
-        return self._inner, self._outer
+        return self._drawn
 
     def middle(self, r=None):
         return self._center
@@ -211,7 +219,7 @@ class CornerSegment(RingSegment):
 
     def draw_selection(self, dc, alpha):
         """Accent line along the square edges."""
-        draw.polyline(self._outer, with_alpha(dc.theme.accent, alpha), dc.theme.px(3.0))
+        draw.polyline(self._drawn[1], with_alpha(dc.theme.accent, alpha), dc.theme.px(3.0))
 
 
 class RingSlider(RingSegment):

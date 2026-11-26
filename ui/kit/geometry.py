@@ -316,3 +316,95 @@ def corner_room(point, r0, half, a0, a1, inset0, inset1, chamfer):
     room = min(room, -math.sin(a0) * x + math.cos(a0) * y - inset0)
     room = min(room, math.sin(a1) * x - math.cos(a1) * y - inset1)
     return max(0.0, room)
+
+
+# ---------------------------------------------------------------------------
+# Rounded strips (ring / corner segments with round corners)
+# ---------------------------------------------------------------------------
+
+def _length(points):
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
+
+
+def _trim(points, start, end):
+    """The part of the polyline between arc lengths ``start`` and ``end``."""
+    out, travelled = [], 0.0
+    for a, b in zip(points, points[1:]):
+        leg = math.dist(a, b)
+        lo, hi = travelled, travelled + leg
+        if hi >= start and lo <= end and leg > 1e-9:
+            if not out:
+                t = max(0.0, (start - lo) / leg)
+                out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+            if hi <= end:
+                out.append(b)
+            else:
+                t = (end - lo) / leg
+                out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+                break
+        travelled = hi
+    return out
+
+
+def _toward(p, q, distance):
+    """The point ``distance`` from ``p`` toward ``q``."""
+    d = math.dist(p, q)
+    if d < 1e-9:
+        return p
+    return p[0] + (q[0] - p[0]) * distance / d, p[1] + (q[1] - p[1]) * distance / d
+
+
+def _fillet(p0, corner, p1, steps):
+    """Quadratic curve from ``p0`` to ``p1`` with ``corner`` as control point (a round corner)."""
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1.0 - t
+        out.append((u * u * p0[0] + 2.0 * u * t * corner[0] + t * t * p1[0],
+                    u * u * p0[1] + 2.0 * u * t * corner[1] + t * t * p1[1]))
+    return out
+
+
+def round_strip(inner, outer, radius, steps=6):
+    """``(inner, outer)`` strip outline (as from :func:`ring_segment_points` /
+    :func:`corner_segment_points`) with its four corners rounded by ``radius`` px
+    (less where the segment is too small). Still two lists of equal length running
+    from the first side edge to the second, usable as a triangle strip."""
+    if radius <= 0.0 or len(inner) < 2 or len(inner) != len(outer):
+        return inner, outer
+    li, lo = _length(inner), _length(outer)
+    r = min(radius, 0.5 * math.dist(inner[0], outer[0]), 0.5 * math.dist(inner[-1], outer[-1]),
+            0.5 * li, 0.5 * lo)
+    if r < 0.5:
+        return inner, outer
+    mid_in, mid_out = _trim(inner, r, li - r), _trim(outer, r, lo - r)
+    if len(mid_in) < 2 or len(mid_out) < 2:
+        return inner, outer
+    count = max(len(mid_in), len(mid_out))
+    mid_in, mid_out = _resample(mid_in, count), _resample(mid_out, count)
+    if len(mid_in) != len(mid_out):
+        return inner, outer
+    head_in = _fillet(_toward(inner[0], outer[0], r), inner[0], mid_in[0], steps)
+    head_out = _fillet(_toward(outer[0], inner[0], r), outer[0], mid_out[0], steps)
+    tail_in = _fillet(mid_in[-1], inner[-1], _toward(inner[-1], outer[-1], r), steps)
+    tail_out = _fillet(mid_out[-1], outer[-1], _toward(outer[-1], inner[-1], r), steps)
+    return (head_in[:-1] + mid_in + tail_in[1:], head_out[:-1] + mid_out + tail_out[1:])
+
+
+def best_circle(r0, half, a0, a1, inset0, inset1, chamfer, samples=48):
+    """``(center, radius)`` (relative to the dial center) of the largest circle on the
+    middle ray of the corner segment ``a0 .. a1`` (radians) that fits inside it."""
+    mid = (a0 + a1) * 0.5
+    ux, uy = math.cos(mid), math.sin(mid)
+    poly = chamfered_square(half, chamfer)
+    far = _exit_distance((0.0, 0.0), (ux, uy), _edges(poly))
+    if not (r0 < far < math.inf):
+        return (ux * r0, uy * r0), 0.0
+    best = ((ux * r0, uy * r0), 0.0)
+    for i in range(1, samples):
+        d = r0 + (far - r0) * i / samples
+        p = (ux * d, uy * d)
+        room = corner_room(p, r0, half, a0, a1, inset0, inset1, chamfer)
+        if room > best[1]:
+            best = (p, room)
+    return best

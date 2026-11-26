@@ -22,34 +22,34 @@ everything here works with press, drag and release only.
     as deep as both rings: press sets the value from the distance to the
     center, drag keeps setting it;
   - top left: the tools (half in each ring; tap selects);
-  - bottom left: *Blend* (inner ring, opens the flyout; shows the mode),
-    *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing);
-  - bottom right: *Undo* / *Redo* arrows (inner ring); outside them, through
+  - bottom left: *Blend* (inner ring, opens the flyout; shows the mode), the
+    pixel *Grid* outside it (opacity %; tap: on / off, drag up / down: opacity);
+  - bottom right: *Undo* / *Redo* arrows (inner ring); outside Undo *Alphalock*
+    (protect transparent pixels) and *Pixel* / *Free* (spacing); outside them, through
     the outer ring and on into the corner, the falloff: beside Redo the
     *falloff field* (the Shape falloff, swiped like the color selector: toward
     the center = hard, outward = soft; top = linear fade, bottom = sharp; a tap
     jumps; while pressed the cursor is hidden and kept on the marker; quarter
     preview discs in its corners, the marker shows the current falloff); under
-    it, in line with Redo, *Custom* (in its own color) and *Curve*. Beside Undo
-    it is empty.
+    it, in line with Redo, *Custom* (in its own color) and *Curve*.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
   color history along the circle (the last painted colors, newest left; tap
   paints with it), the secondary and primary color (tap a color: the pen
-  paints with it -- the secondary one sets the RMB lock), each with its own
+  paints with it -- the secondary one sets the RMB lock; the color buttons have
+  round corners), each with its own
   *Picker* on its outer side (eyedropper for that color: arms it for the next canvas
   press; the active color's picker is bright, the other grey), and between
-  them *Swap* with the *Mix* field behind it in the corner (the two colors
+  them *Swap* with the *Mix* bubble behind it toward the corner (the two colors
   half and half; tap: the active color becomes the mix);
   bottom left the palette band (24 slots in two bands along the circle) and
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes);
-  bottom right, past the falloff controls, *Windows* (opens the Windows ring
-  on the press); top right a small *Save* at the right side
-  (saves / packs the painted image as set in settings > Pen > Save Image; a
-  green dot while it has unsaved changes) and the pixel *Grid* up to the top
-  edge.
+  bottom right, past the falloff controls, *Save* (saves / packs the painted
+  image as set in settings > Pen > Save Image; a green dot while it has unsaved
+  changes) and *Windows* (opens the Windows ring on the press). The top-right
+  corner is empty.
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -108,7 +108,7 @@ from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial,
                   CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
 from .kit import draw
 from .kit.events import PRESS, RUNNING
-from .kit.geometry import clamp_box, ring_segment_points
+from .kit.geometry import best_circle, clamp_box, ring_segment_points
 from .kit.theme import with_alpha
 from .kit.widget import _resolve
 from ..tools import blend_modes, color_history, color_palette, falloff
@@ -162,8 +162,9 @@ INNER_RING = (SIZE_RADIUS + DIAL_GAP, 72.5 * _RING_SCALE)
 OUTER_RING = (INNER_RING[1] + DIAL_GAP, DIAL_RADIUS)
 SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
 TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
-MODE_ARC = (210.0, 270.0)      # Blend | Alphalock, Pixel / Free
+MODE_ARC = (210.0, 270.0)      # Blend (inner ring) | the pixel Grid (outer ring)
 HISTORY_ARC = (270.0, 375.0)   # Undo / Redo | falloff presets
+BRUSH_MODE_ARC = (270.0, 322.5)  # outer ring beside Undo: Alphalock, Pixel / Free
 _INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
 # Category tints (mixed lightly into the segment fills).
 TINT_TOOLS = (0.35, 0.58, 1.00)
@@ -185,12 +186,14 @@ FIELD_GUIDE_ALPHA = 0.8
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
 # Top left: history band along the circle; then secondary's Picker | secondary |
-# Swap + Mix | primary | primary's Picker (the colors toward the corner). Swap sits by
-# the circle, the Mix field behind it fills the square's corner (not cut: the menu's
-# lock is bottom left).
+# Swap + Mix | primary | primary's Picker (the colors toward the corner; all with round
+# corners). Swap sits by the circle, the Mix bubble behind it toward the square's corner
+# (not cut: the menu's lock is bottom left).
 COLORS_ARC = (90.0, 180.0)
 COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
-SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix field starts past it
+SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix bubble sits past it
+COLOR_ROUND = 6.0                    # corner radius of the color section's buttons
+MIX_BUBBLE_MARGIN = 1.5              # the Mix bubble keeps this far from its slot's edges
 COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
 # Palettes: around the diagonal, the only part of the corner with room left past the
 # palette bands. (Color / Library: the Windows ring.)
@@ -200,7 +203,9 @@ WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
 FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the falloff controls reach this far into the corner (as the palette)
 FALLOFF_OUTER = CORNER_INNER + FALLOFF_BAND_DEPTH
 FALLOFF_CORNER_INNER = FALLOFF_OUTER + DIAL_GAP
-WINDOWS_ARC = (295.0, 335.0)         # bottom right past the falloff controls: Windows, around the diagonal
+# Bottom right past the falloff controls, around the diagonal: Save, then Windows.
+SAVE_ARC = (295.0, 315.0)
+WINDOWS_ARC = (315.0, 335.0)
 # The Windows popup: a ring over the dial's inner ring (around the Size knob, hiding the
 # inner ring while open). Entries counter-clockwise from WINDOW_RING_START, each the same
 # angle; their order roughly follows where the old corner buttons sat.
@@ -209,10 +214,6 @@ WINDOW_RING_COVER = OUTER_RING[1]    # the backdrop reaches this far: hides both
 WINDOW_RING_START = 279.0            # Settings at the bottom right, by the Windows button
 WINDOW_RING_BACKDROP = (0.16, 0.16, 0.16, 0.97)
 TINT_WINDOWS = (0.62, 0.70, 0.95)
-# Top right, past the S / A / M sliders (the X sits in the cut corner): Save at the right
-# side, then the pixel grid (opacity %) up to the top. (Mask / View: the Windows ring.)
-SAVE_ARC = (15.0, 40.0)
-GRID_ARC = (40.0, 88.0)
 GRID_DRAG_PX = 120.0                 # unscaled px of vertical drag for 0 -> 100 % grid opacity
 TINT_GRID = (0.55, 0.78, 0.95)
 TINT_SAVE = (0.45, 0.80, 0.45)
@@ -352,8 +353,9 @@ class _ColorCorner(_ColorDrag, CornerSegment):
             draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
-class _MixCorner(_ColorDrag, CornerSegment):
-    """The primary and secondary color mixed half and half. Tap: the active color
+class _MixBubble(_ColorDrag, CornerSegment):
+    """The primary and secondary color mixed half and half, as a bubble: the largest
+    circle that fits its corner slot (on the slot's middle ray). Tap: the active color
     becomes the mix (tap again for the next step toward the other color); drag
     source, not a drop target (it follows the two colors)."""
 
@@ -361,19 +363,32 @@ class _MixCorner(_ColorDrag, CornerSegment):
         super().__init__(**kwargs)
         self.bar = bar
         self.rgb = rgb          # () -> (r, g, b)
+        self._bubble = (0.0, 0.0, 0.0)   # screen cx, cy, radius
+        self._hit = 0.0
+
+    def place_on(self, cx, cy, theme, gap):
+        super().place_on(cx, cy, theme, gap)
+        (x, y), room = best_circle(self.pr0, self.pr1, *self.angles, *self.insets, theme.px(self.chamfer))
+        self._bubble = (cx + x, cy + y, max(0.0, room - theme.px(MIX_BUBBLE_MARGIN)))
+        self._hit = room
+        self._center = (cx + x, cy + y)
+
+    def contains(self, x, y):
+        bx, by, _r = self._bubble
+        return self._hit > 0.0 and math.hypot(x - bx, y - by) <= self._hit
 
     def drag_color(self):
         return _resolve(self.rgb, None)
 
     def draw_self(self, dc):
         theme = dc.theme
-        inner, outer = self.points()
-        if not inner:
+        x, y, r = self._bubble
+        if r <= 1.0:
             return
         rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
-        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        draw.circle(x, y, r, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
         if self.hover_t > 0.5:
-            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+            draw.circle_outline(x, y, r, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
 
 
 class _BubbleDrag(_ColorDrag, ColorBubble):
@@ -596,7 +611,7 @@ def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
         _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
 
 
-class _GridCorner(CornerSegment):
+class _GridSegment(RingSegment):
     """Pixel grid overlay: shows the opacity in percent (dimmed while hidden). A tap
     toggles the grid (``on_click``); dragging up / down sets the opacity
     (``on_value(v)``, 0..1; ESC restores it)."""
@@ -1477,17 +1492,22 @@ class PenBar:
                             selected=lambda: self.flyout is self.blend_flyout)
         blend.activate_on_press = True
         dial.add_arc([blend], *INNER_RING, *MODE_ARC, tint=TINT_MODES)
-        dial.add_arc([
-            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
-                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
-            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing),
-                        on_click=a.toggle_spacing),
-        ], *OUTER_RING, *MODE_ARC, tint=TINT_MODES)
+        # The pixel grid outside Blend (tap: on / off, drag: opacity).
+        grid = _GridSegment("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
+                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
+        dial.add_arc([grid], *OUTER_RING, *MODE_ARC)
 
         dial.add_arc([
             RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
             RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
         ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
+        # Outside Undo: Alphalock and Pixel / Free.
+        dial.add_band([
+            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
+                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
+            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing),
+                        on_click=a.toggle_spacing),
+        ], *OUTER_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
         # Falloff, through the outer ring and the corner band, beside Redo: the Shape field,
         # under it Custom (outer ring) and its Curve button (band); beside Undo: empty.
         from .falloff_icons import SHAPE_PREVIEWS, shape_preview_key
@@ -1525,26 +1545,26 @@ class PenBar:
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
         primary_active = lambda: not a.rmb_lock()
         primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], primary_active, key='PRIMARY',
-                               on_click=lambda: a.set_rmb_lock(False))
+                               round=COLOR_ROUND, on_click=lambda: a.set_rmb_lock(False))
         secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], a.rmb_lock, key='SECONDARY',
-                                 on_click=lambda: a.set_rmb_lock(True))
+                                 round=COLOR_ROUND, on_click=lambda: a.set_rmb_lock(True))
 
         def picker(which, rgb, active):
             kind = f'EYEDROPPER_{which}'
             return CornerSegment(f"Pick {which.title()}", key=f'PICKER_{which}',
-                                 painter=_paint_target_picker(rgb, active),
+                                 painter=_paint_target_picker(rgb, active), round=COLOR_ROUND,
                                  selected=lambda: a.armed() == kind, on_click=lambda: a.toggle_arm(kind))
         pick_primary = picker('PRIMARY', lambda: a.colors()[0], primary_active)
         pick_secondary = picker('SECONDARY', lambda: a.colors()[1], a.rmb_lock)
         self.arm_buttons = {'EYEDROPPER_PRIMARY': pick_primary, 'EYEDROPPER_SECONDARY': pick_secondary}
-        mix = _MixCorner(self, a.mix_color, key='MIX', on_click=a.use_mix_color)
+        mix = _MixBubble(self, a.mix_color, key='MIX', on_click=a.use_mix_color)
         dial.add_corner([pick_secondary, secondary, mix, primary, pick_primary], COLOR_CORNER_INNER, SQUARE_HALF,
                         *COLORS_ARC, weights=COLORS_WEIGHTS, chamfer=0.0)
-        # Swap by the circle in the middle; the Mix field behind it, out to the corner.
+        # Swap by the circle in the middle; the Mix bubble behind it, toward the corner.
         swap_outer = COLOR_CORNER_INNER + SWAP_DEPTH
-        swap = RingSegment("Swap", key='SWAP', painter=_paint_swap, on_click=a.swap_colors)
+        swap = RingSegment("Swap", key='SWAP', painter=_paint_swap, round=COLOR_ROUND, on_click=a.swap_colors)
         dial.add_band([swap], COLOR_CORNER_INNER, swap_outer, mix.a0, mix.a1)
-        swap.edge_extra = (0.0, 0.0)      # side edges in line with the Mix field's
+        swap.edge_extra = (0.0, 0.0)      # side edges in line with the Mix slot's
         mix.r0 = swap_outer + DIAL_GAP
 
         from .pen_palettes import paint_library, paint_palettes
@@ -1560,8 +1580,11 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # Past the falloff controls, around the diagonal: Windows (opens the popup ring on
-        # the press -- keep the pen down, drag onto an entry, lift).
+        # Past the falloff controls, around the diagonal: Save, then Windows (opens the
+        # popup ring on the press -- keep the pen down, drag onto an entry, lift).
+        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
+                             tint=TINT_SAVE, on_click=a.save_image)
+        dial.add_corner([save], FALLOFF_CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
         windows = CornerSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
                                 selected=lambda: self.flyout in (self.window_ring, self.settings_flyout,
                                                                   self.library_flyout),
@@ -1570,14 +1593,6 @@ class PenBar:
         dial.add_corner([windows], FALLOFF_CORNER_INNER, SQUARE_HALF, *WINDOWS_ARC, **corner)
         self.windows_button = windows
 
-        # Top right, past the S / A / M sliders: Save at the right side, then the grid
-        # (tap: on / off, drag: opacity).
-        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
-                             tint=TINT_SAVE, on_click=a.save_image)
-        dial.add_corner([save], CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
-        grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
-                           on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
-        dial.add_corner([grid], CORNER_INNER, SQUARE_HALF, *GRID_ARC, **corner)
 
         # The Windows popup ring (added last: over everything else of the dial).
         self.window_ring = dial.add(_WindowRing(*WINDOW_RING, cover=WINDOW_RING_COVER, key='WINDOW_RING'))
