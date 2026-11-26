@@ -257,6 +257,7 @@ _CORNER_RADIUS = 6.0     # lock / X in the elements' top corners (drawn); taps h
 _CORNER_HIT = 9.0
 _CORNER_INSET = 4.0
 _PANEL_PADDING = 4.0
+_CORNER_CAP = 0.6        # a window's rounded corners: at most this share of the resize triangle's legs
 # The menu's default spot keeps this far from the editor edge (unscaled px; the panel padding is inside it).
 EDGE_GAP = 0.3 * 2.0 * 19.0
 
@@ -1326,6 +1327,7 @@ class _ResizeHandle(Widget):
         self.on_drag = on_drag
         self.on_drag_end = on_drag_end
         self.drag_origin = None
+        self.corner = 0.0               # screen px: the panel's corner radius (the triangle follows it)
 
     def drag_begin(self, x, y):
         self.drag_origin = (x, y)
@@ -1343,8 +1345,16 @@ class _ResizeHandle(Widget):
         theme = dc.theme
         r = self.rect
         active = self.drag_origin is not None or self.hover_t > 0.5
-        fill = theme.accent if active else theme.border
-        draw.triangle((r.x1, r.y0), (r.x0, r.y0), (r.x1, r.y1), with_alpha(fill, dc.alpha))
+        fill = with_alpha(theme.accent if active else theme.border, dc.alpha)
+        rad = min(self.corner, r.width * 0.8, r.height * 0.8)
+        if rad < 0.5:
+            draw.triangle((r.x1, r.y0), (r.x0, r.y0), (r.x1, r.y1), fill)
+            return
+        # The triangle with its right angle rounded like the panel's corner.
+        cx, cy = r.x1 - rad, r.y0 + rad
+        arc = [(cx + math.cos(math.radians(a)) * rad, cy + math.sin(math.radians(a)) * rad)
+               for a in range(-90, 1, 10)]
+        draw._fill([(r.x0, r.y0)] + arc + [(r.x1, r.y1)], fill)
 
 
 class _MovePanel(Panel):
@@ -1397,6 +1407,17 @@ class _Window(Widget):
         self.grip_size = 0.0            # screen px, set by the PenBar
 
     @property
+    def grip_size(self):
+        return self._grip_size
+
+    @grip_size.setter
+    def grip_size(self, value):
+        """The resize triangle's legs (screen px); the panel's rounded corners stay
+        smaller, so the triangle keeps a visible body in the bottom-right corner."""
+        self._grip_size = value
+        self.panel.corner_cap = value * _CORNER_CAP if value > 0.0 else None
+
+    @property
     def shown(self):
         return self.tab if (self.collapsed and self.tab is not None) else self.panel
 
@@ -1432,6 +1453,7 @@ class _Window(Widget):
                 corner.arrange(Rect.from_size(right - cw, r.y1 - inset - ch, cw, ch), theme)
                 right -= cw + inset * 1.5
         g = self.grip_size
+        self.grip.corner = self.panel.corner_px(theme)
         self.grip.arrange(Rect.from_size(r.x1 - g, r.y0, g, g), theme)
 
 

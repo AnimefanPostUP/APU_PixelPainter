@@ -197,6 +197,126 @@ def gradient_circle(cx, cy, radius, left, right, segments=36):
     _mesh(*aa.fringe_mesh(pts, [_at(p[0]) for p in pts]))
 
 
+def gradient_ring_segment_radial(inner, outer, c_inner, c_outer):
+    """Ring segment shaded across its depth: ``c_inner`` along ``inner``, ``c_outer``
+    along ``outer`` (RGBA), with a soft edge."""
+    n = len(inner)
+    if n < 2 or n != len(outer):
+        return
+    outline = list(inner) + list(reversed(outer))
+    solid = aa.offset_points(outline, -aa.EDGE)
+    inner_s, outer_s = solid[:n], list(reversed(solid[n:]))
+    verts, cols = [], []
+    for i in range(n - 1):
+        verts += [inner_s[i], outer_s[i], outer_s[i + 1], inner_s[i], outer_s[i + 1], inner_s[i + 1]]
+        cols += [c_inner, c_outer, c_outer, c_inner, c_outer, c_inner]
+    shaded_tris(verts, cols)
+    _mesh(*aa.fringe_mesh(outline, [c_inner] * n + [c_outer] * n))
+
+
+# ---------------------------------------------------------------------------
+# Rounded rectangles
+# ---------------------------------------------------------------------------
+
+def _corner_radius(r, radius):
+    return max(0.0, min(radius, r.width * 0.5, r.height * 0.5))
+
+
+def rounded_rect_points(r, radius, steps=None):
+    """Counter-clockwise outline of ``r`` with its corners rounded by ``radius`` px
+    (at most half the shorter side: a capsule). A convex polygon."""
+    rad = _corner_radius(r, radius)
+    if rad < 0.5:
+        return [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
+    steps = steps or max(3, min(16, int(rad * 0.6) + 3))
+    pts = []
+    for cx, cy, start in ((r.x1 - rad, r.y0 + rad, -90.0), (r.x1 - rad, r.y1 - rad, 0.0),
+                          (r.x0 + rad, r.y1 - rad, 90.0), (r.x0 + rad, r.y0 + rad, 180.0)):
+        for i in range(steps + 1):
+            a = math.radians(start + 90.0 * i / steps)
+            pts.append((cx + math.cos(a) * rad, cy + math.sin(a) * rad))
+    return pts
+
+
+def rounded_rect(r, radius, color, rim=None):
+    """Filled rectangle with rounded corners (soft edges); ``rim``: 1 px outline color."""
+    if r.width <= 0.0 or r.height <= 0.0:
+        return
+    _fill(rounded_rect_points(r, radius), color, rim)
+
+
+def rounded_rect_outline(r, radius, color, width=1.5):
+    if r.width <= 0.0 or r.height <= 0.0:
+        return
+    polyline(rounded_rect_points(r, radius), color, width, closed=True)
+
+
+def rounded_grid(r, radius, color_at, cols, rows):
+    """``r`` with rounded corners, filled with ``color_at(fx, fy)`` (fractions of ``r``,
+    0..1) interpolated on a grid -- like a gradient rectangle, clipped to the rounded
+    shape (cells at the corners are clamped onto the arcs), with a soft edge."""
+    if r.width <= 0.0 or r.height <= 0.0:
+        return
+    rad = _corner_radius(r, radius)
+    e = aa.EDGE
+    x0, y0, x1, y1 = r.x0 + e, r.y0 + e, r.x1 - e, r.y1 - e
+    if x1 <= x0 or y1 <= y0:
+        return
+    rin = max(0.0, rad - e)
+    cache = {}
+
+    def color(x, y):
+        key = (round(x, 3), round(y, 3))
+        c = cache.get(key)
+        if c is None:
+            fx = min(1.0, max(0.0, (x - r.x0) / r.width))
+            fy = min(1.0, max(0.0, (y - r.y0) / r.height))
+            c = cache[key] = color_at(fx, fy)
+        return c
+
+    def span(x):
+        """(ylo, yhi) of the rounded fill at ``x``."""
+        if rin <= 0.0:
+            return y0, y1
+        d = max(x0 + rin - x, x - (x1 - rin), 0.0)
+        dy = rin - math.sqrt(max(0.0, rin * rin - d * d))
+        return y0 + dy, y1 - dy
+
+    xs = {x0 + (x1 - x0) * i / cols for i in range(cols + 1)}
+    if rin > 0.0:
+        steps = max(3, min(12, int(rin * 0.6) + 3))
+        for i in range(steps + 1):
+            off = rin * (1.0 - math.cos(math.radians(90.0 * i / steps)))
+            xs.add(x0 + off)
+            xs.add(x1 - off)
+    xs = sorted(x for x in xs if x0 <= x <= x1)
+    ys = [y0 + (y1 - y0) * j / rows for j in range(rows + 1)]
+    spans = [span(x) for x in xs]
+    verts, colors = [], []
+    for i in range(len(xs) - 1):
+        xa, xb = xs[i], xs[i + 1]
+        (la, ha), (lb, hb) = spans[i], spans[i + 1]
+        for j in range(rows):
+            ya0, ya1 = min(ha, max(la, ys[j])), min(ha, max(la, ys[j + 1]))
+            yb0, yb1 = min(hb, max(lb, ys[j])), min(hb, max(lb, ys[j + 1]))
+            if ya1 - ya0 <= 1e-6 and yb1 - yb0 <= 1e-6:
+                continue
+            a, b, c, d = (xa, ya0), (xb, yb0), (xb, yb1), (xa, ya1)
+            ca, cb, cc, cd = color(*a), color(*b), color(*c), color(*d)
+            verts += [a, b, c, a, c, d]
+            colors += [ca, cb, cc, ca, cc, cd]
+    if verts:
+        shaded_tris(verts, colors)
+    # The soft edge follows the gradient: long straight edges get points per grid cell.
+    step = max(1.0, min(r.width / max(1, cols), r.height / max(1, rows)))
+    corners = rounded_rect_points(r, rad)
+    outline = []
+    for p, q in zip(corners, corners[1:] + corners[:1]):
+        n = max(1, int(math.dist(p, q) / step))
+        outline += [(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n) for k in range(n)]
+    _mesh(*aa.fringe_mesh(outline, [color(*p) for p in outline]))
+
+
 def triangle(p0, p1, p2, color, rim=None):
     _fill([p0, p1, p2], color, rim)
 

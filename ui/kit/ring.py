@@ -233,6 +233,7 @@ class RingSlider(RingSegment):
     """
 
     draggable = True
+    gradient_dark = 0.62     # the value band's color at 0, relative to ``fill_color`` (at 1)
 
     def __init__(self, label="", *, value=0.0, fill_color=(0.66, 0.44, 0.92, 1.0), cap=16.0,
                  on_drag_begin=None, on_value=None, on_drag_end=None, **kwargs):
@@ -280,7 +281,12 @@ class RingSlider(RingSegment):
         value = max(0.0, min(1.0, float(_resolve(self.value, 0.0) or 0.0)))
         t0, t1 = self._track()
         if value > 0.0:
-            draw.ring_segment(*self.points(self.pr0, t0 + (t1 - t0) * value), with_alpha(self.fill_color, alpha))
+            # A slight gradient along the track: darker at 0, the full color at 1.
+            base = self.fill_color
+            dark = tuple(c * self.gradient_dark for c in base[:3])
+            top = tuple(dark[i] + (base[i] - dark[i]) * value for i in range(3))
+            draw.gradient_ring_segment_radial(*self.points(self.pr0, t0 + (t1 - t0) * value),
+                                              (*dark, base[3] * alpha), (*top, base[3] * alpha))
         # Cap: darker, with the label.
         draw.ring_segment(*self.points(t1, self.pr1), with_alpha(theme.surface_dark, 0.6 * alpha))
         x, y = self.middle((t1 + self.pr1) * 0.5)

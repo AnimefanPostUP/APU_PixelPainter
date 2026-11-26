@@ -86,27 +86,23 @@ def _pure(model, h, alpha):
     return _rgba(model, (h, 1.0, 0.5 if model == HSL else 1.0), alpha)
 
 
-def _grid(rect, color_at, cols, rows):
-    """``rect`` filled with ``color_at(fx, fy)`` (fractions 0..1), interpolated on a grid."""
-    xs = [rect.x0 + rect.width * i / cols for i in range(cols + 1)]
-    ys = [rect.y0 + rect.height * j / rows for j in range(rows + 1)]
-    cache = [[color_at(i / cols, j / rows) for i in range(cols + 1)] for j in range(rows + 1)]
-    verts, colors = [], []
-    for j in range(rows):
-        for i in range(cols):
-            a, b = (xs[i], ys[j]), (xs[i + 1], ys[j])
-            c, d = (xs[i + 1], ys[j + 1]), (xs[i], ys[j + 1])
-            ca, cb, cc, cd = cache[j][i], cache[j][i + 1], cache[j + 1][i + 1], cache[j + 1][i]
-            verts += [a, b, c, a, c, d]
-            colors += [ca, cb, cc, ca, cc, cd]
-    draw.shaded_tris(verts, colors)
+CAPSULE = 1e9             # corner radius of the bars: half their thickness (round ends)
+SHEET_ROUND = 6.0         # corner radius of the sheet / square, unscaled px
 
 
-def _outline(r, grabbed, alpha, theme):
+def _grid(rect, color_at, cols, rows, radius=CAPSULE):
+    """``rect`` filled with ``color_at(fx, fy)`` (fractions 0..1), interpolated on a grid,
+    corners rounded by ``radius`` screen px (default: a capsule -- the bars)."""
+    draw.rounded_grid(rect, radius, color_at, cols, rows)
+
+
+def _outline(r, grabbed, alpha, theme, radius=CAPSULE):
     if grabbed:
-        draw.rect_outline(r.expand(theme.px(2.0)), with_alpha(theme.accent_light, alpha), width=theme.px(1.5))
+        grow = theme.px(2.0)
+        draw.rounded_rect_outline(r.expand(grow), radius + grow, with_alpha(theme.accent_light, alpha),
+                                  width=theme.px(1.5))
     else:
-        draw.rect_outline(r, with_alpha(theme.border, alpha), width=theme.px(1.0))
+        draw.rounded_rect_outline(r, radius, with_alpha(theme.border, alpha), width=theme.px(1.0))
 
 
 def _double_line(points, alpha, theme):
@@ -305,12 +301,13 @@ class SheetShape(ColorShape):
         h, s, t = color
         p = self.parts
         sheet, hue, val, sat = p[self.SHEET], p[self.HUE], p[self.VALUE], p[self.SATURATION]
-        _grid(sheet, lambda fx, fy: _rgba(model, (fx, s, fy), alpha), 24, 8)
+        corner = self._px(theme, SHEET_ROUND)
+        _grid(sheet, lambda fx, fy: _rgba(model, (fx, s, fy), alpha), 24, 8, corner)
         _grid(hue, lambda fx, fy: _pure(model, fx, alpha), 24, 1)
         _grid(val, lambda fx, fy: _rgba(model, (h, s, fy), alpha), 1, 8)
         _grid(sat, lambda fx, fy: _rgba(model, (h, fy, t), alpha), 1, 8)
         for part, r in p.items():
-            _outline(r, part == grabbed, alpha, theme)
+            _outline(r, part == grabbed, alpha, theme, corner if part == self.SHEET else CAPSULE)
 
         if original is not None:
             oh, os_, ot = original
@@ -376,10 +373,11 @@ class SquareShape(ColorShape):
         theme, alpha, model = dc.theme, dc.alpha, self.model
         h, s, t = color
         square, hue = self.parts[self.SQUARE], self.parts[self.HUE]
-        _grid(square, lambda fx, fy: _rgba(model, (h, fx, fy), alpha), 8, 8)
+        corner = self._px(theme, SHEET_ROUND)
+        _grid(square, lambda fx, fy: _rgba(model, (h, fx, fy), alpha), 8, 8, corner)
         _grid(hue, lambda fx, fy: _pure(model, fy, alpha), 1, 24)
         for part, r in self.parts.items():
-            _outline(r, part == grabbed, alpha, theme)
+            _outline(r, part == grabbed, alpha, theme, corner if part == self.SQUARE else CAPSULE)
         if original is not None:
             oh, os_, ot = original
             faint = _faint(alpha)

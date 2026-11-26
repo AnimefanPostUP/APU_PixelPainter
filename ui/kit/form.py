@@ -136,8 +136,9 @@ class Slider(Widget):
     interactive = True
 
     def __init__(self, label, value, on_value, *, value_range=(0.0, 1.0), step=None, fmt=None,
-                 size=(200.0, 24.0), fill_color=None, font_size=9.5, **kwargs):
+                 size=(200.0, 24.0), fill_color=None, font_size=9.5, corner=0.0, **kwargs):
         super().__init__(**kwargs)
+        self.corner = corner          # unscaled px: rounded track (0 = square)
         self.label = label
         self.value = value
         self.on_value = on_value
@@ -205,14 +206,29 @@ class Slider(Widget):
         r = self.rect
         alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
         active = self._dragging or self.hover_t > 0.5
-        draw.rect(r, with_alpha(theme.surface_dark, alpha))
         lo, hi = self._range()
         v = self._value()
         t = 0.0 if hi <= lo else max(0.0, min(1.0, (v - lo) / (hi - lo)))
-        if t > 0.0:
-            fill = self.fill_color or theme.accent
-            draw.rect(Rect(r.x0, r.y0, r.x0 + r.width * t, r.y1), with_alpha(fill, 0.75 * alpha))
-        draw.rect_outline(r, with_alpha(theme.accent if active else theme.border, alpha), width=theme.px(1.0))
+        fill = self.fill_color or theme.accent
+        border = with_alpha(theme.accent if active else theme.border, alpha)
+        if self.corner > 0.0:
+            # Rounded track; the value fill is a slight gradient (darker at the start).
+            radius = theme.px(self.corner)
+            draw.rounded_rect(r, radius, with_alpha(theme.surface_dark, alpha))
+            if t > 0.0:
+                dark = tuple(c * 0.62 for c in fill[:3])
+
+                def shade(fx, _fy):
+                    return (*(dark[i] + (fill[i] - dark[i]) * fx * t for i in range(3)), 0.85 * alpha)
+
+                draw.rounded_grid(Rect(r.x0, r.y0, r.x0 + max(r.width * t, 2.0 * radius), r.y1), radius,
+                                  shade, 6, 1)
+            draw.rounded_rect_outline(r, radius, border, width=theme.px(1.0))
+        else:
+            draw.rect(r, with_alpha(theme.surface_dark, alpha))
+            if t > 0.0:
+                draw.rect(Rect(r.x0, r.y0, r.x0 + r.width * t, r.y1), with_alpha(fill, 0.75 * alpha))
+            draw.rect_outline(r, border, width=theme.px(1.0))
         size = theme.px(self.font_size)
         pad = theme.px(7.0)
         text_left(str(_resolve(self.label, "")), r.x0 + pad, r.cy, size, with_alpha(theme.text, alpha), theme.font_id)

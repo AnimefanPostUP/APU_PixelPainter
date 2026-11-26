@@ -1,16 +1,19 @@
 """Content of the pen menu's Mask and View windows (opened from the menu's top-right
 corner; floating, movable windows like the color selector, see ``PenBar``).
 
-Compact, icon-first layouts; the explanations are hidden behind the window's '?'
-corner button (``PenBar.help_shown``).
+Compact, icon-first layouts in the pen menu's style (tinted fills with a darker
+rim, accent outline on hover, accent band when selected, round shapes; no boxed
+groups); the explanations are hidden behind the window's '?' corner button
+(``PenBar.help_shown``).
 
 * Mask: Source / Mask / Invert / Pick, then show stripes / grow / clear
-  (tools/mask.py).
-* View (tools/view_nav.py through the actions): two 3x3 pads.
+  (tools/mask.py) -- rounded buttons, a capsule Grow slider.
+* View (tools/view_nav.py through the actions): two small dials -- a round
+  button in the middle, eight segments around it.
   Orient: Front in the middle, Top / Bottom / Left / Right around it like the
-  faces of an unfolded cube; the corners roll (top), level (bottom left) and
-  Back (bottom right, styled differently: it is the face behind Front).
-  Orbit: arrows around Fit; the corners zoom (top), Center, Persp / Ortho.
+  faces of an unfolded cube; the diagonals roll (top), level (bottom left) and
+  Back (bottom right, darker: it is the face behind Front).
+  Orbit: arrows around Fit; the diagonals zoom (top), Center, Persp / Ortho.
   Below: Auto Fit and 1:1 (Image Editor). In the Image Editor only Fit /
   Center / zoom / 1:1 apply; the 3D-only buttons are disabled.
 
@@ -21,17 +24,24 @@ control moves it. Values through the pen menu's actions
 
 import math
 
-from .kit import Column, Grid, Group, IconButton, Rect, Row, Slider, TextBlock
-from .kit import draw
+from .kit import Column, Dial, Group, IconButton, Rect, RingSegment, Row, Slider, TextBlock, Widget
+from .kit import anim, draw
+from .kit.form import text_left
 from .kit.theme import mix, with_alpha
 from .kit.widget import _resolve
 from .pen_bar import (TINT_MASK, TINT_VIEW, _paint_mask, _paint_mask_invert, _paint_mask_pick,
                       _paint_mask_source, _paint_view, _thick_line)
 from .pen_settings import _icon_eye, _icon_reset
 
-CELL = 32.0              # pad / icon button size, unscaled px
+CELL = 32.0              # icon button size, unscaled px
 GAP = 4.0
-PAD_GAP = 10.0           # between the two View pads
+PAD_GAP = 10.0           # between the two View dials
+BUTTON_ROUND = 7.0       # corner radius of the window buttons (pen-menu style)
+TINT_AMOUNT = 0.16       # category tint in the button fills (as the pen menu's segments)
+# View dials: a round button in the middle, eight 45-degree segments around it.
+CENTER_RADIUS = 17.0
+DIAL_RING = (CENTER_RADIUS + 2.5, 54.0)
+DIAL_GAP = 2.5
 FONT = 10.0              # button labels
 TITLE_INDENT = 14.0      # the group title clears the window's padlock
 HELP_SIZE = 9.0
@@ -43,20 +53,38 @@ MASK_HELP = ("Mask: only chosen islands / parts get paint.",
              "Source: UV islands or connected mesh parts.",
              "Eye: red stripes over protected pixels.",
              "Grow: extra pixels around each island.")
-VIEW_HELP = ("Left pad: view from Front (middle), Top,",
-             "Bottom, Left, Right; Back (corner) looks from",
-             "behind. Top corners roll 15, Level removes roll.",
-             "Right pad: orbit 15 around the object, Fit",
-             "(middle) zooms until it fills the view; zoom,",
-             "Center, Persp / Ortho in the corners.",
+VIEW_HELP = ("Left dial: view from Front (middle), Top,",
+             "Bottom, Left, Right; Back (bottom right) looks",
+             "from behind. Upper diagonals roll 15, Level",
+             "removes roll. Right dial: orbit 15 around the",
+             "object, Fit (middle) zooms until it fills the",
+             "view; zoom, Center, Persp / Ortho diagonally.",
              "Auto Fit: re-fit after every orient / orbit / roll.")
 
 
 class _WindowGroup(Group):
     """A Group that lets presses on its background / title / text through to the
-    window's panel, so dragging anywhere but a control moves the window."""
+    window's panel, so dragging anywhere but a control moves the window.
+
+    Plain, like the pen menu: no box, stripe or divider -- only the icon and the
+    title in the window's tint."""
 
     blocks_pointer = False
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        r = self.rect
+        tint = (*self.tint[:3], 1.0)
+        alpha = dc.alpha
+        pad = theme.px(self.padding)
+        size = theme.px(self.title_size)
+        ty = r.y1 - pad - size * 0.5
+        x = r.x0 + theme.px(3.0) + pad + theme.px(self.title_indent)
+        if self.painter is not None:
+            self.painter(dc, x + size * 0.6, ty, size * 1.4, alpha)
+            x += size * 1.6
+        text_left(str(_resolve(self.title, "")), x, ty, size, with_alpha(mix(theme.text, tint, 0.35), alpha),
+                  theme.font_id)
 
 
 class _Help(TextBlock):
@@ -69,24 +97,78 @@ class _Help(TextBlock):
     visible = property(lambda self: bool(self._shown()), lambda self, value: None)
 
 
+def _pen_fill(dc, widget, tint, base=None, tint_amount=TINT_AMOUNT):
+    """A pen-menu segment's fill: the surface with the category tint mixed in, lighter
+    while hovered / pressed, accent-tinted while selected (see ``RingSegment._fill``)."""
+    theme = dc.theme
+    base = base or theme.surface
+    if tint is not None:
+        base = mix(base, (*tint[:3], base[3]), tint_amount)
+    pressed = dc.pressed is widget and dc.hot is widget
+    t = anim.ease_in_out(widget.hover_t)
+    fill = mix(base, theme.surface_pressed if pressed else theme.surface_hover, t * 0.8)
+    if widget.is_selected:
+        fill = mix(fill, theme.accent, 0.4)
+    return fill, t
+
+
 class _Btn(IconButton):
-    """Window button: thin outline, larger label."""
+    """Window button in the pen menu's style: rounded, tinted fill with a darker rim,
+    an accent outline while hovered and an accent band along the bottom while selected."""
 
     outline = 1.0
+    corner = BUTTON_ROUND
 
-    def __init__(self, label="", *, font_size=FONT, **kwargs):
+    def __init__(self, label="", *, font_size=FONT, tint=None, **kwargs):
         super().__init__(label, font_size=font_size, **kwargs)
-
-
-class _BackButton(_Btn):
-    """Back view: darker, outlined in the View tint (the face behind Front)."""
+        self.tint = tint
 
     def _colors(self, dc):
         fill, border, icon = super()._colors(dc)
+        return fill, border, max(icon, 0.9)
+
+    def draw_frame(self, dc, rect, fill, border, alpha):
+        theme = dc.theme
+        radius = theme.px(self.corner)
+        fill, t = _pen_fill(dc, self, self.tint)
+        draw.rounded_rect(rect, radius, with_alpha(fill, alpha), rim=theme.edge_for(fill, alpha))
         if self.is_selected:
-            return fill, border, icon
-        tint = (*TINT_VIEW, 1.0)
-        return mix(dc.theme.surface_dark, tint, 0.18 + 0.12 * self.hover_t), mix(border, tint, 0.7), icon
+            band = theme.px(3.0)
+            inset = max(radius * 0.6, band)
+            draw.rounded_rect(Rect(rect.x0 + inset, rect.y0 + band * 0.7, rect.x1 - inset, rect.y0 + band * 1.7),
+                              band, with_alpha(theme.accent, alpha))
+        if t > 0.01:
+            draw.rounded_rect_outline(rect, radius, with_alpha(theme.accent, t * alpha), width=theme.px(1.5))
+
+
+class _DialCenter(Widget):
+    """The round button in the middle of a View dial (Front / Fit), styled like the
+    pen menu's segments; ``painter`` draws its icon."""
+
+    interactive = True
+
+    def __init__(self, *, painter, tint=None, radius=CENTER_RADIUS, **kwargs):
+        super().__init__(**kwargs)
+        self.painter = painter
+        self.tint = tint
+        self.radius = radius
+
+    def measure(self, theme):
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        return math.hypot(x - self.rect.cx, y - self.rect.cy) <= self.rect.width * 0.5
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy, r = self.rect.cx, self.rect.cy, self.rect.width * 0.5
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        fill, t = _pen_fill(dc, self, self.tint, base=theme.surface_dark, tint_amount=0.22)
+        draw.circle(cx, cy, r, with_alpha(fill, alpha), rim=theme.edge_for(fill, alpha))
+        if t > 0.01:
+            draw.circle_outline(cx, cy, r, with_alpha(theme.accent, t * alpha), width=theme.px(1.5))
+        self.painter(dc, cx, cy, r * 1.6, alpha)
 
 
 def _stroke(theme):
@@ -258,27 +340,28 @@ def build_mask_window(bar):
         return lambda dc, x, y, size, alpha: painter(dc, x, y, size * 1.25, alpha, caption=False)
 
     source = _paint_mask_source(a.mask_source, caption=False)
+    tint = TINT_MASK
     main = Row([
         _Btn(lambda: "Islands" if a.mask_source() != 'MESH_PART' else "Parts", painter=source, size=big,
-             key='MASKWIN_SOURCE', on_click=a.toggle_mask_source),
-        _Btn("Mask", painter=icon(_paint_mask), size=big, key='MASKWIN_MASK',
+             key='MASKWIN_SOURCE', tint=tint, on_click=a.toggle_mask_source),
+        _Btn("Mask", painter=icon(_paint_mask), size=big, key='MASKWIN_MASK', tint=tint,
              selected=a.mask_enabled, on_click=a.toggle_mask),
-        _Btn("Invert", painter=icon(_paint_mask_invert), size=big, key='MASKWIN_INVERT',
+        _Btn("Invert", painter=icon(_paint_mask_invert), size=big, key='MASKWIN_INVERT', tint=tint,
              selected=a.mask_inverted, on_click=a.toggle_mask_invert),
-        _Btn("Pick", painter=icon(_paint_mask_pick), size=big, key='MASKWIN_PICK',
+        _Btn("Pick", painter=icon(_paint_mask_pick), size=big, key='MASKWIN_PICK', tint=tint,
              selected=a.mask_picking, on_click=a.toggle_mask_pick),
     ], gap=GAP)
     width = 4 * big[0] + 3 * GAP
     small = (CELL, 28.0)
-    show = _Btn("", painter=_icon_eye, layout='icon', size=small, key='MASKWIN_SHOW',
+    show = _Btn("", painter=_icon_eye, layout='icon', size=small, key='MASKWIN_SHOW', tint=tint,
                 selected=lambda: bool(a.wm_get('mask_show')),
                 on_click=lambda: a.wm_set('mask_show', not a.wm_get('mask_show')))
-    clear = _Btn("", painter=_icon_reset, layout='icon', size=small, key='MASKWIN_CLEAR',
+    clear = _Btn("", painter=_icon_reset, layout='icon', size=small, key='MASKWIN_CLEAR', tint=tint,
                  on_click=lambda: bar.confirm(["Forget all chosen islands / parts?"], a.clear_mask, "Clear"))
     grow = Slider("Grow", lambda: a.wm_get('mask_grow', 0) or 0,
                   lambda v: a.wm_set('mask_grow', int(round(v))), value_range=lambda: a.wm_range('mask_grow')[:2],
                   step=1, size=(width - 2 * small[0] - 2 * GAP, small[1]), fill_color=(*TINT_MASK, 1.0),
-                  font_size=FONT)
+                  font_size=FONT, corner=small[1] * 0.5)
     content = Column([main, Row([show, grow, clear], gap=GAP), _help_lines(bar, 'mask', MASK_HELP, width)],
                      gap=GAP + 2.0)
     return _WindowGroup("Mask", content, tint=TINT_MASK, painter=_icon_mask_title, title_indent=TITLE_INDENT)
@@ -288,40 +371,53 @@ def build_view_window(bar):
     """The View window's content (a Group): the Orient and Orbit pads, Auto Fit / 1:1."""
     a = bar.actions
     is3d = a.in_view3d
-    cell = (CELL, CELL)
+    tint = TINT_VIEW
 
-    def button(key, action, painter, enabled=is3d, cls=_Btn):
-        return cls("", painter=painter, layout='icon', size=cell, key=f'VIEW_{key}',
-                   enabled=enabled, on_click=action)
+    def segment(key, action, painter, enabled=is3d, **kwargs):
+        return RingSegment("", painter=painter, key=f'VIEW_{key}', tint=tint, enabled=enabled,
+                           on_click=action, **kwargs)
+
+    def dial(key, action, painter, ring, enabled=True):
+        """``ring``: eight segments counter-clockwise from the right (0, 45, ... 315 degrees)."""
+        center = _DialCenter(painter=painter, tint=tint, key=f'VIEW_{key}', enabled=enabled, on_click=action)
+        result = Dial(center, gap=DIAL_GAP)
+        for i, seg in enumerate(ring):
+            angle = i * 45.0
+            result.add_segment(seg, *DIAL_RING, angle - 22.5, angle + 22.5)
+        return result
 
     step = 15.0
-    face = lambda axis: button(axis, lambda: a.view_axis(axis), _icon_face(axis))
-    orient = Grid([
-        button('ROLL_LEFT', lambda: a.view_roll(step), _icon_roll(1)),
+    face = lambda axis: segment(axis, lambda: a.view_axis(axis), _icon_face(axis))
+    # Orient: Front in the middle, the faces around it like an unfolded cube; the
+    # diagonals roll (top), level (bottom left) and Back (bottom right, darker).
+    orient = dial('FRONT', lambda: a.view_axis('FRONT'), _icon_face('FRONT'), [
+        face('RIGHT'),
+        segment('ROLL_RIGHT', lambda: a.view_roll(-step), _icon_roll(-1)),
         face('TOP'),
-        button('ROLL_RIGHT', lambda: a.view_roll(-step), _icon_roll(-1)),
-        face('LEFT'), face('FRONT'), face('RIGHT'),
-        button('LEVEL', a.view_level, _icon_level),
+        segment('ROLL_LEFT', lambda: a.view_roll(step), _icon_roll(1)),
+        face('LEFT'),
+        segment('LEVEL', a.view_level, _icon_level),
         face('BOTTOM'),
-        button('BACK', lambda: a.view_axis('BACK'), _icon_back, cls=_BackButton),
-    ], columns=3, gap=GAP)
-    orbit = Grid([
-        button('ZOOM_IN', lambda: a.view_zoom(1), _icon_zoom(1), enabled=True),
-        button('ORBIT_UP', lambda: a.view_orbit(0.0, step), _icon_arrow(90.0)),
-        button('ZOOM_OUT', lambda: a.view_zoom(-1), _icon_zoom(-1), enabled=True),
-        button('ORBIT_LEFT', lambda: a.view_orbit(-step, 0.0), _icon_arrow(180.0)),
-        button('FIT', a.view_fit, _icon_fit, enabled=True),
-        button('ORBIT_RIGHT', lambda: a.view_orbit(step, 0.0), _icon_arrow(0.0)),
-        button('CENTER', a.view_center, _icon_center, enabled=True),
-        button('ORBIT_DOWN', lambda: a.view_orbit(0.0, -step), _icon_arrow(270.0)),
-        button('PERSPECTIVE', a.toggle_view_perspective, _icon_perspective(a.view_perspective)),
-    ], columns=3, gap=GAP)
-    pad = 3 * CELL + 2 * GAP
-    width = 2 * pad + PAD_GAP
+        segment('BACK', lambda: a.view_axis('BACK'), _icon_back, fill=(0.12, 0.12, 0.12, 0.95),
+                tint_amount=0.35),
+    ], enabled=is3d)
+    # Orbit: arrows around Fit; the diagonals zoom (top), Center, Persp / Ortho.
+    orbit = dial('FIT', a.view_fit, _icon_fit, [
+        segment('ORBIT_RIGHT', lambda: a.view_orbit(step, 0.0), _icon_arrow(0.0)),
+        segment('ZOOM_OUT', lambda: a.view_zoom(-1), _icon_zoom(-1), enabled=True),
+        segment('ORBIT_UP', lambda: a.view_orbit(0.0, step), _icon_arrow(90.0)),
+        segment('ZOOM_IN', lambda: a.view_zoom(1), _icon_zoom(1), enabled=True),
+        segment('ORBIT_LEFT', lambda: a.view_orbit(-step, 0.0), _icon_arrow(180.0)),
+        segment('CENTER', a.view_center, _icon_center, enabled=True),
+        segment('ORBIT_DOWN', lambda: a.view_orbit(0.0, -step), _icon_arrow(270.0)),
+        segment('PERSPECTIVE', a.toggle_view_perspective, _icon_perspective(a.view_perspective)),
+    ])
+    width = 4 * DIAL_RING[1] + PAD_GAP
     one = (CELL * 1.6, 26.0)
     auto = _Btn("Auto Fit", painter=_icon_fit, layout='row', size=(width - one[0] - GAP, one[1]),
-                key='VIEW_AUTOFIT', enabled=is3d, selected=a.view_autofit, on_click=a.toggle_view_autofit)
-    one_to_one = _Btn("1:1", layout='row', size=one, key='VIEW_ONE_TO_ONE',
+                key='VIEW_AUTOFIT', tint=tint, enabled=is3d, selected=a.view_autofit,
+                on_click=a.toggle_view_autofit)
+    one_to_one = _Btn("1:1", layout='row', size=one, key='VIEW_ONE_TO_ONE', tint=tint,
                       enabled=lambda: not is3d(), on_click=a.view_one_to_one)
     content = Column([Row([orient, orbit], gap=PAD_GAP), Row([auto, one_to_one], gap=GAP),
                       _help_lines(bar, 'view', VIEW_HELP, width)], gap=GAP + 2.0)

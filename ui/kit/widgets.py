@@ -36,6 +36,7 @@ class Button(Widget):
 
     interactive = True
     outline = 1.5
+    corner = 0.0
 
     def __init__(self, label="", *, icon=None, icons=None, size=(46.0, 46.0), icon_only=False, **kwargs):
         super().__init__(**kwargs)
@@ -64,6 +65,18 @@ class Button(Widget):
         border = mix(normal_border, theme.accent, t)
         return fill, border, normal_icon + (0.95 - normal_icon) * t
 
+    def draw_frame(self, dc, rect, fill, border, alpha):
+        """Background and border (override to restyle). ``corner`` (class attribute,
+        unscaled px) rounds the corners."""
+        theme = dc.theme
+        if self.corner > 0.0:
+            radius = theme.px(self.corner)
+            draw.rounded_rect(rect, radius, with_alpha(fill, alpha))
+            draw.rounded_rect_outline(rect, radius, with_alpha(border, alpha), width=theme.px(self.outline))
+            return
+        draw.rect(rect, with_alpha(fill, alpha))
+        draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(self.outline))
+
     def draw_self(self, dc):
         theme = dc.theme
         cx, cy = dc.reveal(self.rect.cx, self.rect.cy)
@@ -80,8 +93,7 @@ class Button(Widget):
 
         alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
         fill, border, icon_alpha = self._colors(dc)
-        draw.rect(rect, with_alpha(fill, alpha))
-        draw.rect_outline(rect, with_alpha(border, alpha), width=theme.px(self.outline))
+        self.draw_frame(dc, rect, fill, border, alpha)
 
         icon_size = max(1.0, min(w, h) * (0.72 if self.icon_only else 0.62))
         icon_drawn = False
@@ -323,10 +335,12 @@ class Panel(Widget):
     """
 
     blocks_pointer = True
+    corner_cap = None   # screen px: the background's corner radius never exceeds this
 
     def __init__(self, content=None, *, title=None, padding=10.0, title_gap=6.0,
-                 min_width=0.0, background=True, **kwargs):
+                 min_width=0.0, background=True, corner=10.0, **kwargs):
         super().__init__(**kwargs)
+        self.corner = corner        # unscaled px: corner radius of the background
         self.title = title
         self.padding = padding
         self.title_gap = title_gap
@@ -360,6 +374,11 @@ class Panel(Widget):
             cw, ch = self.content.measure(theme)
             self.content.arrange(Rect.from_size(rect.cx - cw * 0.5, top - ch, cw, ch), theme)
 
+    def corner_px(self, theme):
+        """Screen corner radius of the background."""
+        radius = theme.px(self.corner)
+        return radius if self.corner_cap is None else min(radius, self.corner_cap)
+
     def anchor_point(self, tx, ty):
         rect = self._visual or self.rect
         return point_on_rect_toward(rect, tx, ty), (rect.cx, rect.cy)
@@ -371,7 +390,7 @@ class Panel(Widget):
         self._visual = Rect.from_center(cx, cy, self.rect.width * k, self.rect.height * k)
         alpha = dc.alpha * (1.0 - dc.closing)
         if self.background and k > 0.01:
-            draw.rect(self._visual, with_alpha(theme.panel_background, alpha))
+            draw.rounded_rect(self._visual, self.corner_px(theme) * k, with_alpha(theme.panel_background, alpha))
         if self.title:
             tx, ty = dc.reveal(self.rect.cx, self._title_y)
             draw.text_centered(self.title, tx, ty, theme.px(theme.font_size),
