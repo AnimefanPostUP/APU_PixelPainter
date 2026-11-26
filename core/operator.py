@@ -17,7 +17,7 @@ from bpy.types import Operator
 
 from ..utils import blender_utils, pixel_io
 from ..model import blend_modes
-from ..paint import pixels as draw_functions
+from ..overlays import brush_outline, cursor as cursor_overlays, handler as draw_handler
 from ..overlays import grid as draw_gridoverlay
 from ..tools.mask import overlay as mask_overlay
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
@@ -179,15 +179,15 @@ def _register_draw_handler(space, context):
             if not _in_session_area(ctx):
                 return
             if view3d.is_view3d(ctx):
-                draw_functions.draw_view3d_offmesh_cursor(ctx, _state)
+                cursor_overlays.draw_view3d_offmesh_cursor(ctx, _state)
             else:
                 tctx = ToolContext(ctx, MANAGER)
                 mask_overlay.draw_2d(ctx, tctx.v2d, tctx.image)
                 wm = ctx.window_manager
                 if wm.pixel_painter_grid_show:
                     draw_gridoverlay.draw_pixel_grid_overlay(ctx, wm.pixel_painter_grid_opacity)
-                draw_functions.draw_test_tool_shape_outline(ctx, _state)
-            draw_functions.draw_test_corner_label(ctx)
+                brush_outline.draw_brush_outline(ctx, _state)
+            cursor_overlays.draw_test_corner_label(ctx)
             MANAGER.draw(ToolContext(ctx, MANAGER))
         except Exception:
             traceback.print_exc()
@@ -203,7 +203,7 @@ def _register_draw_handler(space, context):
         except Exception:
             traceback.print_exc()
 
-    draw_functions.register_draw_handler(
+    draw_handler.register_draw_handler(
         _state, space, context, _callback,
         view_callback=_view_callback if space.type == 'VIEW_3D' else None)
 
@@ -266,7 +266,7 @@ def _end_session():
         except Exception:
             pass
         _state['outline_timer'] = None
-    draw_functions.remove_draw_handler(_state)
+    draw_handler.remove_draw_handler(_state)
     reset_session()
 
 

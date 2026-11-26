@@ -62,7 +62,7 @@ def _cleanup_runtime():
         pass
     try:
         core = _module('core.operator')
-        _module('paint.pixels').remove_draw_handler(core._state)
+        _module('overlays.handler').remove_draw_handler(core._state)
         core._undo_clear()
         _module('utils.pixel_io').invalidate()
         _module('core.history').unregister()
@@ -76,7 +76,7 @@ def _cleanup_runtime():
 def _classes():
     return (
         *_module('core.operator').classes,
-        *_module('tools.selection').classes,
+        *_module('tools.selection.operators').classes,
         *_module('ui.menus.native_menus').classes,
         *_module('ui.menus.pie_menu').classes,
         *_module('ui.panels.tool_settings').classes,

@@ -3,15 +3,11 @@
 import math
 import time
 
-import blf
-import gpu
-import numpy as np
-import gpu_extras.batch
 
 from ..core.state import declare as declare_state
-from ..paint import pixels as draw_functions
 from ..utils import blender_utils
 from ..utils import math_utils
+from .gpu_prims import draw_lines, draw_precision_pixel_guide, edges_to_screen_verts
 
 
 # Brush outline position tween.
@@ -24,130 +20,6 @@ declare_state({
     'outline_to_cy':      None,
     'outline_anim_start': 0.0,
 })
-
-
-def _gpu_draw_lines(vertices, color):
-    """Render GPU lines with alpha blending in screen space."""
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    gpu.state.line_width_set(1.5)
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": vertices})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
-
-
-def _gpu_draw_filled_rect(x0, y0, x1, y1, color):
-    verts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'TRI_FAN', {"pos": verts})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
-
-
-def _gpu_draw_filled_circle(cx, cy, radius, color, segments=40):
-    verts = [(cx, cy)]
-    for index in range(segments + 1):
-        angle = (2.0 * math.pi * index) / segments
-        verts.append((cx + math.cos(angle) * radius, cy + math.sin(angle) * radius))
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'TRI_FAN', {"pos": verts})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
-
-
-def _gpu_draw_circle_outline(cx, cy, radius, color, segments=40):
-    verts = []
-    for index in range(segments + 1):
-        angle = (2.0 * math.pi * index) / segments
-        verts.append((cx + math.cos(angle) * radius, cy + math.sin(angle) * radius))
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    gpu.state.line_width_set(1.5)
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'LINE_STRIP', {"pos": verts})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
-
-
-def _edges_to_screen_verts(edges, v2d, w, h, offset_x=0.0, offset_y=0.0):
-    """Convert image-space edge pairs to rounded screen-space vertices."""
-    vertices = []
-    for (px0, py0), (px1, py1) in edges:
-        sx0, sy0 = v2d.view_to_region((px0 + offset_x) / w, (py0 + offset_y) / h)
-        sx1, sy1 = v2d.view_to_region((px1 + offset_x) / w, (py1 + offset_y) / h)
-        vertices.append((round(sx0), round(sy0)))
-        vertices.append((round(sx1), round(sy1)))
-    return vertices
-
-
-def _draw_precision_pixel_guide(context, px, py, color=(1.0, 1.0, 1.0, 0.85)):
-    """Draw corner brackets around one image pixel for precise targeting."""
-    space, img = blender_utils.get_space_img(context)
-    if not space or not img:
-        return
-
-    w, h = img.size
-    if w == 0 or h == 0:
-        return
-
-    _, v2d = blender_utils.get_window_region_and_v2d(context.area)
-    if not v2d:
-        return
-
-    x0 = px / w
-    y0 = py / h
-    x1 = (px + 1) / w
-    y1 = (py + 1) / h
-
-    t = 0.2
-    sx0, sy0 = v2d.view_to_region(x0, y0)
-    sx1, sy1 = v2d.view_to_region(x1, y1)
-    if sx0 is None or sy0 is None or sx1 is None or sy1 is None:
-        return
-
-    left = min(sx0, sx1)
-    right = max(sx0, sx1)
-    bot = min(sy0, sy1)
-    top = max(sy0, sy1)
-
-    dx = right - left
-    dy = top - bot
-    hx = dx * t
-    hy = dy * t
-
-    verts = [
-        (left, bot), (left + hx, bot),
-        (right - hx, bot), (right, bot),
-        (left, top), (left + hx, top),
-        (right - hx, top), (right, top),
-        (left, bot), (left, bot + hy),
-        (left, top - hy), (left, top),
-        (right, bot), (right, bot + hy),
-        (right, top - hy), (right, top),
-    ]
-
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    gpu.state.line_width_set(1.0)
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": verts})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
 
 
 def draw_brush_outline(context, state):
@@ -272,29 +144,9 @@ def draw_brush_outline(context, state):
     if not edges:
         return
 
-    vertices = _edges_to_screen_verts(edges, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
-    _gpu_draw_lines(vertices, outline_color)
+    vertices = edges_to_screen_verts(edges, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
+    draw_lines(vertices, outline_color)
 
-    _draw_precision_pixel_guide(context, state['current_cx'], state['current_cy'])
-
-
-def _gpu_draw_fill(vertices, color):
-    gpu.state.blend_set('ALPHA')
-    gpu.state.depth_test_set('NONE')
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-    batch = gpu_extras.batch.batch_for_shader(shader, 'TRI_FAN', {"pos": vertices})
-    shader.uniform_float("color", color)
-    batch.draw(shader)
-    gpu.state.blend_set('NONE')
-    gpu.state.depth_test_set('LESS_EQUAL')
-
-
-def _draw_text_centered(text, x, y, size=12, alpha=1.0):
-    font_id = 0
-    blf.size(font_id, size)
-    width, height = blf.dimensions(font_id, text)
-    blf.position(font_id, x - width * 0.5, y - height * 0.5, 0)
-    blf.color(font_id, 1.0, 1.0, 1.0, alpha)
-    blf.draw(font_id, text)
+    draw_precision_pixel_guide(context, state['current_cx'], state['current_cy'])
 
 

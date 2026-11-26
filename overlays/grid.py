@@ -4,7 +4,6 @@ import gpu
 import gpu_extras.batch
 
 from ..utils import blender_utils
-from ..paint.pixels import _gpu_draw_lines
 
 
 def draw_pixel_grid_overlay(context, grid_opacity):

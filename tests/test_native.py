@@ -77,7 +77,9 @@ _stub('bpy.app', handlers=sys.modules['bpy.app.handlers'])
 _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'utils.native', 'utils.pixel_io', 'utils.math_utils', 'paint.blending', 'paint.pixels',
     'paint.smooth', 'paint.native_paths', 'tools.mask.data', 'tools.mask.guard', 'tools.mask.geometry',
-    'tools.selection.geometry', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
+    'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
+    'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
+    'core.view3d')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -87,6 +89,17 @@ for _module, _attr in _ADDED_ATTRS:
 
 def _mod(name):
     return _LOADED[name]
+
+
+# the tool classes by group (one module per tool)
+BRUSHES = SimpleNamespace(
+    SquareBrushTool=_mod('tools.brushes.square').SquareBrushTool,
+    CircleBrushTool=_mod('tools.brushes.circle').CircleBrushTool,
+    SprayBrushTool=_mod('tools.brushes.spray').SprayBrushTool,
+    EraserTool=_mod('tools.brushes.eraser').EraserTool)
+FILTERS = SimpleNamespace(
+    SmoothTool=_mod('tools.filters.smooth').SmoothTool,
+    SmearTool=_mod('tools.filters.smear').SmearTool)
 
 
 native = _mod('utils.native')
@@ -169,7 +182,7 @@ class NativeTestCase(unittest.TestCase):
 
 class KernelParityTest(NativeTestCase):
     def setUp(self):
-        self.draw_functions = _mod('paint.pixels')
+        self.pixel_writer = _mod('paint.pixels')
         self.smooth_mod = _mod('paint.smooth')
 
     def test_write_pixels_every_blend_mode(self):
@@ -180,7 +193,7 @@ class KernelParityTest(NativeTestCase):
         for blend in BLENDS:
             for protect in (False, True):
                 for wts in (None, weights):
-                    py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+                    py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
                         img, pixels, (0.8, 0.25, 0.6), blend=blend, opacity=0.7, alpha_opacity=0.9,
                         pixel_weights=wts, protect_transparent=protect), base, w, h)
                     self.assertClose(py, cs, msg=f"{blend} protect={protect} weights={wts is not None}")
@@ -190,11 +203,11 @@ class KernelParityTest(NativeTestCase):
         base = random_image(w, h, 3)
         back = random_image(w, h, 4)
         pixels = random_pixels(w, h, 60, 5)
-        py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+        py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
             img, pixels, (0.1, 0.9, 0.3), base_buffer=back, blend='OVERLAY', opacity=0.5), base, w, h)
         self.assertClose(py, cs)
         # all pixels outside: nothing written, not even the base buffer
-        py, cs = self.both(lambda img: self.draw_functions.write_pixels_to_image(
+        py, cs = self.both(lambda img: self.pixel_writer.write_pixels_to_image(
             img, [(-5, 2), (40, 40)], (1, 1, 1), base_buffer=back), base, w, h)
         self.assertClose(py, base)
         self.assertClose(cs, base)
@@ -205,7 +218,7 @@ class KernelParityTest(NativeTestCase):
         pixels = random_pixels(w, h, 150, 7, margin=2)
         weights = [((i * 37) % 100) / 100.0 for i in range(len(pixels))]
         for protect in (False, True):
-            py, cs = self.both(lambda img: self.draw_functions.set_pixels_alpha(
+            py, cs = self.both(lambda img: self.pixel_writer.set_pixels_alpha(
                 img, pixels, 0.2, opacity=0.8, protect_transparent=protect, pixel_weights=weights), base, w, h)
             self.assertClose(py, cs)
 
@@ -441,8 +454,8 @@ class ToolParityTest(NativeTestCase):
 
     def setUp(self):
         self.base_mod = _mod('tools.base')
-        self.brushes = _mod('tools.brushes')
-        self.filters = _mod('tools.filters')
+        self.brushes = BRUSHES
+        self.filters = FILTERS
 
     def run_tool(self, tool, base, w, h, step_lists, spacing='FREE', protect=False, **env_kw):
         results = []
@@ -530,8 +543,8 @@ class IslandClipTest(NativeTestCase):
     def setUp(self):
         self.view3d = _mod('core.view3d')
         self.base_mod = _mod('tools.base')
-        self.brushes = _mod('tools.brushes')
-        self.filters = _mod('tools.filters')
+        self.brushes = BRUSHES
+        self.filters = FILTERS
         self.cache = quad_island_mesh()
         self._orig_cache = self.view3d._mesh_cache
         self.view3d._mesh_cache = lambda context: self.cache
@@ -633,7 +646,7 @@ class EdgeFilterTest(NativeTestCase):
     def setUp(self):
         self.view3d = _mod('core.view3d')
         self.base_mod = _mod('tools.base')
-        self.filters = _mod('tools.filters')
+        self.filters = FILTERS
         self.cache = seam_strip_mesh()
         self._orig_cache = self.view3d._mesh_cache
         self.view3d._mesh_cache = lambda context: self.cache

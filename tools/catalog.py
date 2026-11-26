@@ -9,12 +9,17 @@ matter which tool is selected (they run before the selected tool).
 """
 
 from ..model import falloff
-from .brushes import CircleBrushTool, EraserTool, LineBrushTool, SprayBrushTool, SquareBrushTool
-from .filters import SmearTool, SmoothTool
+from .brushes.circle import CircleBrushTool
+from .brushes.eraser import EraserTool
+from .brushes.line import LineBrushTool
+from .brushes.spray import SprayBrushTool
+from .brushes.square import SquareBrushTool
+from .filters.smear import SmearTool
+from .filters.smooth import SmoothTool
 from .mask.tool import MaskTool
 from .pen.tool import PenBarTool
 from .registry import ToolRegistry
-from .selection import SelectionTool
+from .selection.tool import SelectionTool
 from .subtools.tool_switch import ToolSwitchShortcuts
 
 

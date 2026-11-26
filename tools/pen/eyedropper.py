@@ -52,8 +52,8 @@ class PenEyedropperTool(ToolFrame):
         self.deactivate(ctx)
 
     def draw_overlay(self, ctx):
-        from ...paint import pixels as draw_functions
-        draw_functions.draw_ctrl_pick_overlay(ctx.context, ctx.state)
+        from ...overlays import sub_modes
+        sub_modes.draw_ctrl_pick_overlay(ctx.context, ctx.state)
 
     def _hover(self, ctx, event):
         state = ctx.state

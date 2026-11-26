@@ -1,7 +1,6 @@
 """Selection box geometry and pixel-region operations used by the Select tool."""
 
 import bpy
-import numpy as np
 
 from ...core import history
 from ...utils import blender_utils, native, pixel_io

@@ -2,10 +2,9 @@ import gpu
 import gpu_extras.batch
 import numpy as np
 
-from ..paint import pixels as draw_functions
 from ..paint import blending as draw_blending
 from ..utils import blender_utils, pixel_io
-from .brush_outline import _draw_precision_pixel_guide, _gpu_draw_circle_outline, _gpu_draw_fill, _gpu_draw_filled_circle, _gpu_draw_lines
+from .gpu_prims import draw_precision_pixel_guide, draw_circle_outline, draw_fill, draw_filled_circle, draw_lines
 
 
 def _draw_selection_pixel_preview(state, rect):
@@ -142,7 +141,7 @@ def _draw_selection_cross_cursor(context, state):
     center_y = (bottom + top) * 0.5
     inset_x = max(1.0, (right - left) * 0.22)
     inset_y = max(1.0, (top - bottom) * 0.22)
-    _gpu_draw_lines([
+    draw_lines([
         (left + inset_x, center_y), (right - inset_x, center_y),
         (center_x, bottom + inset_y), (center_x, top - inset_y),
     ], (1.0, 1.0, 1.0, 0.95))
@@ -194,8 +193,8 @@ def draw_selection_overlay(context, state, actions=None):
         preview_state['selection_pending_region'] = preview_region
         _draw_selection_pixel_preview(preview_state, rect)
 
-    _gpu_draw_fill([(left, bottom), (right, bottom), (right, top), (left, top)], (0.18, 0.52, 0.96, 0.10))
-    _gpu_draw_lines([
+    draw_fill([(left, bottom), (right, bottom), (right, top), (left, top)], (0.18, 0.52, 0.96, 0.10))
+    draw_lines([
         (left, bottom), (right, bottom),
         (right, bottom), (right, top),
         (right, top), (left, top),
@@ -239,7 +238,7 @@ def draw_selection_overlay(context, state, actions=None):
     if actions is not None:
         actions.show_below(rect)
         actions.draw()
-    _draw_precision_pixel_guide(context, state.get('current_cx'), state.get('current_cy'))
+    draw_precision_pixel_guide(context, state.get('current_cx'), state.get('current_cy'))
 
 
 def _selection_screen_rect(v2d, width, height, box, state=None):
@@ -281,6 +280,6 @@ def _draw_arrow_handle(cx, cy, handle_id, color, highlighted=False, active=False
         fill = (fill[0] + 0.10, fill[1] + 0.08, fill[2] + 0.04, min(0.96, fill[3] + 0.10))
         inner = (1.0, 0.98, 0.92, 0.40)
 
-    _gpu_draw_filled_circle(cx, cy, radius, fill, segments=32)
-    _gpu_draw_circle_outline(cx, cy, outline_radius, outline, segments=36)
-    _gpu_draw_filled_circle(cx, cy, inner_radius, inner, segments=24)
+    draw_filled_circle(cx, cy, radius, fill, segments=32)
+    draw_circle_outline(cx, cy, outline_radius, outline, segments=36)
+    draw_filled_circle(cx, cy, inner_radius, inner, segments=24)
