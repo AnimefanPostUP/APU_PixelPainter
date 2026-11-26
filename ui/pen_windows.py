@@ -20,8 +20,12 @@ groups); the explanations are hidden behind the window's '?' corner button
   Editor). In the Image Editor only Fit /
   Center / zoom / 1:1 apply; the 3D-only buttons are disabled.
 
-Groups here do not block the pointer: dragging a window anywhere but on a
-control moves it. Values through the pen menu's actions
+Each window has a *title plate* on top (lock, icon + title, '?', X, resize
+triangle) and a background shaped to its parts -- a silhouette around each dial,
+plates behind the other rows (:func:`window_shapes`, ``ui/window_shapes.py``).
+
+Groups here do not block the pointer: dragging a window anywhere on its
+background but on a control moves it; outside the shapes presses go through. Values through the pen menu's actions
 (:class:`tools.pen_bar.PenBarTool`).
 """
 
@@ -39,7 +43,7 @@ from .pen_settings import _icon_eye, _icon_reset
 
 CELL = 32.0              # icon button size, unscaled px
 GAP = 4.0
-PAD_GAP = 10.0           # between the two View dials
+PAD_GAP = 12.0           # between the two View dials (their backgrounds stay apart: > 2 x SHAPE_PAD)
 BUTTON_ROUND = 7.0       # corner radius of the window buttons (pen-menu style)
 TINT_AMOUNT = 0.16       # category tint in the button fills (as the pen menu's segments)
 # View dials: a round button in the middle, eight 45-degree segments around it.
@@ -54,6 +58,14 @@ MASK_BAND = (MASK_RING[1] + 3.0, MASK_RING[1] + 22.0)
 MASK_BAND_ROUND = (MASK_BAND[1] - MASK_BAND[0]) * 0.5   # capsules
 SOURCE_ARC = (52.0, 128.0)
 GROW_ARC = (232.0, 308.0)
+# Title plate (on top): lock | icon + title | '?' X resize. Unscaled px.
+PLATE_HEIGHT = 24.0
+PLATE_GAP = 8.0          # between the plate and the content's background (> SHAPE_PAD: they stay apart)
+ROW_GAP = 12.0           # between rows (their backgrounds stay apart: > 2 x SHAPE_PAD)
+PLATE_ROUND = 7.0
+PLATE_LEFT = 26.0        # room for the lock
+PLATE_RIGHT = 62.0       # room for '?', X and the resize triangle
+SHAPE_PAD = 5.0          # backgrounds reach this far past the parts
 FONT = 10.0              # button labels
 TITLE_INDENT = 14.0      # the group title clears the window's padlock
 HELP_SIZE = 9.0
@@ -77,28 +89,109 @@ VIEW_HELP = ("Left dial: view from Front (middle), Top,",
 
 
 class _WindowGroup(Group):
-    """A Group that lets presses on its background / title / text through to the
-    window's panel, so dragging anywhere but a control moves the window.
+    """A window's content under a *title plate*: a small rounded plate centered on
+    top with the lock (left), the icon + title, and '?', X and the resize triangle
+    (right; placed by ``_Window._place_on_plate``). ``plate`` (screen Rect) is set by
+    :meth:`arrange`. No box around the content: the window's background is shaped to
+    its parts (:func:`window_shapes`).
 
-    Plain, like the pen menu: no box, stripe or divider -- only the icon and the
-    title in the window's tint."""
+    Presses on the title / text / background go through to the window's panel, so
+    dragging anywhere but a control moves the window."""
 
     blocks_pointer = False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.plate = None
+        self.plate_round_px = 0.0
+
+    def _title_width(self, theme):
+        size = theme.px(self.title_size)
+        text = draw.text_size(str(_resolve(self.title, "")), size, theme.font_id)[0]
+        return (size * 1.6 if self.painter is not None else 0.0) + text
+
+    def _plate_size(self, theme):
+        """Screen ``(width, height)`` of the plate: title plus room for the buttons."""
+        sides = theme.px(PLATE_LEFT + PLATE_RIGHT)
+        return self._title_width(theme) + sides, theme.px(PLATE_HEIGHT)
+
+    def measure(self, theme):
+        cw, ch = self.content.measure(theme)
+        pw, ph = self._plate_size(theme)
+        return max(cw, pw), ph + theme.px(PLATE_GAP) + ch
+
+    def arrange(self, rect, theme):
+        self.rect = rect
+        pw, ph = self._plate_size(theme)
+        self.plate = Rect.from_size(rect.cx - pw * 0.5, rect.y1 - ph, pw, ph)
+        self.plate_round_px = theme.px(PLATE_ROUND)
+        cw, ch = self.content.measure(theme)
+        top = self.plate.y0 - theme.px(PLATE_GAP)   # the backgrounds keep PLATE_GAP - SHAPE_PAD apart
+        self.content.arrange(Rect.from_size(rect.cx - cw * 0.5, top - ch, cw, ch), theme)
+        # The plate sits right above the first row's drawn top (a dial whose top arc is
+        # hidden leaves room above it: the plate moves down onto the dial).
+        first = next((c for c in self.content.children if c.visible), None)
+        drawn_top = _drawn_top(first, theme)
+        if drawn_top is not None:
+            y0 = min(self.plate.y0, drawn_top + theme.px(PLATE_GAP) - theme.px(SHAPE_PAD))
+            self.plate = Rect.from_size(self.plate.x0, y0, pw, ph)
+
     def draw_self(self, dc):
+        if self.plate is None:
+            return
         theme = dc.theme
-        r = self.rect
         tint = (*self.tint[:3], 1.0)
         alpha = dc.alpha
-        pad = theme.px(self.padding)
         size = theme.px(self.title_size)
-        ty = r.y1 - pad - size * 0.5
-        x = r.x0 + theme.px(3.0) + pad + theme.px(self.title_indent)
+        p = self.plate
+        # Centered between the lock (left) and '?' / X / resize (right).
+        left, right = p.x0 + theme.px(PLATE_LEFT), p.x1 - theme.px(PLATE_RIGHT)
+        x = (left + right) * 0.5 - self._title_width(theme) * 0.5
         if self.painter is not None:
-            self.painter(dc, x + size * 0.6, ty, size * 1.4, alpha)
+            self.painter(dc, x + size * 0.6, p.cy, size * 1.4, alpha)
             x += size * 1.6
-        text_left(str(_resolve(self.title, "")), x, ty, size, with_alpha(mix(theme.text, tint, 0.35), alpha),
+        text_left(str(_resolve(self.title, "")), x, p.cy, size, with_alpha(mix(theme.text, tint, 0.35), alpha),
                   theme.font_id)
+
+
+def _drawn_top(widget, theme):
+    """Top of ``widget``'s background (a dial's silhouette, a row of dials), or None."""
+    if widget is None:
+        return None
+    from .window_shapes import dial_star
+    parts = widget.children if isinstance(widget, Row) else [widget]
+    dials = [d for d in parts if d.visible and isinstance(d, Dial)]
+    if not dials:
+        return None
+    pad = theme.px(SHAPE_PAD)
+    tops = []
+    for d in dials:
+        star = dial_star(d, pad)
+        tops.append(max(star.cy + math.sin(a) * star.radius_at(a)
+                        for a in (math.radians(k) for k in range(30, 151, 4))))
+    return max(tops)
+
+
+def window_shapes(panel, theme):
+    """The Mask / View window background (``PenBar._window(shape=...)``): the title
+    plate, a silhouette around each dial, a plate behind every other row (buttons,
+    help text)."""
+    from .window_shapes import Plate, dial_star, plate_around
+    group = panel.content
+    pad = theme.px(SHAPE_PAD)
+    shapes = []
+    if group.plate is not None:
+        shapes.append(Plate(group.plate, group.plate_round_px))
+    for child in group.content.children:
+        if not child.visible:
+            continue
+        parts = child.children if isinstance(child, Row) else [child]
+        dials = [c for c in parts if c.visible and isinstance(c, Dial)]
+        if dials:
+            shapes += [dial_star(d, pad) for d in dials]
+        else:
+            shapes.append(plate_around(child, pad, theme.px(BUTTON_ROUND) + pad))
+    return shapes
 
 
 class _Help(TextBlock):
@@ -524,7 +617,7 @@ def build_mask_window(bar):
     dial.add_band([source], *MASK_BAND, *SOURCE_ARC)
     dial.add_band([grow], *MASK_BAND, *GROW_ARC)
     width = 2.0 * MASK_BAND[1]
-    content = Column([dial, _help_lines(bar, 'mask', MASK_HELP, width)], gap=GAP + 2.0)
+    content = Column([dial, _help_lines(bar, 'mask', MASK_HELP, width)], gap=ROW_GAP)
     return _WindowGroup("Mask", content, tint=TINT_MASK, painter=_icon_mask_title, title_indent=TITLE_INDENT)
 
 
@@ -589,7 +682,7 @@ def build_view_window(bar):
                     layout=lambda: 'icon' if compact() else 'row', key='VIEW_AUTOFIT', tint=tint, enabled=is3d,
                     selected=a.view_autofit, on_click=a.toggle_view_autofit)
     content = Column([Row([orient, orbit], gap=PAD_GAP), Row([toggle, auto, one_to_one], gap=GAP),
-                      _help_lines(bar, 'view', VIEW_HELP, full)], gap=GAP + 2.0)
+                      _help_lines(bar, 'view', VIEW_HELP, full)], gap=ROW_GAP)
     return _WindowGroup("View", content, tint=TINT_VIEW, painter=_paint_view_title, title_indent=TITLE_INDENT)
 
 

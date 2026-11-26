@@ -263,7 +263,8 @@ _CORNER_RADIUS = 6.0     # lock / X in the elements' top corners (drawn); taps h
 _CORNER_HIT = 9.0
 _CORNER_INSET = 4.0
 _PANEL_PADDING = 4.0
-_CORNER_CAP = 0.6        # a window's rounded corners: at most this share of the resize triangle's legs
+SHAPE_PAD = 5.0          # shaped window backgrounds reach this far past the parts, unscaled px
+_CORNER_CAP = 0.6       # a window's rounded corners: at most this share of the resize triangle's legs
 # The menu's default spot keeps this far from the editor edge (unscaled px; the panel padding is inside it).
 EDGE_GAP = 0.3 * 2.0 * 19.0
 
@@ -1407,17 +1408,46 @@ class _ResizeHandle(Widget):
 
 
 class _MovePanel(Panel):
-    """Panel whose empty background moves its element when dragged (unless ``locked``)."""
+    """Panel whose empty background moves its element when dragged (unless ``locked``).
+
+    ``shape(panel, theme)`` (optional) returns the background as shapes fitted to the
+    content (``ui/window_shapes.py``) instead of one rectangle; presses outside them
+    fall through."""
 
     interactive = True
 
-    def __init__(self, content, *, locked, on_move_begin, on_move, on_move_end, **kwargs):
+    def __init__(self, content, *, locked, on_move_begin, on_move, on_move_end, shape=None, **kwargs):
         super().__init__(content, **kwargs)
         self.locked = locked
         self.on_move_begin = on_move_begin
         self.on_move = on_move
         self.on_move_end = on_move_end
         self.drag_origin = None
+        self.shape = shape
+        self._theme = None
+
+    def arrange(self, rect, theme):
+        super().arrange(rect, theme)
+        self._theme = theme
+
+    def shapes(self):
+        if self.shape is None or self._theme is None:
+            return None
+        return self.shape(self, self._theme)
+
+    def contains(self, x, y):
+        if not self.rect.contains(x, y):
+            return False
+        shapes = self.shapes()
+        return shapes is None or any(s.contains(x, y) for s in shapes)
+
+    def draw_self(self, dc):
+        shapes = self.shapes()
+        if shapes is None:
+            super().draw_self(dc)
+            return
+        from .window_shapes import draw_shapes   # late import: it imports the kit only
+        draw_shapes(shapes, with_alpha(dc.theme.panel_background, dc.alpha))
 
     @property
     def draggable(self):
@@ -1490,6 +1520,10 @@ class _Window(Widget):
         self.grip.visible = expanded and not _resolve(self.locked, False)
         if not expanded:
             return
+        plate = getattr(self.panel.content, 'plate', None)
+        if plate is not None:
+            self._place_on_plate(plate, theme)
+            return
         r = self.panel.rect
         inset = theme.px(_CORNER_INSET)
         lw, lh = self.lock.measure(theme)
@@ -1504,6 +1538,22 @@ class _Window(Widget):
         g = self.grip_size
         self.grip.corner = self.panel.corner_px(theme)
         self.grip.arrange(Rect.from_size(r.x1 - g, r.y0, g, g), theme)
+
+    def _place_on_plate(self, plate, theme):
+        """The title plate on top (``content.plate``, see ``ui/pen_windows.py``): the lock
+        at its left end, the resize triangle in its bottom-right corner, X and '?' left of it."""
+        inset = theme.px(_CORNER_INSET)
+        lw, lh = self.lock.measure(theme)
+        self.lock.arrange(Rect.from_size(plate.x0 + inset * 1.5, plate.cy - lh * 0.5, lw, lh), theme)
+        g = min(self.grip_size, plate.height)
+        self.grip.corner = getattr(self.panel.content, 'plate_round_px', 0.0)
+        self.grip.arrange(Rect.from_size(plate.x1 - g, plate.y0, g, g), theme)
+        right = plate.x1 - g - inset
+        for corner in (self.close, self.help):
+            if corner is not None:
+                cw, ch = corner.measure(theme)
+                corner.arrange(Rect.from_size(right - cw, plate.cy - ch * 0.5, cw, ch), theme)
+                right -= cw + inset * 1.5
 
 
 class _MenuLayer(Widget):
@@ -1756,9 +1806,11 @@ class PenBar:
         self.library_flyout.visible = False
         self.confirm_dialog = ConfirmDialog(self)
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
+        from .window_shapes import dial_star   # late import: it imports the kit only
         self.menu = self._window('bar', self._build_dial(),
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
-                                 tab=tab, lock_bottom=True)   # top left: the tertiary bubble
+                                 tab=tab, lock_bottom=True,   # top left: the tertiary bubble
+                                 shape=lambda panel, theme: [dial_star(panel.content, theme.px(SHAPE_PAD))])
         self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.settings_flyout,
                                            self.library_flyout], self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
@@ -1776,14 +1828,15 @@ class PenBar:
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
         # Mask / View windows (opened from the Windows ring).
-        from .pen_windows import build_mask_window, build_view_window  # late import: they import this module
+        # late import: they import this module
+        from .pen_windows import build_mask_window, build_view_window, window_shapes
         builders = {'mask': build_mask_window, 'view': build_view_window}
         self.tool_windows = {}
         for name in TOOL_WINDOWS:
             close = _CornerButton('CLOSE', key=f'{name.upper()}_CLOSE', on_click=lambda n=name: self.toggle_window(n))
             help_button = _CornerButton('HELP', key=f'{name.upper()}_HELP', selected=lambda n=name: self.help_shown(n),
                                         on_click=lambda n=name: self.toggle_help(n))
-            window = self._window(name, builders[name](self), close, help=help_button)
+            window = self._window(name, builders[name](self), close, help=help_button, shape=window_shapes)
             window.visible = False
             self.tool_windows[name] = (window, Overlay(window, modal=False, animate=False))
         self.windows = {'bar': (self.menu, self.overlay), 'color': (self.color_window, self.color_overlay),
@@ -1791,11 +1844,11 @@ class PenBar:
 
     # ---- building ------------------------------------------------------------------
 
-    def _window(self, name, content, close, tab=None, lock_bottom=False, help=None):
+    def _window(self, name, content, close, tab=None, lock_bottom=False, help=None, shape=None):
         locked = lambda: self._locked(name)
         panel = _MovePanel(content, padding=_PANEL_PADDING, key=f"{name.upper()}_PANEL", locked=locked,
                            on_move_begin=lambda: self._begin_move(name), on_move=self._move_to,
-                           on_move_end=self._end_move)
+                           on_move_end=self._end_move, shape=shape)
         lock = _CornerButton('LOCK', key=f"{name.upper()}_LOCK", selected=locked,
                              on_click=lambda: self._toggle_lock(name))
         grip = _ResizeHandle(lambda: self._begin_resize(name), self._resize_to, self._end_resize,

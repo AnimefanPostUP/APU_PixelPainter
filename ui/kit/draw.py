@@ -317,6 +317,21 @@ def rounded_grid(r, radius, color_at, cols, rows):
     _mesh(*aa.fringe_mesh(outline, [color(*p) for p in outline]))
 
 
+def star_polygon(cx, cy, points, color, rim=None):
+    """Polygon that is star-shaped around ``(cx, cy)`` (every point visible from it, e.g.
+    a silhouette sampled per angle), filled as a fan from there; soft edge, optional rim."""
+    if len(points) < 3:
+        return
+    solid = aa.offset_points(points, -aa.EDGE)
+    verts = []
+    for i in range(len(solid)):
+        verts += [(cx, cy), solid[i], solid[(i + 1) % len(solid)]]
+    _draw('TRIS', verts, color)
+    _mesh(*aa.fringe_mesh(points, color))
+    if rim is not None:
+        polyline(points, rim, 1.0, closed=True)
+
+
 def triangle(p0, p1, p2, color, rim=None):
     _fill([p0, p1, p2], color, rim)
 
