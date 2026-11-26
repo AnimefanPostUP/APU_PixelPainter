@@ -32,7 +32,7 @@ background but on a control moves it; outside the shapes presses go through. Val
 import math
 
 from .kit import Column, Dial, Group, Rect, RingSegment, Row, TextBlock, Widget
-from .kit import draw
+from .kit import anim, draw
 from .kit.form import text_left
 from .kit.geometry import ring_segment_points, round_strip
 from .kit.theme import mix, with_alpha
@@ -105,6 +105,7 @@ class _WindowGroup(Group):
         super().__init__(*args, **kwargs)
         self.plate = None
         self.plate_round_px = 0.0
+        self.grab_t = 0.0   # animated "drag me" highlight of the title plate, 0..1
 
     def _title_width(self, theme):
         size = theme.px(self.title_size)
@@ -137,6 +138,17 @@ class _WindowGroup(Group):
             y0 = min(self.plate.y0, drawn_top + theme.px(PLATE_GAP) - theme.px(SHAPE_PAD))
             self.plate = Rect.from_size(self.plate.x0, y0, pw, ph)
 
+    def _grab_target(self, dc):
+        """1.0 while the plate shows it can move the window: the pointer on the plate
+        (not on its buttons: they are hot then) or the window being dragged; 0.0 locked."""
+        panel = self.parent
+        if panel is None or not getattr(panel, 'draggable', False):
+            return 0.0
+        if dc.pressed is panel:
+            return 1.0
+        x, y = dc.pointer
+        return 1.0 if (dc.hot is panel and self.plate.contains(x, y)) else 0.0
+
     def draw_self(self, dc):
         if self.plate is None:
             return
@@ -145,14 +157,20 @@ class _WindowGroup(Group):
         alpha = dc.alpha
         size = theme.px(self.title_size)
         p = self.plate
+        speed = dc.dt / max(theme.hover_duration, 1e-4)
+        self.grab_t = anim.approach(self.grab_t, self._grab_target(dc), speed)
+        grab = anim.ease_in_out(self.grab_t)
+        if grab > 0.01:
+            draw.rounded_rect_outline(p, self.plate_round_px, with_alpha(theme.accent, grab * 0.8 * alpha),
+                                      width=theme.px(1.5))
+        title_color = mix(mix(theme.text, tint, 0.35), theme.accent, grab * 0.6)
         # Centered between the lock (left) and '?' / X / resize (right).
         left, right = p.x0 + theme.px(PLATE_LEFT), p.x1 - theme.px(PLATE_RIGHT)
         x = (left + right) * 0.5 - self._title_width(theme) * 0.5
         if self.painter is not None:
             self.painter(dc, x + size * 0.6, p.cy, size * 1.4, alpha)
             x += size * 1.6
-        text_left(str(_resolve(self.title, "")), x, p.cy, size, with_alpha(mix(theme.text, tint, 0.35), alpha),
-                  theme.font_id)
+        text_left(str(_resolve(self.title, "")), x, p.cy, size, with_alpha(title_color, alpha), theme.font_id)
 
 
 TINT_NEUTRAL = (0.75, 0.75, 0.75)   # Settings / Palettes: no category color in the title

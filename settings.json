@@ -126,7 +126,7 @@
   "pixel_painter_color_selector_sliders_open": false,
   "pixel_painter_falloff_hardness": 0.6100000143051147,
   "pixel_painter_falloff_sharpness": 0.1599999964237213,
-  "pixel_painter_global_alpha": 0.0,
+  "pixel_painter_global_alpha": 1.0,
   "pixel_painter_global_alpha_rmb": 1.0,
   "pixel_painter_global_modifier": 0.07638350129127502,
   "pixel_painter_global_modifier_rmb": 0.5,
