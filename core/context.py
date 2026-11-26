@@ -14,16 +14,20 @@ def is_shift_smooth_global(context):
         return False
 
 
+_UNSET = object()
+
+
 class ToolContext:
     """Thin wrapper around a ``bpy.types.Context`` plus the shared services."""
 
-    __slots__ = ('context', 'manager', 'state', 'settings')
+    __slots__ = ('context', 'manager', 'state', 'settings', '_region')
 
     def __init__(self, context, manager=None):
         self.context = context
         self.manager = manager
         self.state = STATE
         self.settings = SETTINGS
+        self._region = _UNSET
 
     # ---- blender accessors -----------------------------------------------------
 
@@ -37,10 +41,11 @@ class ToolContext:
 
     @property
     def region(self):
-        area = self.area
-        if not area:
-            return None
-        return next((r for r in area.regions if r.type == 'WINDOW'), None)
+        """The area's WINDOW region (looked up once: a context lives for one event / frame)."""
+        if self._region is _UNSET:
+            area = self.area
+            self._region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+        return self._region
 
     @property
     def v2d(self):
