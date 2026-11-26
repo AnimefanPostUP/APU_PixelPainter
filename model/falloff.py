@@ -13,7 +13,7 @@ class FalloffPreset:
 
     @property
     def icon_key(self):
-        """Key of the generated falloff icon (see ``ui/falloff_icons.py``)."""
+        """Key of the generated falloff icon (see ``ui/icons/falloff_icons.py``)."""
         return f"FALLOFF_ICON_{self.id}"
 
 

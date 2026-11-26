@@ -114,7 +114,7 @@ def draw_tool_settings(context, layout):
     layout.use_property_split = False
     layout.use_property_decorate = False
 
-    # Quick controls; rarely changed options live in the settings popup (ui/settings_menu.py).
+    # Quick controls; rarely changed options live in the settings popup (ui/panels/settings_popup.py).
     layout.prop(wm, "pixel_painter_active_size", text="Size")
 
     row = layout.row(align=True)

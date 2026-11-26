@@ -25,7 +25,7 @@ class WindowActions:
         state = self._c().state
         state[f'pen_{name}_panel'] = not state.get(f'pen_{name}_panel')
 
-    # ---- View window (tools/view_nav.py) ---------------------------------------------------
+    # ---- View window (tools/pen/view_nav.py) ---------------------------------------------------
 
     def in_view3d(self):
         area = self._c().area

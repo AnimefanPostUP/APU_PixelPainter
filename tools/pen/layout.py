@@ -2,7 +2,7 @@
 scale, lock and help state -- stored as JSON in the scene property
 ``pixel_painter_pen_layout`` (saved with the .blend).
 
-:class:`LayoutStore` (used by ``tools.pen_bar.PenBarTool``) loads the stored
+:class:`LayoutStore` (used by ``tools.pen.tool.PenBarTool``) loads the stored
 layout into the tool state whenever another project / scene becomes active, and
 writes it back (from event handling only, never from a draw callback) when it
 changed. A project without a stored layout keeps the current one; it is stored

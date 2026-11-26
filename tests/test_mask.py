@@ -1,4 +1,4 @@
-"""Unit tests for the paint mask geometry (tools/mask_geometry.py, pure numpy).
+"""Unit tests for the paint mask geometry (tools/mask/geometry.py, pure numpy).
 
     python -m unittest discover -s tests -v
 """

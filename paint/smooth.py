@@ -3,7 +3,7 @@
 The ``*_buffer`` functions work on a flat float32 RGBA buffer in place (C# first,
 Python as fallback). ``valid`` (optional, ``w * h`` bools) marks the pixels the
 filter may read from -- Edge mode filters a patch unfolded across UV seams
-(``core.view3d.EdgePatch``) whose off-surface texels must never be sampled.
+(``core.view3d.patch.EdgePatch``) whose off-surface texels must never be sampled.
 """
 
 import numpy as np

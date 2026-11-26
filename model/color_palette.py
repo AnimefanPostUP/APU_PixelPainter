@@ -1,7 +1,7 @@
 """Color palettes (pure Python).
 
 * A **palette** is ``{"name": str, "colors": [rgb or None] * PALETTE_SIZE}``.
-* A **project** (stored per .blend file, see ``tools.pen_bar``) holds
+* A **project** (stored per .blend file, see ``tools.pen.tool``) holds
   ``PROJECT_SLOTS`` palette slots (palette or None) and the index of the active one:
   ``{"active": int, "palettes": [...]}``. The pen menu's palette band shows the
   active palette's colors, or -- in its palette view -- the palettes themselves.

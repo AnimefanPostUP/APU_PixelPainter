@@ -1,4 +1,4 @@
-"""Per-project pen layout (tools/pen_layout.py): JSON encode / decode."""
+"""Per-project pen layout (tools/pen/layout.py): JSON encode / decode."""
 
 import importlib.util
 import json

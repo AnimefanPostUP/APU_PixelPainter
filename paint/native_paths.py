@@ -9,7 +9,7 @@ weights, same max-merge of overlapping stamps, same blend math.
 
 Not used in the 3D Viewport's Edge mode: there ``env.expand`` carries every
 stamp over UV seams in Python (the pixel kernels are still native there, see
-``draw_functions.write_pixels_to_image`` and friends).
+``paint.pixels.write_pixels_to_image`` and friends).
 
 Every function returns False when the native call failed; the tool then runs
 its Python implementation instead.

@@ -15,7 +15,7 @@ from ...paint import smooth as draw_tool_smooth
 from ...utils import math_utils, pixel_io
 
 
-# ---- Edge mode: filter on the surface (core.view3d.EdgePatch) -------------------
+# ---- Edge mode: filter on the surface (core.view3d.patch.EdgePatch) -------------------
 #
 # In texture space a blur / smear reads the pixels beside the stamp, which at a
 # UV seam belong to some other part of the mesh (or the empty margin). In Edge

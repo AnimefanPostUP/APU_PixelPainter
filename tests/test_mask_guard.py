@@ -1,4 +1,4 @@
-"""Unit tests for the paint mask guard (tools/mask_guard.py, numpy + pixel_io).
+"""Unit tests for the paint mask guard (tools/mask/guard.py, numpy + pixel_io).
 
     python -m unittest discover -s tests -v
 """

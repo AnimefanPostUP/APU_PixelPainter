@@ -27,7 +27,7 @@ class WeightedBrushTool(BrushTool):
         return env.spacing == 'PIXEL'
 
     def native_draw(self, env, falloff, curve_sampler):
-        """C# version of :meth:`on_draw` (tools/native_paint.py); False = not handled."""
+        """C# version of :meth:`on_draw` (paint/native_paths.py); False = not handled."""
         return native_paint.paint_weighted(env, falloff, curve_sampler)
 
     def on_draw(self, env):

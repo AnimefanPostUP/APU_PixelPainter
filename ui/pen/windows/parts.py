@@ -6,11 +6,11 @@ rim, accent outline on hover, accent band when selected, round shapes; no boxed
 groups); the explanations are hidden behind the window's '?' corner button
 (``PenBar.help_shown``).
 
-* Mask (tools/mask.py): a circle menu -- Edit (choose islands / parts on the
+* Mask (tools/mask/): a circle menu -- Edit (choose islands / parts on the
   canvas) in the middle; around it Mask (on / off), Invert, Show (stripes),
   Clear; outside, Grow (an arc slider, below) and the source (UV Islands /
   Mesh Parts, on top -- only while editing).
-* View (tools/view_nav.py through the actions): two small dials -- a round
+* View (tools/pen/view_nav.py through the actions): two small dials -- a round
   button in the middle, eight segments around it.
   Orient: Front in the middle, Top / Bottom / Left / Right around it like the
   faces of an unfolded cube; the diagonals roll (top), level (bottom left) and
@@ -22,11 +22,11 @@ groups); the explanations are hidden behind the window's '?' corner button
 
 Each window has a *title plate* on top (lock, icon + title, '?', X, resize
 triangle) and a background shaped to its parts -- a silhouette around each dial,
-plates behind the other rows (:func:`window_shapes`, ``ui/window_shapes.py``).
+plates behind the other rows (:func:`window_shapes`, ``ui/pen/windows/shapes.py``).
 
 Groups here do not block the pointer: dragging a window anywhere on its
 background but on a control moves it; outside the shapes presses go through. Values through the pen menu's actions
-(:class:`tools.pen_bar.PenBarTool`).
+(:class:`tools.pen.tool.PenBarTool`).
 """
 
 import math
@@ -219,7 +219,7 @@ _pen_fill = pen_fill
 
 
 class WindowButton(PenButton):
-    """Window button (the shared pen style, ``ui/pen_style.py``), larger label."""
+    """Window button (the shared pen style, ``ui/pen/style.py``), larger label."""
 
     def __init__(self, label="", *, font_size=FONT, layout='column', **kwargs):
         super().__init__(label, font_size=font_size, layout=layout, **kwargs)

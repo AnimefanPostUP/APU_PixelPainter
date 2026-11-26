@@ -60,7 +60,7 @@ everything here works with press, drag and release only.
   flyout; a dark-to-light gray gradient with the mode's name). Top right, past the color history, a
   capsule with *Pixel* / *Free* (spacing) and *Alphalock* (protect transparent pixels).
 * **Palettes** are stored per project (in the .blend); the library window
-  (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
+  (``ui/pen/windows/palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
   image file's pixel colors into a new project palette.
 * **Drag & drop** (setting *Drag Colors*): drag the primary / secondary color,
@@ -108,11 +108,11 @@ everything here works with press, drag and release only.
   closes the flyout. Columns Common / Contrast / Math / HSL/HSV; a star right of
   each mode marks / unmarks it as a favorite (gold while it is one; the flyout
   stays open).
-* **Look**: the windows and flyouts share the pen style (``ui/pen_style.py``):
+* **Look**: the windows and flyouts share the pen style (``ui/pen/style.py``):
   neutral grays, one accent color, rounded shapes, titles on plates.
 
 This module builds, lays out and draws the widgets (two non-modal UI-kit
-layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
+layers). :class:`tools.pen.tool.PenBarTool` forwards events and provides the
 ``actions`` object the widgets call.
 """
 
@@ -150,7 +150,7 @@ def _is_inside(widget, ancestor):
 
 class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
     """Widget layers of the pen menu and the color selector.
-    ``actions`` is the :class:`tools.pen_bar.PenBarTool`."""
+    ``actions`` is the :class:`tools.pen.tool.PenBarTool`."""
 
     def __init__(self, actions):
         from ..icons.tool_icons import ICONS  # late import: ui.icons imports the tool catalog

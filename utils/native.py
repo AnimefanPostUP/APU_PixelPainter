@@ -218,7 +218,7 @@ def _ok(result):
 # ---------------------------------------------------------------------------
 
 def paint(buf, w, h, xy, weights, color, blend, opacity, alpha, protect, base=None):
-    """tools/draw_functions.write_pixels_to_image on ``buf``. ``base``: read dst from there."""
+    """tools/paint.pixels.write_pixels_to_image on ``buf``. ``base``: read dst from there."""
     lib = _load()
     _image_buffer(buf, w, h)
     if base is not None:
@@ -370,7 +370,7 @@ def restore_blocked(after, before, allowed):
 
 
 def blend_region(dst_rgba, src_rgba, blend, opacity):
-    """tools/draw_blending.blend_region_pixels with a scalar opacity; returns a new array."""
+    """tools/paint.blending.blend_region_pixels with a scalar opacity; returns a new array."""
     lib = _load()
     dst = np.ascontiguousarray(dst_rgba, dtype=np.float32)
     src = np.ascontiguousarray(src_rgba, dtype=np.float32)

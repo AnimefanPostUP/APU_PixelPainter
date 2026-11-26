@@ -19,7 +19,7 @@ LAYOUT_STATE = {
     'pen_library_scale': 0.8, 'pen_library_pos': None,
 }
 # Windows besides the menu and the color selector, opened from the Windows ring
-# (content: ui/pen_windows.py, ui/pen_settings.py, ui/pen_palettes.py); shown while
+# (content: ui/pen/windows/, ui/pen/windows/settings.py, ui/pen/windows/palettes.py); shown while
 # the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
 TOOL_WINDOWS = ('mask', 'view', 'settings', 'library')
 POINTER_TYPES = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE',

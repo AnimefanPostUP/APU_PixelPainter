@@ -2,44 +2,81 @@
 
 ## Layout
 
+Folders group code by **type**; inside a folder every module holds **one concern**
+(usually one class, or a family of similar small classes), so the file a class lives
+in follows from what it is. Package `__init__.py` files are side-effect free (a
+docstring that lists the package's modules): import the concrete module, e.g.
+`from ..tools.mask import data as mask_data`, `from .brushes.circle import CircleBrushTool`.
+
 ```
-__init__.py            bl_info, ordered module reload list, register/unregister
-properties.py          all WindowManager properties (per-tool ones generated from the registry)
-core/
+__init__.py            bl_info, register / unregister (purges the add-on's modules first: no reload list)
+paths.py               add-on folder, textures/, settings.json, palettes.json, native/runtimes
+properties.py          all WindowManager + Scene properties (per-tool ones generated from the registry)
+core/                  manages tools, knows nothing about what they do
   framework.py         ToolFrame, Shortcut, InputEvent, HoldTool, FunctionTool, ToolManager (no bpy)
-  core.py              modal operator: guards, cursor tracking, MANAGER.dispatch; settings sync
+  operator.py          the modal operator: guards, cursor tracking, MANAGER.dispatch; settings sync
   context.py           ToolContext -- the `ctx` every tool callback receives
   state.py             STATE (shared blackboard read by overlays), SETTINGS service
   history.py           pixel undo integrated with Blender's undo
-tools/
+  variables.py         ToolVariableStore
+  view3d/              3D Viewport: mesh (cache), raycast (mouse -> pixel), islands (UV island
+                       clipping), stroke_path, frames, surface_path, footprint, patch (Edge mode)
+model/                 pure domain data (no bpy): falloff, blend_modes, color_history,
+                       color_palette, tertiary_color
+paint/                 pixel kernels, no tool logic: pixels (write / alpha), blending, smooth,
+                       native_paths (C# fast paths of whole draw steps)
+overlays/              canvas drawing in the draw handlers: handler (add / remove), gpu_prims
+                       (shared primitives), brush_outline, cursor, sub_modes (E / Shift+E / Ctrl
+                       HUDs), selection, grid, view3d_outline
+tools/                 all tool behaviour
   base.py              ToolBase (a ToolFrame + registry metadata), DrawEnvironment, SettingDefaults
   stroke.py            StrokeTool / BrushTool: press-drag-release painting + standard subtools
   registry.py          ToolRegistry
   catalog.py           TOOLS (order = enum / pie / Shift+number order) and global_tools()
-  brushes.py           Square, Circle, Spray (WeightedBrushTool), Line, Eraser
-  filters.py           Smooth, Smear
-  selection.py         Select tool (box drag / move / resize, copy / paste, stencil) + its operators
-  selection_ops.py     selection box geometry and pixel-region operations
+  brushes/             one module per tool: square, circle, spray (weighted: falloff base), line,
+                       eraser; common (paint a footprint)
+  filters/             smooth, smear; edge (Edge-mode surface filtering), common
+  selection/           tool (SelectionTool), operators (Apply / Copy / Cancel / Stencil), geometry
+  mask/                data (elements, chosen set, allowed()), geometry (pure numpy), guard
+                       (enforcement during strokes), overlay (drawing), tool (MaskTool)
+  pen/                 tool (PenBarTool: lifecycle, events, drawing), actions/ (its actions by
+                       concern: colors, settings, palettes, falloff, windows, mask), layout
+                       (per-project window layout), pressure, view_nav, eyedropper
   subtools/            color_pick (E), strength (Shift+E), eyedropper (hold Ctrl),
                        tool_switch (hold Alt -> Line, hold Shift -> Smooth/Eraser, Shift+1..9)
-  falloff.py           falloff presets (enum, curve preset, icon keys), Shape field keys, curve presets
-  blend_modes.py       blend modes (enum, groups, favorites)
-  draw_*.py, overlays*.py  pixel writing and canvas overlays
 ui/
   kit/                 generic UI kit (no Pixel Painter knowledge) -- see below
-  pie_menu.py          ToolPie / FalloffPie / FalloffPicker + W-key operator
-  selection_actions.py Copy / Apply / Stencil buttons under the selection box
-  native_menus.py      Blender-native blend pie and mode pie
-  icons.py             ICONS (tool icons + generated falloff icons)
-  falloff_icons.py     procedural falloff icons (white disc, alpha = falloff)
-  tool_settings_ui.py  header / N-panel quick controls
-  settings_menu.py     settings popup (tabbed: Color Selector, Tools, Blending, Falloff, Pen, ...)
-tests/                 pure-Python unit tests (UI kit, tool framework)
+  pen/                 the pen UI (built from the kit)
+    bar.py             PenBar: construction, handle(), draw(); combines menu/
+    metrics.py         the dial's rings, arcs, sizes and tints
+    style.py           the shared pen look (PenButton, DangerButton, PlainGroup, ...)
+    menu/              PenBar's concerns: dial, flyouts, drag_drop, window_layout, readouts
+    widgets/           the dial's widgets: color, blend, falloff_field, grid_corner, window_ring
+    windows/           frame (Window: move / lock / resize / help), parts, mask, view, settings,
+                       palettes, dialog (ConfirmDialog), shapes (window backgrounds)
+    icons/             icon painters: menu, settings, palettes, windows
+  panels/              tool_settings (header / N-panel), settings_popup (tabbed settings popup)
+  menus/               pie_menu (ToolPie / FalloffPie / FalloffPicker), native_menus (blend / mode
+                       pies), selection_actions (buttons under the selection box)
+  operators/           image_save, palette, mask, paint_selected_faces_uv
+  icons/               tool_icons (ICONS), falloff_icons (procedural)
+  workspace_tool.py    the WorkSpaceTools (Image Editor, 3D Viewport) and their keymaps
+  viewport_frame.py    the "special mode" frame around the editor
+utils/                 blender_utils, math_utils, native (C# loader), pixel_io, settings_service,
+                       persistence_settings, palette_library, palette_image
+native/                the C# backend (see below)
+tests/                 pure-Python unit tests (python -m unittest discover -s tests)
 ```
+
+Where new code goes: a tool -> its own module in the matching `tools/` folder (and an
+entry in `tools/catalog.py`); pixel math -> `paint/`; something drawn on the canvas ->
+`overlays/`; pure data / rules without Blender -> `model/`; a pen UI widget ->
+`ui/pen/widgets/`, an icon -> `ui/pen/icons/`. When a module grows a second concern,
+give that concern its own module.
 
 ## Tools and input
 
-The core does not know what tools do. `core/core.py` guards the session,
+The core does not know what tools do. `core/operator.py` guards the session,
 tracks the hovered pixel and hands every event to `MANAGER`
 (`core.framework.ToolManager`). The manager offers it to every active root
 tool -- the global tools, then the selected tool -- until one **consumes** it
@@ -88,7 +125,8 @@ matches any value (use it for `MOUSEMOVE`).
 
 ## Adding a tool
 
-1. Subclass a tool base in `tools/`:
+1. Subclass a tool base in a new module of the matching `tools/` folder
+   (e.g. `tools/brushes/dither.py`):
    * `BrushTool` / `StrokeTool` (`tools/stroke.py`) for painting: LMB/RMB
      strokes plus the standard subtools (Ctrl eyedropper, Alt line, Shift
      smooth/eraser, E color pick, Shift+E strength) come for free.
@@ -176,26 +214,26 @@ confirms; ESC/RMB cancel; actions run after the close animation.
 
 ## Pen / tablet
 
-* **Pressure** (`tools/pen_pressure.py`): the core stores the pressure of the
+* **Pressure** (`tools/pen/pressure.py`): the core stores the pressure of the
   last pointer event in `STATE['pen_pressure']` (1.0 for a mouse; releases are
   skipped). `StrokeTool.paint` scales size (by diameter), strength, alpha and
   modifier for the channels enabled in `pixel_painter_pen_pressure_*`.
   Tools that commit on release set `uses_pen_pressure = False` (Line).
   Tools read the modifier from `env.modifier`, not the WindowManager.
-* **Pen bar** (`tools/pen_bar.py` + `ui/pen_bar.py`): a global tool with
+* **Pen bar** (`tools/pen/tool.py` + `ui/pen/bar.py`): a global tool with
   `screen_space = True`. The core calls `MANAGER.dispatch_screen()` *before*
   its cursor-over-image gating, so on-screen UI works anywhere in the editor;
   `dispatch()` then skips screen-space tools. Pens may have no hover and no
   wheel, so the bar uses only press / drag / release: `DragBubble` knobs
   (`draggable`), flyout openers (`activate_on_press`) and flyout entries
-  (`drag_release`). `ui/pen_bar.PenBar` holds two floating elements, each its
+  (`drag_release`). `ui/pen/bar.PenBar` holds two floating elements, each its
   own non-modal `Overlay` with its own theme scale: the pen menu and the color
-  selector. Each is a `_Window`: a `_MovePanel` (drag the background to move),
+  selector. Each is a `Window`: a `MovePanel` (drag the background to move),
   a padlock (no moving / resizing; top left, the pen menu's bottom left:
-  `_Window(lock_bottom=True)`), an X (top right) and a resize
+  `Window(lock_bottom=True)`), an X (top right) and a resize
   triangle (bottom right). Size and position live in tool state
   (`pen_bar_scale` / `pen_bar_pos`, `pen_color_scale` / `pen_color_pos`,
-  `ui.pen_bar.LAYOUT_STATE`; scale limits `SCALE_LIMITS`); both are clipped to
+  `ui.pen.metrics.LAYOUT_STATE`; scale limits `SCALE_LIMITS`); both are clipped to
   the editor (`kit.geometry.clamp_box`) and shrunk while it is too small.
   `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
   the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
@@ -206,19 +244,19 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
   extreme corners cut for the lock / X / resize triangle, except top left): top
-  left the color section -- the gradient slider (`_GradientSlider`, primary at
+  left the color section -- the gradient slider (`GradientSlider`, primary at
   the left end, secondary at the top), the secondary / primary color each with its own picker (arm kinds
   `EYEDROPPER_PRIMARY` / `_SECONDARY`; the press sets state `pen_pick_target`
   for `PenEyedropperTool`), and between them Swap with the tertiary bubble
-  (`_TertiaryBubble`: the largest circle in its corner slot, `kit.geometry.best_circle`)
+  (`TertiaryBubble`: the largest circle in its corner slot, `kit.geometry.best_circle`)
   behind it; these buttons have round
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
   top right, outside S / A / M, the color history band (`HISTORY_BAND_ARC`,
-  `tools/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`)
+  `model/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`)
   and past it Pixel-Free / Alphalock as a capsule (`BRUSH_MODE_RING` / `_ARC`;
   `_add_capsule`: a band whose two outer ends are half circles, via
   `RingSegment(round=..., round_ends=...)` and `kit.geometry.round_strip(ends=...)`).
-  The optional tertiary color (`tools/tertiary_color.py`, pure) is a point `t` on
+  The optional tertiary color (`model/tertiary_color.py`, pure) is a point `t` on
   the primary -> secondary gradient (state `pen_tertiary_t`); while selected
   (`pen_tertiary`, set by the slider / bubble) `StrokeTool` paints left-button
   strokes with it (no RMB lock meanwhile). The color selector, pickers and history
@@ -228,20 +266,20 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   bottom right the palette band (24 slots in `PALETTE_ROWS` bands) and, a capsule
   in the gap right of the circle, Palettes (`PALETTE_BUTTON_ARC`);
   bottom left Windows, Save, Grid and Blend as a capsule (`BOTTOM_LEFT_RING` /
-  `BOTTOM_LEFT_ARC`; Blend is a `_BlendButton`: a `BLEND_GRADIENT` dark-to-light
+  `BOTTOM_LEFT_ARC`; Blend is a `BlendButton`: a `BLEND_GRADIENT` dark-to-light
   gray fill with the mode's name).
-  Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
+  Palettes (`model/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
   the .blend); the band shows the active palette's colors or, in the palette view
   (`pen_palette_view`), the palettes. The library (`utils/palette_library.py`,
   `palettes.json` in the add-on folder) is not synced with projects: the Library
-  flyout (`ui/pen_palettes.py`) copies palettes in / out and to / from the
+  flyout (`ui/pen/windows/palettes.py`) copies palettes in / out and to / from the
   clipboard (JSON with hex colors; pasting also takes any `#rrggbb` list).
-  *From image* (`image.pixel_painter_palette_from_image`, `ui/palette_ops.py`):
+  *From image* (`image.pixel_painter_palette_from_image`, `ui/operators/palette.py`):
   an image's distinct pixel colors in reading order (more than 24: median cut,
   `utils/palette_image.py`) become a new palette in the first empty project slot
   (all taken: the library); messages go to state `pen_palette_status`.
-  Drag & drop (`_ColorDrag` mixin, setting `pen_color_drag`): payloads
+  Drag & drop (`ColorDrag` mixin, setting `pen_color_drag`): payloads
   `('color' | 'palette', value, origin)`; a short press stays a tap; targets
   define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
   take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
@@ -252,7 +290,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   may reach `FIELD_EDGE_MARGIN` of its radius over the edges) in the outer ring,
   reaching in through the inner ring's outer half (`FALLOFF_SPLIT`, no gap), and
   Custom | Curve in the inner ring's inner half. Outside Undo / Redo (`FAVORITES_ARC`,
-  outer ring) `_BlendFavorites`: the favorite blend modes (one `_BlendFavorite`
+  outer ring) `BlendFavorites`: the favorite blend modes (one `BlendFavorite`
   per mode) split evenly into `FAVORITE_ROWS` rings (the outer ring takes the odd one);
   re-placed on draw when `pixel_painter_blend_favorites` changes; labels run along
   the circle, kept upright, two-word names on two lines, via `draw.text_along`). `PenBarTool.blend_favorites` may be empty (the defaults only while the
@@ -260,7 +298,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   favorites check-marked, *Edit Favorites* (`PenBar.blend_fav_edit`) makes taps
   toggle favorites (`wm_toggle_flag`). Bottom left, first of its corner buttons,
   Windows (`activate_on_press`). It opens the Windows ring
-  (`_WindowRing`, `WINDOW_RING` = the inner ring's radii): Settings / Mask / View /
+  (`WindowRing`, `WINDOW_RING` = the inner ring's radii): Settings / Mask / View /
   Color / Palettes (library) as `drag_release` `RingSegment`s over the full circle
   from `WINDOW_RING_START`. The ring is the dial's last child (drawn on top, picked
   first), paints an opaque backdrop from the inner ring out to `WINDOW_RING_COVER`
@@ -284,7 +322,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   and preset buttons (`falloff.CURVE_PRESETS`: the falloffs the field does not
   cover, as anchors with handle types; `PenBarTool.load_curve_preset`). Anchors
   that stay in place keep their handle type while others are edited.
-  Settings (Windows ring) opens the settings flyout (`ui/pen_settings.py`): icon tabs
+  Settings (Windows ring) opens the settings flyout (`ui/pen/windows/settings.py`): icon tabs
   and the tab's page of `kit.Group`s (one tint per tab), the same settings and
   remembered tab as the Blender settings popup, read / written through
   `PenBarTool.wm_get` / `wm_set` / `wm_toggle_flag` / `wm_range`. *Color* toggles the
@@ -304,40 +342,40 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
   settings popup > Color Selector) the pad is `live` (commits every step).
   *Settings* opens the settings popup. *Save* (bottom-right corner, `BOTTOM_RIGHT_ARC`)
-  runs `image.pixel_painter_save_image` (`ui/image_save_ops.py`) on the painted
+  runs `image.pixel_painter_save_image` (`ui/operators/image_save.py`) on the painted
   image; a dot shows while `image.is_dirty`. How it saves comes from settings >
   Pen > Save Image: `pixel_painter_save_image_method` (`AUTO`: repack packed,
   save to its file, else pack / `PACK` / `FILE`: write a file, images without
   one go to `pixel_painter_save_image_folder`/`<name>.png`) and
   `pixel_painter_save_image_blend` (save the .blend afterwards).
-  *Grid* (bottom-right corner, first before Save and Windows, `_GridCorner`) shows `pixel_painter_grid_opacity` in percent:
+  *Grid* (bottom-right corner, first before Save and Windows, `GridCorner`) shows `pixel_painter_grid_opacity` in percent:
   a tap toggles `pixel_painter_grid_show` (a grid at 0 % comes on at
   `GRID_DEFAULT_OPACITY`), a vertical drag sets the opacity (`GRID_DRAG_PX` for
   0 -> 100 %, ESC restores it). In the 3D Viewport `draw_pixel_grid_overlay_3d`
-  (`tools/draw_gridoverlay.py`) draws the cached mesh with a texel-border shader
+  (`overlays/grid.py`) draws the cached mesh with a texel-border shader
   (lines via `fwidth`, faded out below ~2-5 px per texel, small clip-space depth bias).
   *Mask* and *View* (Windows ring) open floating windows
-  (`TOOL_WINDOWS`, content in `ui/pen_windows.py`): movable / lockable /
+  (`TOOL_WINDOWS`, content in `ui/pen/windows/`): movable / lockable /
   resizable like the color selector (state `pen_<name>_panel`, `_locked`,
   `_scale`, `_pos`; default spot beside the menu, tops level). Mask: the paint
   mask controls (a dot on the ring entry while the mask is on). View
-  (`tools/view_nav.py`, numpy math in `tests/test_view_nav.py`): axis views,
+  (`tools/pen/view_nav.py`, numpy math in `tests/test_view_nav.py`): axis views,
   15 degree orbit / roll, *Level* (world up is up on screen), *Fit* (pivot on the
   object, distance so every vertex is inside `FIT_MARGIN` of the view, from
   `rv3d.window_matrix`), *Center*, zoom, Persp / Ortho; *Auto Fit*
   (`pen_view_autofit`) re-fits after orient / orbit / roll. Works on the
   `RegionView3D` (a camera view switches to a free view); in the Image Editor
   only Fit / Center / zoom / 1:1 apply (image operators, deferred).
-  Layout: compact icon buttons (`_Btn`: 1 px outline, 10 px labels); View has two
+  Layout: compact icon buttons (`WindowButton`: 1 px outline, 10 px labels); View has two
   3x3 pads -- Orient (Front in the middle, Top / Bottom / Left / Right around it,
   roll in the top corners, Level and a differently styled Back at the bottom) and
   Orbit (arrows around Fit; zoom, Center, Persp / Ortho in the corners). The
   explanations show only while the window's '?' corner button is on
-  (`_Window.help`, state `pen_<name>_help`). Kit hooks used: `Button.outline`,
+  (`Window.help`, state `pen_<name>_help`). Kit hooks used: `Button.outline`,
   `Group(title_indent=)`.
   Per project: `PenBarTool.layout_keys` (every window's open / collapsed state,
   position, scale, lock, help, Auto Fit) are stored as JSON in the scene property
-  `pixel_painter_pen_layout` (`tools/pen_layout.py`, `tests/test_pen_layout.py`).
+  `pixel_painter_pen_layout` (`tools/pen/layout.py`, `tests/test_pen_layout.py`).
   `LayoutStore.load_if_needed` (from `_layout`, also in draw callbacks: it only
   updates the Python state) loads it when the file / scene changes;
   `save_if_changed` (from `on_event`, not while dragging) writes it after a change.
@@ -345,11 +383,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   shows in the old / new `ColorBubble` until it is tapped;
   `PenBarTool.pen_hsv` remembers the pad's HSV (`kit.hsv_for_rgb`) so hue and
   saturation survive grey / black. *Picker* arms `PenEyedropperTool`
-  (`tools/subtools/pen.py`) for the next canvas press; the RMB lock rewrites
+  (`tools/pen/eyedropper.py`) for the next canvas press; the RMB lock rewrites
   pen-tip LMB events to RMB for every tool after the bar.
   Each element renders at `BAR_SCALE` x the UI scale x its own scale.
 
-## Paint mask (`tools/mask.py`, `tools/mask_geometry.py`)
+## Paint mask (`tools/mask/`, `tools/mask/geometry.py`)
 
 Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
 / `_source` `UV_ISLAND` | `MESH_PART` / `_invert` / `_grow` / `_show`).
@@ -357,14 +395,14 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
 * `mask_geometry` (pure numpy, `tests/test_mask.py`): faces -> islands (edge
   with equal UVs on both sides) or parts (vertex-connected), rasterized by
   pixel center (`grow` pushes the edges out) into sorted flat pixel indices.
-* `mask.refresh()` builds the elements from the active + selected mesh
+* `mask.data.refresh()` builds the elements from the active + selected mesh
   objects (base mesh, the paint UV map). It syncs edit-mode meshes, so it is
   only called from modal code (stroke start, picking, hover; mesh changes
   checked every `CHECK_INTERVAL`); draw callbacks read the cache only.
 * Chosen elements: scene property `pixel_painter_mask_selection` (JSON, one
-  face index per element). `mask.allowed()` = chosen pixels (inverted with
+  face index per element). `mask.data.allowed()` = chosen pixels (inverted with
   *invert*); with no mesh / UVs there is no masking.
-* Enforcement (`tools/mask_guard.py`, `tests/test_mask_guard.py`): `StrokeTool.paint`
+* Enforcement (`tools/mask/guard.py`, `tests/test_mask_guard.py`): `StrokeTool.paint`
   wraps every `on_draw` in `mask_guard.GUARD` (`StrokeMaskGuard`), so every tool is
   masked without knowing about it. (Selection paste is not masked.) The guard copies
   the image once per stroke (protected pixels keep that value for the whole stroke)
@@ -378,18 +416,18 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
   canvas press toggles the element under the cursor, a drag sets the ones it
   passes to the same state; Esc / RMB end it. The pen bar does not remap the
   RMB lock while picking.
-* Overlay: `mask.draw_2d` (red / light red stripes at 15% opacity, a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
-  before tool overlays) and `mask.draw_3d` (POST_VIEW, triangles whose UV
+* Overlay: `mask.overlay.draw_2d` (red / light red stripes at 15% opacity, a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
+  before tool overlays) and `mask.overlay.draw_3d` (POST_VIEW, triangles whose UV
   center is blocked).
 
-## Settings popup (`ui/settings_menu.py`)
+## Settings popup (`ui/panels/settings_popup.py`)
 
 The N-panel / tool header keep only the controls used while painting; options
 that are set once and rarely touched live in the settings popup, a popover
 panel (`IMAGE_PT_pixel_painter_settings`) with a header bar of categories
 (`pixel_painter_settings_tab`, remembered). Open it with
 `image.pixel_painter_open_settings` (optional `tab=`) or the Settings button in
-the N-panel / header; the pen menu has its own version of it (`ui/pen_settings.py`):
+the N-panel / header; the pen menu has its own version of it (`ui/pen/windows/settings.py`):
 a setting added here should be added there too.
 To add a category, add an entry to `SETTINGS_TABS` and a drawer to `_TAB_DRAWERS`.
 
@@ -404,7 +442,7 @@ place as the fallback, so the addon works without the library.
 native/
   PixelPainterNative/   C# project (NativeAOT -> plain native library, no .NET runtime needed)
     Exports.cs          C ABI entry points (pp_*), ApiVersion
-    Blend.cs            blend modes (mirrors tools/draw_blending.py)
+    Blend.cs            blend modes (mirrors paint/blending.py)
     Paint.cs            brush paint, alpha, erase, mask restore
     Filters.cs          smooth (summed-area table), smear
     Stamps.cs           brush footprints: kernel / spray stamps, max-merge, stroke grid
@@ -414,34 +452,34 @@ native/
   runtimes/<rid>/       the built library (committed)
 utils/native.py         ctypes loader + NumPy wrappers, enabled(), status()
 utils/pixel_io.py       image pixel access shared by both backends
-tools/native_paint.py   tool-level fast paths (footprint + paint of a whole draw step)
+paint/native_paths.py   tool-level fast paths (footprint + paint of a whole draw step)
 ```
 
 * **Build**: `powershell -ExecutionPolicy Bypass -File native/build.ps1` (.NET 10
   SDK + MSVC Build Tools on Windows). NativeAOT does not cross-compile between
   operating systems: build Linux / macOS libraries there. Blender keeps the
   library loaded: restart Blender after rebuilding.
-* **Two layers**: the pixel kernels (`draw_functions.write_pixels_to_image`,
-  `set_pixels_alpha`, `draw_tool_smooth.*`, `mask_guard.restore_all`,
-  `selection_ops.blit_region`, `draw_blending.blend_region_pixels`,
-  `mask_geometry.raster_triangles`, Paint Selected Faces) each start with an
+* **Two layers**: the pixel kernels (`paint.pixels.write_pixels_to_image`,
+  `set_pixels_alpha`, `paint.smooth.*`, `mask_guard.restore_all`,
+  `selection.geometry.blit_region`, `paint.blending.blend_region_pixels`,
+  `mask.geometry.raster_triangles`, Paint Selected Faces) each start with an
   `if native.enabled():` branch. On top of that, the stroke tools' `on_draw`
-  build the whole footprint in C# via `tools/native_paint.py` (not in the 3D
+  build the whole footprint in C# via `paint/native_paths.py` (not in the 3D
   Viewport's Edge mode, where `env.expand` maps stamps over seams in Python).
 * **3D Viewport, UV mode**: every stamp is clipped to the UV island under its
-  center (`core/view3d.island_map` / `IslandClip`, set as `env.islands` by
+  center (`core.view3d.islands.island_map` / `IslandClip`, set as `env.islands` by
   `StrokeTool.paint`), so a brush near an island's edge never spills onto
   neighbouring islands or the padding. Python footprints go through
   `env.expand` / `env.clip`; the C# stamps take `env.island_labels(centers)`.
   Edge mode drops texels its unfold does not cover (`expand_footprint`).
 * **3D Viewport, Edge mode filters**: Smooth and Smear read neighbouring
   pixels, so mapping the stamp alone is not enough. `env.edge_patch`
-  (`core/view3d.edge_patch` -> `EdgePatch`) unfolds the surface around each
+  (`core.view3d.patch.edge_patch` -> `EdgePatch`) unfolds the surface around each
   stamp (padded by the blur radius / smear reach), gathers it from the image,
   filters it with a `valid` mask (only on-surface texels are read: `pp_smooth`
-  / `pp_smear` and the `draw_tool_smooth.*_buffer` fallbacks take it) and
-  scatters the result back over the seams (`tools/filters._edge_smooth` /
-  `_edge_smear`). Smear measures its drag direction on the unfolded surface.
+  / `pp_smear` and the `paint.smooth.*_buffer` fallbacks take it) and
+  scatters the result back over the seams (`tools/filters/edge.edge_smooth` /
+  `edge_smear`). Smear measures its drag direction on the unfolded surface.
 * **Same results**: the C# code mirrors the Python math (float32 where NumPy
   uses float32, colorsys in double, Python rounding). `tests/test_native.py`
   runs both paths on the same images; keep it passing when changing either side.

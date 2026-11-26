@@ -2,7 +2,7 @@
 
 Works with one continuous touch: the press that opens it is already on the
 canvas, dragging aims, lifting the pen picks. (The pen's color selector is
-the color pad on the pen bar, see ``ui.pen_bar``.)
+the color pad on the pen bar, see ``ui.pen.bar``.)
 """
 
 import colorsys

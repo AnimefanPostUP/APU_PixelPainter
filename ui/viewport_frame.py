@@ -2,7 +2,7 @@
 region border, with a gap at the top where a small label sits.
 
 Generic -- any mode can show one to say "you are in a special mode" (Mask editing does,
-see ``tools/mask.py``). Call :func:`draw_frame` from a POST_PIXEL overlay of the region.
+see ``tools/mask/``). Call :func:`draw_frame` from a POST_PIXEL overlay of the region.
 """
 
 from .kit import draw

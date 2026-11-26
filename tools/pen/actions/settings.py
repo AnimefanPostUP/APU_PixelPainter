@@ -11,7 +11,7 @@ from ....ui.pen.metrics import LAYOUT_STATE
 class SettingsActions:
     """Part of :class:`.bar.PenBarTool` (a mixin: uses its state)."""
 
-    # ---- settings (the pen settings flyout, ui/pen_settings.py) ----------------------------
+    # ---- settings (the pen settings flyout, ui/pen/windows/settings.py) ----------------------------
 
     def wm_get(self, name, default=None):
         """WindowManager property ``pixel_painter_<name>``."""

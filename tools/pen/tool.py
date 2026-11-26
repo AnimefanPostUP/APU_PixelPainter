@@ -1,5 +1,5 @@
 """Pen bar tool: on-screen controls for pen / tablet painting -- the pen menu and the
-color selector (see :mod:`ui.pen_bar`).
+color selector (see :mod:`ui.pen.bar`).
 
 A global, ``screen_space`` tool: the core offers it every event before its
 cursor-over-image gating, so the bar works anywhere in the editor. Shown
@@ -14,7 +14,7 @@ widgets it
   pending (the brush keeps its color) until the old / new bubble is tapped, and
 * with the RMB lock on, turns pen-tip (left button) presses into right
   button presses, so the pen paints with the secondary color / RMB settings.
-* keeps the optional tertiary color (``tools/tertiary_color.py``): selected, the
+* keeps the optional tertiary color (``model/tertiary_color.py``): selected, the
   pen tip paints with it; the color selector then edits the primary or secondary
   color named by ``pen_color_target`` (tap one of them to switch).
 """
@@ -100,7 +100,7 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
                         'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help',
                         'pen_settings_panel', 'pen_settings_locked', 'pen_library_panel', 'pen_library_locked')
-    # Saved per project (scene property, tools/pen_layout.py): the windows' open / collapsed
+    # Saved per project (scene property, tools/pen/layout.py): the windows' open / collapsed
     # state, position, scale, lock and help.
     layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
                    'pen_color_panel', 'pen_color_locked',
@@ -217,7 +217,7 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
         self.bar.layout(region.width, region.height, side, left, right, Theme.for_context(ctx.context))
         return self.bar
 
-    # ---- actions used by ui.pen_bar.PenBar -------------------------------------------
+    # ---- actions used by ui.pen.bar.PenBar -------------------------------------------
 
     def _c(self):
         return self._ctx if self._ctx is not None else ToolContext(bpy.context, self.manager)

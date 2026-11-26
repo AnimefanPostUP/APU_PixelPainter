@@ -128,7 +128,7 @@ class MovePanel(Panel):
     """Panel whose empty background moves its element when dragged (unless ``locked``).
 
     ``shape(panel, theme)`` (optional) returns the background as shapes fitted to the
-    content (``ui/window_shapes.py``) instead of one rectangle; presses outside them
+    content (``ui/pen/windows/shapes.py``) instead of one rectangle; presses outside them
     fall through."""
 
     interactive = True
@@ -256,7 +256,7 @@ class Window(Widget):
         self.grip.arrange(Rect.from_size(r.x1 - g, r.y0, g, g), theme)
 
     def _place_on_plate(self, plate, theme):
-        """The title plate on top (``content.plate``, see ``ui/pen_windows.py``): the lock
+        """The title plate on top (``content.plate``, see ``ui/pen/windows/``): the lock
         at its left end, the resize triangle in its bottom-right corner, X and '?' left of it."""
         inset = theme.px(CORNER_INSET)
         lw, lh = self.lock.measure(theme)

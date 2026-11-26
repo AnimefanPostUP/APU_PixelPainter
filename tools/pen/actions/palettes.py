@@ -102,7 +102,7 @@ class PaletteActions:
             palette_library.save(lib)
 
     def palette_from_image(self):
-        """Pick an image file; its pixel colors become a new palette (ui/palette_ops.py)."""
+        """Pick an image file; its pixel colors become a new palette (ui/operators/palette.py)."""
         self._run_deferred(lambda: bpy.ops.image.pixel_painter_palette_from_image('INVOKE_DEFAULT'))
 
     # Clipboard.

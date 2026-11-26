@@ -1,4 +1,4 @@
-"""Paint mask operators (settings popup; the pen menu calls tools/mask.py directly).
+"""Paint mask operators (settings popup; the pen menu calls tools/mask/ directly).
 
 * ``image.pixel_painter_mask_pick``: start / stop choosing islands / parts on
   the canvas (needs a running Pixel Painter session; turns the mask on).

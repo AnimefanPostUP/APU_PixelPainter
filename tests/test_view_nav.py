@@ -1,4 +1,4 @@
-"""View window math (tools/view_nav.py): axis views, level / roll / orbit, fitting."""
+"""View window math (tools/pen/view_nav.py): axis views, level / roll / orbit, fitting."""
 
 import importlib.util
 import math

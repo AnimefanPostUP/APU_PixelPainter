@@ -267,7 +267,7 @@ def _static_properties():
             description="Pen menu: drag colors (primary / secondary, history, palette, the old / new bubble) "
                         "onto palette slots or the primary / secondary color",
             default=True, update=_persist),
-        # ---- saving the painted image (pen menu Save button, ui/image_save_ops.py) ----
+        # ---- saving the painted image (pen menu Save button, ui/operators/image_save.py) ----
         'save_image_method': bpy.props.EnumProperty(
             name="Save Method", description="How the pen menu's Save button stores the painted image",
             items=[
@@ -284,7 +284,7 @@ def _static_properties():
             name="Also Save .blend",
             description="Save the .blend file after the image (packed pixels only reach the disk with the .blend)",
             default=False, update=_persist),
-        # ---- paint mask (tools/mask.py) ----
+        # ---- paint mask (tools/mask/) ----
         'mask_enabled': bpy.props.BoolProperty(
             name="Mask", description="Only paint on the chosen UV islands / mesh parts",
             default=False, update=_redraw_mask),

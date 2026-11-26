@@ -14,7 +14,7 @@
   button, *Cancel*. A tap outside it, ESC or right click cancel.
 
 Drag payloads are ``('palette', palette, origin)`` with origin ``('project', i)``
-or ``('library', i)`` (see ``ui.pen_bar.ColorDrag``).
+or ``('library', i)`` (see ``ui.pen.bar.ColorDrag``).
 """
 
 from ...kit import Column, Rect, Row, TextBlock, Widget
@@ -98,7 +98,7 @@ class _DropGroup(PlainGroup):
 # ---- library window ---------------------------------------------------------------------
 
 class PaletteLibrary:
-    """Builds the library flyout (``self.panel``) for a :class:`ui.pen_bar.PenBar`."""
+    """Builds the library flyout (``self.panel``) for a :class:`ui.pen.bar.PenBar`."""
 
     def __init__(self, bar):
         self.bar = bar
@@ -233,7 +233,7 @@ class PaletteLibrary:
         self.bar.confirm([f"Delete “{pal['name']}”", "from the palette library?"], delete, "Delete")
 
     def from_image(self):
-        """File browser; the image's pixel colors become a new project palette (ui/palette_ops.py)."""
+        """File browser; the image's pixel colors become a new project palette (ui/operators/palette.py)."""
         self.status = "Choose an image in the file browser..."
         self.a.palette_from_image()
 

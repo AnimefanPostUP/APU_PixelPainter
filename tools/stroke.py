@@ -50,7 +50,7 @@ class StrokeTool(ToolBase):
         'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
         'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
         'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
-        'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (tools/native_paint.py)
+        'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (paint/native_paths.py)
         'native_stroke_pixels': None,  # C# path: (N, 2) pixels covered by the stroke so far
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
@@ -295,7 +295,7 @@ class StrokeTool(ToolBase):
             return
 
         # Paint mask: protected pixels are put back after the draw step (every tool alike),
-        # only inside the region the step can have written (tools/mask_guard.py).
+        # only inside the region the step can have written (tools/mask/guard.py).
         # The step's writes are uploaded once, after the mask (utils/pixel_io.py).
         with pixel_io.deferred(img):
             allowed = mask_data.allowed(context, img)

@@ -12,7 +12,7 @@ from ...mask import tool as mask_tool
 class MaskActions:
     """Part of :class:`.bar.PenBarTool` (a mixin: uses its state)."""
 
-    # ---- paint mask (tools/mask.py) ---------------------------------------------------
+    # ---- paint mask (tools/mask/) ---------------------------------------------------
 
     def mask_enabled(self):
         return bool(self.wm_get('mask_enabled', False))
@@ -46,7 +46,7 @@ class MaskActions:
         mask_data.clear(self._c().context)
 
     def save_image(self):
-        """Save the painted image (how: settings > Pen > Save Image, ui/image_save_ops.py)."""
+        """Save the painted image (how: settings > Pen > Save Image, ui/operators/image_save.py)."""
         self._run_deferred(lambda: bpy.ops.image.pixel_painter_save_image())
 
     def image_unsaved(self):

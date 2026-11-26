@@ -1,4 +1,4 @@
-"""Tests for the pen menu's tertiary color actions (tools/pen_bar.py): selecting it,
+"""Tests for the pen menu's tertiary color actions (tools/pen/tool.py): selecting it,
 the color the selector edits meanwhile, and leaving it again.
 
 Runs with plain Python (no Blender needed) from the addon root:

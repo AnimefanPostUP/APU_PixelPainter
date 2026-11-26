@@ -33,7 +33,7 @@ class PixelPainterTool3D(WorkSpaceTool):
     """Pixel Painter in the 3D Viewport (Texture Paint mode).
 
     Runs the same modal operator; the hovered pixel comes from ray-casting
-    the active mesh (see core/view3d.py).
+    the active mesh (see core/view3d/).
     """
     bl_space_type   = 'VIEW_3D'
     bl_context_mode = 'PAINT_TEXTURE'

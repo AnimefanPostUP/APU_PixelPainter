@@ -10,7 +10,7 @@ from ....model import color_history, tertiary_color
 class ColorActions:
     """Part of :class:`.bar.PenBarTool` (a mixin: uses its state)."""
 
-    # ---- tertiary color (tools/tertiary_color.py) ---------------------------------------
+    # ---- tertiary color (model/tertiary_color.py) ---------------------------------------
 
     def tertiary_active(self):
         return tertiary_color.active(self._c().state)

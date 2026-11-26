@@ -5,13 +5,13 @@ UI-kit widgets -- usable with a pen, no Blender popup.
 Layout: the row of icon tabs at the top, the tab's name, then the tab's page
 (groups of related controls on soft neutral plates,
 :class:`~.pen_style.PlainGroup`). The look is
-the shared pen style (``ui/pen_style.py``): rounded buttons, one accent color. The tabs
+the shared pen style (``ui/pen/style.py``): rounded buttons, one accent color. The tabs
 and the settings are the ones of the Blender settings popup
 (:mod:`.settings_menu`, still used by the N-panel / tool header) and share its
 remembered tab (``pixel_painter_settings_tab``).
 
 Values are read and written through the pen menu's actions
-(:class:`tools.pen_bar.PenBarTool`: ``wm_get`` / ``wm_set`` / ``wm_toggle_flag``
+(:class:`tools.pen.tool.PenBarTool`: ``wm_get`` / ``wm_set`` / ``wm_toggle_flag``
 / ``wm_range`` for ``pixel_painter_*`` properties).
 """
 
@@ -145,7 +145,7 @@ class _KeyRow(Widget):
 # ---- the flyout -------------------------------------------------------------------------
 
 class SettingsMenu:
-    """Builds the settings flyout panel (``self.panel``) for a :class:`ui.pen_bar.PenBar`."""
+    """Builds the settings flyout panel (``self.panel``) for a :class:`ui.pen.bar.PenBar`."""
 
     def __init__(self, bar):
         self.bar = bar
