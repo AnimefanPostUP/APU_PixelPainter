@@ -50,7 +50,7 @@ class StrokeTool(ToolBase):
         'last_paint_mouse':   None,  # region mouse at the last paint (3D: screen-space interpolation)
         'stroke_painted':     None,  # set of (px,py) painted this stroke (SQUARE / Pixel-mode guard)
         'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
-        'stroke_back_buffer': None,  # pre-stroke image snapshot for CIRCLE/SPRAY Pixel mode
+        'stroke_back_buffer': None,  # pre-stroke snapshot (tools whose uses_stroke_snapshot() is True)
         'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (paint/native_paths.py)
         'native_stroke_pixels': None,  # C# path: (N, 2) pixels covered by the stroke so far
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
@@ -104,8 +104,8 @@ class StrokeTool(ToolBase):
             self.on_cancel(ctx)
         self._buttons.clear()
         self._reset_stroke_state(ctx)
+        history.commit_all()     # before end_stroke: reads the working buffer, not the image
         pixel_io.end_stroke()
-        history.commit_all()
 
     # ---- stroke ------------------------------------------------------------------
 
@@ -119,9 +119,9 @@ class StrokeTool(ToolBase):
         state['outline_immediate'] = True
         img = ctx.image
         if img is not None:
-            history.begin(img)
             if not pixel_io.in_stroke(img):
                 pixel_io.begin_stroke(img)   # working buffer: one image read per stroke
+            history.begin(img)               # copies the working buffer (no second read)
             if self.paints_color:
                 self._record_color(ctx, button)
         self.on_press(ctx)
@@ -153,10 +153,10 @@ class StrokeTool(ToolBase):
             return False
         self.on_release(ctx)
         self._buttons.discard(button)
+        history.commit_all()  # one Blender undo step per stroke (reads the working buffer)
         if not self._buttons:
             pixel_io.end_stroke()
             mask_guard.GUARD.reset()   # drop the stroke's reference copy
-        history.commit_all()  # one Blender undo step per stroke
         self._reset_stroke_state(ctx)
         ctx.redraw()
 

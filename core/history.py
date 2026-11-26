@@ -14,9 +14,13 @@ How it works
 * Blender's Ctrl+Z / Ctrl+Shift+Z restore that ID property. The undo/redo
   handlers see the stamp change and write the matching pixels back:
 
-  - undo  (new stamp is an ancestor): restore the *before* pixels of the
-    oldest undone step, so native brush strokes made in between survive.
-  - redo  (any other change): restore the *after* pixels of the new stamp.
+  - undo  (new stamp is an ancestor): put back the *before* pixels of every
+    undone step, newest first, so native brush strokes made in between survive.
+  - redo  (the old stamp is an ancestor): put back the *after* pixels of every
+    redone step, oldest first.
+
+A step stores only the bounding box of the pixels it changed (before and
+after), not two copies of the whole image.
 
 The stamp - not a step counter - identifies the state, so this stays correct
 when Pixel Painter steps interleave with native brush strokes or other edits,
@@ -42,14 +46,16 @@ STAMP_KEY = "pixel_painter_history"
 class _Step:
     image_key: int
     prev: Optional[str]     # stamp that was current when the step began
-    before: np.ndarray
-    after: np.ndarray
+    size: tuple             # (w, h) of the image
+    region: tuple           # (y0, y1, x0, x1) end-exclusive box of the changed pixels
+    before: np.ndarray      # (y1 - y0, x1 - x0, 4) pixels of the box before the step
+    after: np.ndarray       # ... and after it
 
 
 _session = f"{int(time.time() * 1000):x}"
 _counter = itertools.count(1)
 
-_steps = {}       # stamp -> _Step (insertion ordered = age)
+steps = {}        # stamp -> _Step (insertion ordered = age)
 _applied = {}     # image key -> stamp whose pixels are currently in the buffer
 _pending = {}     # image key -> (image name, pixels before the change)
 
@@ -64,8 +70,26 @@ def _pixels(img):
     return arr
 
 
-def _same(a, b):
-    return a is not None and b is not None and a.shape == b.shape and np.array_equal(a, b)
+def changed_region(before, after, w, h):
+    """``(y0, y1, x0, x1)`` end-exclusive box of the pixels that differ between two
+    flat RGBA buffers of a ``w`` x ``h`` image, or None when nothing changed."""
+    changed = np.any((before != after).reshape(h, w, 4), axis=2)
+    rows = np.flatnonzero(changed.any(axis=1))
+    if len(rows) == 0:
+        return None
+    cols = np.flatnonzero(changed.any(axis=0))
+    return int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+
+
+def make_step(image_key, prev, before, after, w, h):
+    """The :class:`_Step` from ``before`` to ``after`` (flat RGBA), or None (no change)."""
+    region = changed_region(before, after, w, h)
+    if region is None:
+        return None
+    y0, y1, x0, x1 = region
+    box = (slice(y0, y1), slice(x0, x1))
+    return _Step(image_key, prev, (w, h), region,
+                 before.reshape(h, w, 4)[box].copy(), after.reshape(h, w, 4)[box].copy())
 
 
 def _find_image(key, name=None):
@@ -80,17 +104,17 @@ def _find_image(key, name=None):
 
 def _max_steps():
     try:
-        steps = int(bpy.context.preferences.edit.undo_steps)
+        limit = int(bpy.context.preferences.edit.undo_steps)
     except Exception:
-        steps = 32
+        limit = 32
     # Blender cannot undo further back than its own step limit.
-    return max(16, steps + 4)
+    return max(16, limit + 4)
 
 
 def _prune():
     limit = _max_steps()
-    while len(_steps) > limit:
-        _steps.pop(next(iter(_steps)))
+    while len(steps) > limit:
+        steps.pop(next(iter(steps)))
 
 
 def _tag_redraw():
@@ -174,23 +198,47 @@ def _push_undo(message):
         return False
 
 
-def _pixels_for_transition(key, old, new):
-    """Pixels to show after the image's stamp changed from ``old`` to ``new``."""
-    # Undo: walk back from the old stamp; if we reach ``new``, show the state
-    # right before the oldest undone step.
-    stamp = old
+def _chain(key, start, stop):
+    """Steps from stamp ``start`` back to (excluding) stamp ``stop``, newest first, or
+    None when ``stop`` is not an ancestor of ``start`` in the recorded steps."""
+    chain = []
+    stamp = start
     seen = set()
     while stamp and stamp not in seen:
         seen.add(stamp)
-        step = _steps.get(stamp)
+        step = steps.get(stamp)
         if step is None or step.image_key != key:
-            break
-        if step.prev == new:
-            return step.before
+            return None
+        chain.append(step)
+        if step.prev == stop:
+            return chain
         stamp = step.prev
-    # Redo (or unknown history): show the state right after ``new``.
-    step = _steps.get(new) if new else None
-    return step.after if step is not None else None
+    return None
+
+
+def transition(key, old, new):
+    """``[(step, use_after), ...]``: the boxes to write, in order, when the image's stamp
+    changed from ``old`` to ``new``; None when the history does not connect them."""
+    undone = _chain(key, old, new)       # undo: ``new`` is an ancestor of ``old``
+    if undone is not None:
+        return [(step, False) for step in undone]
+    redone = _chain(key, new, old)       # redo: ``old`` is an ancestor of ``new``
+    if redone is not None:
+        return [(step, True) for step in reversed(redone)]
+    step = steps.get(new) if new else None   # unknown history: at least ``new``'s own change
+    return [(step, True)] if step is not None and step.image_key == key else None
+
+
+def apply_transition(buf, w, h, plan):
+    """Write the boxes of ``plan`` (see :func:`transition`) into the flat RGBA ``buf``.
+    False (``buf`` untouched) when a step was recorded at another image size."""
+    if any(step.size != (w, h) for step, _after in plan):
+        return False
+    view = buf.reshape(h, w, 4)
+    for step, use_after in plan:
+        y0, y1, x0, x1 = step.region
+        view[y0:y1, x0:x1] = step.after if use_after else step.before
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +253,7 @@ def begin(img):
     if key in _pending:
         return
     _applied.setdefault(key, img.get(STAMP_KEY))
-    _pending[key] = (img.name, _pixels(img))
+    _pending[key] = (img.name, pixel_io.read(img))   # the stroke's working buffer when one runs
 
 
 def commit(img, message="Pixel Paint", push=True):
@@ -221,21 +269,21 @@ def commit(img, message="Pixel Paint", push=True):
     if pending is None:
         return False
     before = pending[1]
-    after = _pixels(img)
-    if _same(before, after):
-        return False  # nothing changed (e.g. eyedropper click): no empty step
-
+    after = pixel_io.read(img)
+    w, h = img.size
+    if before.shape != after.shape or after.size != w * h * 4:
+        return False  # resized meanwhile: no step to record
     prev = _applied.get(key)
-    prev_step = _steps.get(prev) if prev else None
-    if prev_step is not None and _same(prev_step.after, before):
-        before = prev_step.after  # share memory when nothing happened in between
+    step = make_step(key, prev, before, after, w, h)
+    if step is None:
+        return False  # nothing changed (e.g. eyedropper click): no empty step
 
     stamp = f"{_session}:{next(_counter)}"
     try:
         img[STAMP_KEY] = stamp
     except Exception:
         return False  # linked / read-only image
-    _steps[stamp] = _Step(key, prev, before, after)
+    steps[stamp] = step
     _applied[key] = stamp
     _prune()
     if push:
@@ -259,7 +307,7 @@ def has_pending():
 
 
 def clear():
-    _steps.clear()
+    steps.clear()
     _applied.clear()
     _pending.clear()
 
@@ -285,11 +333,14 @@ def _on_undo_redo_post(*_args):
         old = _applied[key]
         if new == old:
             continue
-        pixels = _pixels_for_transition(key, old, new)
-        if pixels is not None and pixels.size == len(img.pixels):
-            img.pixels.foreach_set(pixels)
-            _refresh_display(img)
-            pixel_io.invalidate()
+        plan = transition(key, old, new)
+        if plan:
+            w, h = img.size
+            pixels = _pixels(img)
+            if pixels.size == w * h * 4 and apply_transition(pixels, w, h, plan):
+                img.pixels.foreach_set(pixels)
+                _refresh_display(img)
+                pixel_io.invalidate()
         _applied[key] = new
 
 
