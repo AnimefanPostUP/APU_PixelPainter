@@ -31,7 +31,9 @@ everything here works with press, drag and release only.
     upper end = linear fade, the lower end = sharp; a swipe moves along two
     fixed straight axes -- a cross through the field's middle -- not along the
     arc; a tap jumps; while pressed the cursor is hidden and kept on the marker;
-    quarter preview discs in its corners, the marker shows the current falloff)
+    quarter preview discs in its corners, the marker is a cross; the current falloff
+    curve is drawn in the field, from the outer line (full strength) toward the inner
+    side; plain gray, only the outer band marks it as selected)
     in the outer ring and the inner ring's outer half; *Custom* (in its own
     color) and *Curve* in the inner ring's inner half.
 
@@ -114,12 +116,13 @@ import math
 
 from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect,
                   CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
-from .kit import draw
+from .kit import anim, draw
 from .kit.events import PRESS, RUNNING
 from .kit.geometry import best_circle, clamp_box, ring_segment_points
-from .kit.theme import with_alpha
+from .kit.theme import mix, with_alpha
 from .kit.widget import _resolve
 from ..tools import blend_modes, color_history, color_palette, falloff
+from ..utils.math_utils import shape_falloff
 
 
 BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
@@ -202,6 +205,9 @@ FIELD_EDGE_MARGIN = 0.5              # the marker's center keeps this much of it
 FIELD_PREVIEW_SCALE = 1.6            # corner preview discs (a quarter shows), relative to a quadrant icon
 FIELD_GUIDE_GRAY = (0.55, 0.55, 0.55)
 FIELD_GUIDE_ALPHA = 0.8
+FIELD_CROSS_ARM = 0.9                # the marker cross: arm length relative to FIELD_MARKER_RADIUS
+FIELD_CURVE_SAMPLES = 32             # points of the falloff curve drawn in the field
+FIELD_CURVE_FILL = (0.30, 0.30, 0.30)   # between the curve and the field's inner edge (field: theme surface)
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
@@ -917,8 +923,10 @@ class FalloffField(RingSegment):
     pressed the OS cursor is hidden (``on_drag_state(True / False)``) and, once swiping,
     kept on the marker (``warp(x, y)``, region px), so the marker is the pointer. Each
     corner shows a quarter of a preview disc (``previews``: ``((hardness, sharpness),
-    icon key)`` listed hard-linear, soft-linear, hard-sharp, soft-sharp), the marker the
-    current falloff (``marker_icon``)."""
+    icon key)`` listed hard-linear, soft-linear, hard-sharp, soft-sharp); the marker is a
+    cross, and the current falloff curve runs through the field (:meth:`curve_points`).
+    The field is plain gray; only the accent band along its outer edge shows that the
+    Shape falloff is selected. (``marker_icon`` is accepted but no longer drawn.)"""
 
     draggable = True
 
@@ -1077,12 +1085,43 @@ class FalloffField(RingSegment):
                     (c[0] + e2[0] * radius, c[1] + e2[1] * radius)]
             self.icons.draw_quad(key, quad, ((0.5, 0.5), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0)), 0.45 * alpha)
 
+    def _fill(self, dc, active=None):
+        """Plain gray (no category tint, no accent while selected: only the outer band
+        marks the selection), lighter while hovered / pressed."""
+        theme = dc.theme
+        t = anim.ease_in_out(self.hover_t) if active is None else active
+        pressed = dc.pressed is self and dc.hot is self
+        base = self.fill or theme.surface
+        return mix(base, theme.surface_pressed if pressed else theme.surface_hover, t * 0.8), t
+
+    def curve_points(self, samples=FIELD_CURVE_SAMPLES):
+        """The current Shape falloff drawn in the field: distance from the brush center
+        along the circle (center at the linear / top end), the weight radially -- 1 on
+        the outer line, 0 at the inner side."""
+        r0, r1, a0, a1 = self._track()
+        h, s = self._current()
+        pts = []
+        for i in range(samples + 1):
+            t = i / samples
+            weight = max(0.0, min(1.0, shape_falloff(t, h, s)))
+            r = r0 + weight * (r1 - r0)
+            a = math.radians(a1 - t * (a1 - a0))
+            pts.append((self.cx + math.cos(a) * r, self.cy + math.sin(a) * r))
+        return pts
+
     def draw_self(self, dc):
         self._theme = theme = dc.theme
         alpha = self.draw_frame(dc, active=1.0 if self.dragging else None)
         inner, _outer = self.points()
         if not inner:
             return
+        # The inner side of the falloff curve (between it and the inner edge): a lighter gray.
+        curve = self.curve_points()
+        base = []
+        for x, y in curve:   # the same angle, on the inner edge
+            k = self.pr0 / max(1e-6, math.hypot(x - self.cx, y - self.cy))
+            base.append((self.cx + (x - self.cx) * k, self.cy + (y - self.cy) * k))
+        draw.ring_segment(base, curve, (*FIELD_CURVE_FILL, alpha))
         if self.icons is not None:
             self._draw_previews(alpha)
         r0, r1, a0, a1 = self._track()
@@ -1093,16 +1132,20 @@ class FalloffField(RingSegment):
         draw.arc(self.cx, self.cy, rm, math.radians(a0), math.radians(a1), guide, width=width)
         draw.polyline([(self.cx + math.cos(am) * r0, self.cy + math.sin(am) * r0),
                        (self.cx + math.cos(am) * r1, self.cy + math.sin(am) * r1)], guide, width)
-        # Marker: the current falloff in a ring (dimmed while another falloff is in use).
         on = bool(_resolve(self.active, False))
+        # The falloff curve: from the outer line (full strength) in toward the inner side.
+        draw.polyline(curve, with_alpha(theme.text, (0.8 if on else 0.45) * alpha),
+                      max(1.0, theme.px(1.5)))
+        # Marker: a cross (dimmed while another falloff is in use); black under white,
+        # readable on the field, the curve and the previews.
         mx, my = self.point_at(*self._current())
-        mr = self._marker_radius()
+        arm = self._marker_radius() * FIELD_CROSS_ARM
         marker_alpha = alpha if on else 0.55 * alpha
-        draw.circle(mx, my, mr, with_alpha(theme.surface_dark, 0.85 * marker_alpha))
-        if self.icons is not None and self.marker_icon:
-            self.icons.draw(self.marker_icon, mx, my, mr * 1.7, marker_alpha)
-        draw.circle_outline(mx, my, mr, with_alpha(theme.accent if on else theme.text, marker_alpha),
-                            width=max(1.0, theme.px(1.5)))
+        lines = ([(mx - arm, my), (mx + arm, my)], [(mx, my - arm), (mx, my + arm)])
+        for w, color in ((3.0, (0.0, 0.0, 0.0, 0.8)),
+                         (1.5, theme.accent_light if on else theme.text)):
+            for line in lines:
+                draw.polyline(line, with_alpha(color, marker_alpha), max(1.0, theme.px(w)))
 
 
 def _paint_curve(dc, x, y, size, alpha):
