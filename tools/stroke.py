@@ -254,6 +254,9 @@ class StrokeTool(ToolBase):
             env.expand_stamp = lambda x, y, pixels, weights: view3d.edge_expand(
                 context, img, x, y, pixels, weights, tile,
                 prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
+            env.edge_patch = lambda x, y, pixels, pad: view3d.edge_patch(
+                context, img, x, y, pixels, pad, tile,
+                prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
 
         # First draw call of a stroke: let the tool prepare its caches.
         if state['last_paint_cx'] is None:

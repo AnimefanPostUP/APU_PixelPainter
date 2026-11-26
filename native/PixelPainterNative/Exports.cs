@@ -19,7 +19,7 @@ namespace PixelPainterNative;
 /// </summary>
 public static unsafe class Exports
 {
-    public const int ApiVersion = 2;
+    public const int ApiVersion = 3;
     private const int Failed = -1000;
 
     [UnmanagedCallersOnly(EntryPoint = "pp_api_version")]
@@ -50,17 +50,17 @@ public static unsafe class Exports
 
     [UnmanagedCallersOnly(EntryPoint = "pp_smooth")]
     public static int SmoothExport(float* buf, int w, int h, int* xy, float* weights, int n,
-                                   int radius, double opacity, int protect)
+                                   int radius, double opacity, int protect, byte* valid)
     {
-        try { return Filters.Smooth(buf, w, h, xy, weights, n, radius, opacity, protect != 0); }
+        try { return Filters.Smooth(buf, w, h, xy, weights, n, radius, opacity, protect != 0, valid); }
         catch { return Failed; }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "pp_smear")]
     public static int SmearExport(float* buf, int w, int h, int* xy, float* weights, int n,
-                                  double dx, double dy, double reach, double opacity, int protect)
+                                  double dx, double dy, double reach, double opacity, int protect, byte* valid)
     {
-        try { return Filters.Smear(buf, w, h, xy, weights, n, dx, dy, reach, opacity, protect != 0); }
+        try { return Filters.Smear(buf, w, h, xy, weights, n, dx, dy, reach, opacity, protect != 0, valid); }
         catch { return Failed; }
     }
 

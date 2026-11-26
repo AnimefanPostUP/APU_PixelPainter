@@ -427,6 +427,14 @@ tools/native_paint.py   tool-level fast paths (footprint + paint of a whole draw
   neighbouring islands or the padding. Python footprints go through
   `env.expand` / `env.clip`; the C# stamps take `env.island_labels(centers)`.
   Edge mode drops texels its unfold does not cover (`expand_footprint`).
+* **3D Viewport, Edge mode filters**: Smooth and Smear read neighbouring
+  pixels, so mapping the stamp alone is not enough. `env.edge_patch`
+  (`core/view3d.edge_patch` -> `EdgePatch`) unfolds the surface around each
+  stamp (padded by the blur radius / smear reach), gathers it from the image,
+  filters it with a `valid` mask (only on-surface texels are read: `pp_smooth`
+  / `pp_smear` and the `draw_tool_smooth.*_buffer` fallbacks take it) and
+  scatters the result back over the seams (`tools/filters._edge_smooth` /
+  `_edge_smear`). Smear measures its drag direction on the unfolded surface.
 * **Same results**: the C# code mirrors the Python math (float32 where NumPy
   uses float32, colorsys in double, Python rounding). `tests/test_native.py`
   runs both paths on the same images; keep it passing when changing either side.

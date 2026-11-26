@@ -60,6 +60,9 @@ class DrawEnvironment:
     # mode, where it carries the stamp over UV seams.
     expand_stamp: Optional[Callable[..., Tuple[list, list]]] = None
     edge_mode: bool = False   # 3D Viewport, Edge mode
+    # Edge mode: (x, y, pixels, pad) -> core.view3d.EdgePatch | None -- the surface
+    # around a stamp unfolded across UV seams, for filters that read neighbours.
+    edge_patch: Optional[Callable[..., object]] = None
     modifier: float = 0.5     # tool modifier (button-specific, pen pressure applied)
     # 3D Viewport, UV mode: core.view3d.IslandClip -- every stamp stays on the
     # UV island under its center (None = no clipping).

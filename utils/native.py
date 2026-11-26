@@ -25,7 +25,7 @@ import tempfile
 import numpy as np
 
 
-API_VERSION = 2   # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
+API_VERSION = 3  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
 
 # Blend mode ids, must match Blend.cs.
@@ -75,8 +75,8 @@ _SIGNATURES = {
     'pp_paint': (_I, (_P, _P, _I, _I, _P, _P, _I, _F, _F, _F, _I, _F, _F, _I)),
     'pp_set_alpha': (_I, (_P, _I, _I, _P, _P, _I, _D, _D, _I)),
     'pp_erase': (_I, (_P, _I, _I, _P, _I, _D)),
-    'pp_smooth': (_I, (_P, _I, _I, _P, _P, _I, _I, _D, _I)),
-    'pp_smear': (_I, (_P, _I, _I, _P, _P, _I, _D, _D, _D, _D, _I)),
+    'pp_smooth': (_I, (_P, _I, _I, _P, _P, _I, _I, _D, _I, _P)),
+    'pp_smear': (_I, (_P, _I, _I, _P, _P, _I, _D, _D, _D, _D, _I, _P)),
     'pp_stamp_kernel': (_I, (_P, _I, _I, _P, _I, _I, _P, _P, _P, _P, _P, _I)),
     'pp_stamp_spray': (_I, (_P, _I, _I, _D, _P, _I, _I, _I, _P, _P, _P, _P, _P, _I)),
     'pp_raster_labels': (_I, (_P, _P, _I, _I, _I, _I, _P)),
@@ -250,23 +250,37 @@ def erase(buf, w, h, xy, opacity):
     return r if _ok(r) else None
 
 
-def smooth(buf, w, h, xy, weights, radius, opacity, protect=False):
+def valid_mask(valid, w, h):
+    """``(w * h,)`` contiguous uint8 array of a readable-pixel mask (None = every pixel)."""
+    if valid is None:
+        return None
+    arr = np.ascontiguousarray(valid, dtype=np.uint8).reshape(-1)
+    if arr.size != w * h:
+        raise ValueError("valid mask must have w * h entries")
+    return arr
+
+
+def smooth(buf, w, h, xy, weights, radius, opacity, protect=False, valid=None):
+    """``valid``: optional per-pixel mask of the pixels the blur may read (Edge mode)."""
     lib = _load()
     _image_buffer(buf, w, h)
     xy = coords(xy)
     wts = weights_array(weights, len(xy))
+    valid = valid_mask(valid, w, h)
     r = lib.pp_smooth(_ptr(buf), w, h, _ptr(xy), _ptr(wts), len(xy),
-                      int(radius), float(opacity), int(bool(protect)))
+                      int(radius), float(opacity), int(bool(protect)), _ptr(valid))
     return r if _ok(r) else None
 
 
-def smear(buf, w, h, xy, weights, dx, dy, reach, opacity, protect=False):
+def smear(buf, w, h, xy, weights, dx, dy, reach, opacity, protect=False, valid=None):
+    """``valid``: optional per-pixel mask of the pixels the smear may pull from (Edge mode)."""
     lib = _load()
     _image_buffer(buf, w, h)
     xy = coords(xy)
     wts = weights_array(weights, len(xy))
+    valid = valid_mask(valid, w, h)
     r = lib.pp_smear(_ptr(buf), w, h, _ptr(xy), _ptr(wts), len(xy),
-                     float(dx), float(dy), float(reach), float(opacity), int(bool(protect)))
+                     float(dx), float(dy), float(reach), float(opacity), int(bool(protect)), _ptr(valid))
     return r if _ok(r) else None
 
 

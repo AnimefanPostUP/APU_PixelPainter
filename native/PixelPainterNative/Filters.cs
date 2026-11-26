@@ -1,7 +1,11 @@
 namespace PixelPainterNative;
 
 /// <summary>Smooth and Smear (tools/draw_tool_smooth.py). Both read the original
-/// image and write the results afterwards, so pixels never see each other's output.</summary>
+/// image and write the results afterwards, so pixels never see each other's output.
+///
+/// <c>valid</c> (optional, one byte per pixel, null = every pixel) marks the pixels a
+/// filter may read from. Edge mode (core/view3d.py, EdgePatch) filters a patch unfolded
+/// across UV seams; texels off the surface are invalid and never sampled.</summary>
 internal static unsafe class Filters
 {
     // Summed-area table limit (cells); 7 doubles per cell -> ~56 MB at the limit.
@@ -35,7 +39,7 @@ internal static unsafe class Filters
     /// <summary>Alpha-weighted box blur of radius <paramref name="radius"/> at each pixel
     /// (plain mean where the box is fully transparent), mixed by opacity * weight.</summary>
     public static int Smooth(float* buf, int w, int h, int* xy, float* weights, int n,
-                             int radius, double opacity, bool protect)
+                             int radius, double opacity, bool protect, byte* valid = null)
     {
         if (n <= 0)
             return 0;
@@ -51,9 +55,9 @@ internal static unsafe class Filters
         var outRgb = new float[m * 3];
 
         if ((long)(bw + 1) * (bh + 1) <= SatMaxCells)
-            SmoothSat(buf, w, xy, weights, sel, m, r, opacity, X0, Y0, X1, Y1, outRgb);
+            SmoothSat(buf, w, xy, weights, valid, sel, m, r, opacity, X0, Y0, X1, Y1, outRgb);
         else
-            SmoothDirect(buf, w, h, xy, weights, sel, m, r, opacity, outRgb);
+            SmoothDirect(buf, w, h, xy, weights, valid, sel, m, r, opacity, outRgb);
 
         for (int j = 0; j < m; j++)
         {
@@ -70,6 +74,12 @@ internal static unsafe class Filters
                             double asum, double sar, double sag, double sab,
                             double sr, double sg, double sb, long count, float[] outRgb, int j)
     {
+        if (count <= 0)
+        {
+            // nothing readable in the box (Edge mode): keep the pixel
+            outRgb[3 * j] = buf[idx]; outRgb[3 * j + 1] = buf[idx + 1]; outRgb[3 * j + 2] = buf[idx + 2];
+            return;
+        }
         float ar, ag, ab;
         if (asum > 1e-6)
         {
@@ -86,12 +96,12 @@ internal static unsafe class Filters
         outRgb[3 * j + 2] = ob + (ab - ob) * f;
     }
 
-    private static void SmoothSat(float* buf, int w, int* xy, float* weights, int[] sel, int m, int r,
-                                  double opacity, int X0, int Y0, int X1, int Y1, float[] outRgb)
+    private static void SmoothSat(float* buf, int w, int* xy, float* weights, byte* valid, int[] sel, int m,
+                                  int r, double opacity, int X0, int Y0, int X1, int Y1, float[] outRgb)
     {
         int bw = X1 - X0 + 1, bh = Y1 - Y0 + 1;
         int sw = bw + 1;
-        const int C = 7;   // a, a*r, a*g, a*b, r, g, b
+        const int C = 8;   // a, a*r, a*g, a*b, r, g, b, count (readable pixels)
         var sat = new double[(long)sw * (bh + 1) * C];
         var row = new double[C];
         for (int y = 0; y < bh; y++)
@@ -102,9 +112,12 @@ internal static unsafe class Filters
             long cur = (long)(y + 1) * sw * C;
             for (int x = 0; x < bw; x++, src += 4)
             {
-                double pr = buf[src], pg = buf[src + 1], pb = buf[src + 2], pa = buf[src + 3];
-                row[0] += pa; row[1] += pa * pr; row[2] += pa * pg; row[3] += pa * pb;
-                row[4] += pr; row[5] += pg; row[6] += pb;
+                if (valid == null || valid[src >> 2] != 0)
+                {
+                    double pr = buf[src], pg = buf[src + 1], pb = buf[src + 2], pa = buf[src + 3];
+                    row[0] += pa; row[1] += pa * pr; row[2] += pa * pg; row[3] += pa * pb;
+                    row[4] += pr; row[5] += pg; row[6] += pb; row[7] += 1;
+                }
                 long o = cur + (x + 1) * C, po = prev + (x + 1) * C;
                 for (int c = 0; c < C; c++)
                     sat[o + c] = sat[po + c] + row[c];
@@ -122,15 +135,14 @@ internal static unsafe class Filters
             long c0 = ((long)y1 * sw + x0) * C, d = ((long)y0 * sw + x0) * C;
             for (int c = 0; c < C; c++)
                 s[c] = sat[a + c] - sat[b + c] - sat[c0 + c] + sat[d + c];
-            long count = (long)(x1 - x0) * (y1 - y0);
             double wt = weights != null ? weights[i] : 1.0;
             Mix(buf, ((long)py * w + px) * 4, wt, opacity, s[0], s[1], s[2], s[3], s[4], s[5], s[6],
-                count, outRgb, j);
+                (long)Math.Round(s[7]), outRgb, j);
         });
     }
 
-    private static void SmoothDirect(float* buf, int w, int h, int* xy, float* weights, int[] sel, int m,
-                                     int r, double opacity, float[] outRgb)
+    private static void SmoothDirect(float* buf, int w, int h, int* xy, float* weights, byte* valid, int[] sel,
+                                     int m, int r, double opacity, float[] outRgb)
     {
         Parallel.For(0, m, j =>
         {
@@ -139,25 +151,31 @@ internal static unsafe class Filters
             int x0 = Math.Max(0, px - r), x1 = Math.Min(w - 1, px + r);
             int y0 = Math.Max(0, py - r), y1 = Math.Min(h - 1, py + r);
             double asum = 0, sar = 0, sag = 0, sab = 0, sr = 0, sg = 0, sb = 0;
+            long count = 0;
             for (int y = y0; y <= y1; y++)
             {
                 long p = ((long)y * w + x0) * 4;
                 for (int x = x0; x <= x1; x++, p += 4)
                 {
+                    if (valid != null && valid[p >> 2] == 0)
+                        continue;
+                    count++;
                     double pr = buf[p], pg = buf[p + 1], pb = buf[p + 2], pa = buf[p + 3];
                     asum += pa; sar += pa * pr; sag += pa * pg; sab += pa * pb;
                     sr += pr; sg += pg; sb += pb;
                 }
             }
-            long count = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
             double wt = weights != null ? weights[i] : 1.0;
             Mix(buf, ((long)py * w + px) * 4, wt, opacity, asum, sar, sag, sab, sr, sg, sb, count, outRgb, j);
         });
     }
 
-    /// <summary>Pull color from (x - dx*reach, y - dy*reach), mixed by opacity * weight.</summary>
+    /// <summary>Pull color from (x - dx*reach, y - dy*reach), mixed by opacity * weight.
+    /// Without <c>valid</c> the source is clamped to the image; with it, a source outside
+    /// the buffer or on an invalid pixel leaves the pixel unchanged.</summary>
     public static int Smear(float* buf, int w, int h, int* xy, float* weights, int n,
-                            double dx, double dy, double reach, double opacity, bool protect)
+                            double dx, double dy, double reach, double opacity, bool protect,
+                            byte* valid = null)
     {
         if (n <= 0)
             return 0;
@@ -172,9 +190,15 @@ internal static unsafe class Filters
             int px = xy[2 * i], py = xy[2 * i + 1];
             int sx = (int)Math.Round(px - dx * reach, MidpointRounding.ToEven);   // Python round()
             int sy = (int)Math.Round(py - dy * reach, MidpointRounding.ToEven);
+            long d = ((long)py * w + px) * 4;
+            if (valid != null && ((uint)sx >= (uint)w || (uint)sy >= (uint)h || valid[(long)sy * w + sx] == 0))
+            {
+                outRgb[3 * j] = buf[d]; outRgb[3 * j + 1] = buf[d + 1]; outRgb[3 * j + 2] = buf[d + 2];
+                continue;
+            }
             sx = Math.Clamp(sx, 0, w - 1);
             sy = Math.Clamp(sy, 0, h - 1);
-            long s = ((long)sy * w + sx) * 4, d = ((long)py * w + px) * 4;
+            long s = ((long)sy * w + sx) * 4;
             double wt = weights != null ? weights[i] : 1.0;
             float f = (float)(opacity * wt);
             outRgb[3 * j] = buf[d] + (buf[s] - buf[d]) * f;

@@ -230,6 +230,64 @@ class KernelParityTest(NativeTestCase):
                 img, pixels, dx, dy, reach, 0.6, pixel_weights=weights), base, w, h)
             self.assertClose(py, cs, msg=f"d=({dx},{dy}) reach={reach}")
 
+    def masked(self, fn, w, h, base, valid):
+        """``fn(buf, valid)`` on copies of ``base``: Python, then C#."""
+        results = []
+        for use_native in (False, True):
+            native.set_override(use_native)
+            buf = base.copy()
+            fn(buf, valid)
+            results.append(buf)
+        native.set_override(None)
+        return results
+
+    def test_smooth_valid_mask(self):
+        for (w, h, radius) in ((30, 25, 3), (1100, 1000, 2)):
+            base = random_image(w, h, 12, transparent=0.2)
+            valid = np.random.default_rng(13).random(w * h) > 0.4
+            valid[:w * 3] = False                      # whole rows unreadable
+            pixels = random_pixels(min(w, 30), min(h, 25), 150, 14)
+            pixels += [(1, 1), (0, 0)]                  # boxes with nothing readable (r=2/3 near row 0..2)
+            weights = [((i * 13) % 10) / 10.0 + 0.05 for i in range(len(pixels))]
+            py, cs = self.masked(lambda buf, v: self.smooth_mod.smooth_buffer(
+                buf, w, h, pixels, radius, 0.8, pixel_weights=weights, valid=v), w, h, base, valid)
+            self.assertClose(py, cs, atol=1e-5, msg=f"{w}x{h}")
+            # all readable == no mask
+            full, _ = self.masked(lambda buf, v: self.smooth_mod.smooth_buffer(
+                buf, w, h, pixels, radius, 0.8, pixel_weights=weights, valid=v), w, h, base,
+                np.ones(w * h, dtype=bool))
+            plain, _ = self.masked(lambda buf, v: self.smooth_mod.smooth_buffer(
+                buf, w, h, pixels, radius, 0.8, pixel_weights=weights), w, h, base, None)
+            self.assertClose(full, plain, atol=1e-5)
+
+    def test_smooth_never_reads_invalid(self):
+        w, h = 12, 12
+        base = np.zeros((h, w, 4), dtype=np.float32)
+        base[..., 0] = 1.0
+        base[..., 3] = 1.0
+        base[:, 6:, :3] = (0.0, 1.0, 0.0)              # right half green, unreadable
+        valid = np.ones((h, w), dtype=bool)
+        valid[:, 6:] = False
+        pixels = [(x, y) for y in range(h) for x in range(3, 6)]
+        for use_native in (False, True):
+            native.set_override(use_native)
+            buf = base.reshape(-1).copy()
+            self.smooth_mod.smooth_buffer(buf, w, h, pixels, 3, 1.0, valid=valid.reshape(-1))
+            np.testing.assert_allclose(buf.reshape(h, w, 4)[:, 3:6, 1], 0.0)
+        native.set_override(None)
+
+    def test_smear_valid_mask(self):
+        w, h = 32, 24
+        base = random_image(w, h, 15)
+        valid = np.random.default_rng(16).random(w * h) > 0.3
+        pixels = random_pixels(w, h, 200, 17, margin=2)
+        weights = [((i * 7) % 10) / 9.0 for i in range(len(pixels))]
+        for (dx, dy, reach) in ((1, 0, 2.5), (-2, 3, 1.5), (0, 0, 4.0), (6, -1, 3.0)):
+            py, cs = self.masked(lambda buf, v: self.smooth_mod.smear_buffer(
+                buf, w, h, pixels, dx, dy, reach, 0.6, pixel_weights=weights, valid=v), w, h,
+                base.copy(), valid)
+            self.assertClose(py, cs, msg=f"d=({dx},{dy}) reach={reach}")
+
 
 class FootprintTest(NativeTestCase):
     def setUp(self):
@@ -547,6 +605,113 @@ class IslandClipTest(NativeTestCase):
             arr, islands = self.paint(self.brushes.SquareBrushTool(), use_native, (10, 20), 0,
                                       [(2, 2)], base)
             self.assertTrue(np.array_equal(arr, base))
+
+
+def seam_strip_mesh():
+    """Two quads side by side in 3D (sharing the edge x = 1), cut apart in UV:
+    A at u, v in 0.1..0.4, B at 0.6..0.9 (same orientation)."""
+    view3d = _mod('core.view3d')
+    verts = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)], dtype=np.float32)
+    tri_verts = np.array([(0, 1, 2), (0, 2, 3), (1, 4, 5), (1, 5, 2)], dtype=np.int32)
+    a = {0: (0.1, 0.1), 1: (0.4, 0.1), 2: (0.4, 0.4), 3: (0.1, 0.4)}
+    b = {1: (0.6, 0.6), 4: (0.9, 0.6), 5: (0.9, 0.9), 2: (0.6, 0.9)}
+    uvs = [a[v] for v in (0, 1, 2, 0, 2, 3)] + [b[v] for v in (1, 4, 5, 1, 5, 2)]
+    uvs = np.array(uvs, dtype=np.float32)
+    tri_loops = np.arange(12, dtype=np.int32).reshape(-1, 3)
+    return view3d._MeshCache('seam-strip', None, tri_verts, tri_loops, verts, uvs, np.ones(4))
+
+
+class EdgeFilterTest(NativeTestCase):
+    """Edge mode: Smooth / Smear read across the UV seam, never the texture margin."""
+    W = H = 40
+    RED, BLUE, GREEN = (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)
+
+    def setUp(self):
+        self.view3d = _mod('core.view3d')
+        self.base_mod = _mod('tools.base')
+        self.filters = _mod('tools.filters')
+        self.cache = seam_strip_mesh()
+        self._orig_cache = self.view3d._mesh_cache
+        self.view3d._mesh_cache = lambda context: self.cache
+
+    def tearDown(self):
+        self.view3d._mesh_cache = self._orig_cache
+        super().tearDown()
+
+    def image(self):
+        """Island A red (texels 4..15), island B blue (24..35), the margin green."""
+        arr = np.zeros((self.H, self.W, 4), dtype=np.float32)
+        arr[..., :3] = self.GREEN
+        arr[..., 3] = 1.0
+        arr[4:16, 4:16, :3] = self.RED
+        arr[24:36, 24:36, :3] = self.BLUE
+        return arr.reshape(-1)
+
+    def draw(self, tool, use_native, step_lists, base, cursor_tris):
+        native.set_override(use_native)
+        img = FakeImage(self.W, self.H, base)
+        state = {'last_paint_cx': None, 'last_paint_cy': None, 'stroke_painted': None}
+        wm = SimpleNamespace(pixel_painter_smooth_falloff='CONSTANT', pixel_painter_smear_falloff='CONSTANT')
+        pixel_io.begin_stroke(img)
+        for i, (steps, tri) in enumerate(zip(step_lists, cursor_tris)):
+            cx, cy = steps[-1]
+            env = self.base_mod.DrawEnvironment(
+                context=None, state=state, img=img, mode=tool.tool_id, color=(0, 0, 0), blend='MIX',
+                opacity=1.0, alpha_opacity=1.0, protect_transparent=False, radius=4, spacing='FREE', wm=wm,
+                cursor_x=cx, cursor_y=cy, interpolation_steps=(lambda s=steps: list(s)),
+                curve_sampler_factory=lambda ctx: None, modifier=1.0)
+            env.edge_mode = True
+            env.expand_stamp = lambda x, y, p, wt, tri=tri, cx=cx, cy=cy: self.view3d.edge_expand(
+                None, img, x, y, p, wt, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
+            env.edge_patch = lambda x, y, p, pad, tri=tri, cx=cx, cy=cy: self.view3d.edge_patch(
+                None, img, x, y, p, pad, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
+            if i == 0:
+                tool.on_stroke_begin(env)
+            with pixel_io.deferred(img):
+                tool.on_draw(env)
+        pixel_io.end_stroke()
+        native.set_override(None)
+        return img.arr.reshape(self.H, self.W, 4).copy()
+
+    def both(self, tool_cls, step_lists, cursor_tris):
+        base = self.image()
+        results = [self.draw(tool_cls(), use_native, step_lists, base, cursor_tris)
+                   for use_native in (False, True)]
+        self.assertClose(results[0], results[1], atol=1e-5, msg=tool_cls.__name__)
+        return base.reshape(self.H, self.W, 4), results[1]
+
+    def test_patch_unfolds_neighbour(self):
+        img = SimpleNamespace(size=(self.W, self.H))
+        pixels = [(x, 10) for x in range(12, 20)]
+        patch = self.view3d.edge_patch(None, img, 15, 10, pixels, 2, (0, 0), prefer_tri=0)
+        self.assertIsNotNone(patch)
+        # texel 17 lies right of A's edge (x = 16): on the surface it is B's texel 25 (row 30)
+        f = patch.flat([(17, 10)])[0]
+        self.assertTrue(patch.valid[f])
+        self.assertEqual(patch.source[f], 30 * self.W + 25)
+        # A's own texel maps to itself
+        f = patch.flat([(14, 10)])[0]
+        self.assertEqual(patch.source[f], 10 * self.W + 14)
+        # B's texel 25 (row 30) sits two texels right of A's 15 on the unfolded surface
+        lx, ly = patch.locate(25, 30)
+        self.assertAlmostEqual(lx + patch.x0, 17.0, places=5)
+        self.assertAlmostEqual(ly + patch.y0, 10.0, places=5)
+
+    def test_smooth_reads_across_seam_not_margin(self):
+        base, out = self.both(self.filters.SmoothTool, [[(15, 10)]], [0])
+        changed = np.any(out != base, axis=2)
+        self.assertTrue(changed.any())
+        np.testing.assert_allclose(out[..., 1], base[..., 1])      # no green pulled in
+        self.assertGreater(out[10, 15, 2], 0.0)                      # A's edge picked up B's blue
+        self.assertGreater(out[30, 24, 0], 0.0)                      # B's edge picked up A's red
+        self.assertFalse(changed[:, 16:24].any())                    # the margin is untouched
+
+    def test_smear_drags_across_seam(self):
+        # drag right along A, then over the seam onto B (texel 15 -> 24, same surface row)
+        base, out = self.both(self.filters.SmearTool, [[(13, 10)], [(15, 10)], [(25, 30)]], [0, 0, 2])
+        np.testing.assert_allclose(out[..., 1], base[..., 1])      # no green pulled in
+        self.assertGreater(out[30, 26, 0], 0.0)                      # red dragged into B
+        self.assertFalse(np.any(out[:, 16:24] != base[:, 16:24]))
 
 
 if __name__ == '__main__':
