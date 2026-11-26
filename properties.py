@@ -154,6 +154,14 @@ def _static_properties():
         'spray_falloff': bpy.props.EnumProperty(
             name="Spray Falloff", items=falloff.enum_items(), default='LINEAR',
             update=_falloff_updater('pixel_painter_spray_falloff')),
+        'falloff_hardness': _factor(
+            "Falloff Hardness", falloff.SHAPE_DEFAULT[0],
+            description="Shape falloff: full strength out to this part of the radius (1 = hard edge)",
+            update=_persist),
+        'falloff_sharpness': _factor(
+            "Falloff Sharpness", falloff.SHAPE_DEFAULT[1],
+            description="Shape falloff: how sharply the fade drops (0 = linear, 1 = sharp)",
+            update=_persist),
         'spray_strength': bpy.props.FloatProperty(
             name="Spray Density",
             description="Fraction of the circle area painted per frame (0 = sparse, 1 = full fill)",
@@ -423,6 +431,7 @@ def reset_tool_settings(wm):
     wm.pixel_painter_spray_falloff = 'LINEAR'
     wm.pixel_painter_smooth_falloff = 'CONSTANT'
     wm.pixel_painter_smear_falloff = 'CONSTANT'
+    wm.pixel_painter_falloff_hardness, wm.pixel_painter_falloff_sharpness = falloff.SHAPE_DEFAULT
     wm.pixel_painter_spray_strength = 0.1
     wm.pixel_painter_spacing = 'FREE'
     wm.pixel_painter_modifier = 0.5

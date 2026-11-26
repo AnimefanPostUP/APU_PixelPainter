@@ -57,7 +57,9 @@ USAGE = (
     "Pickers (beside each color): arm one, then tap the canvas",
     "Mix (top-left corner): tap to paint with the mix",
     "Blend: press, drag onto an entry, lift",
-    "Curve (beside Custom): edit / draw the falloff",
+    "Falloff field (beside Redo): swipe; in = hard, out = soft,",
+    "  top = linear, bottom = sharp; a tap jumps",
+    "Curve (beside Custom): edit / draw / load presets",
     "RMB: the pen paints the secondary color",
     "Save (top right): saves the image; dot = unsaved",
     "Mask (top right): opens the paint mask window",
@@ -439,7 +441,7 @@ class SettingsMenu:
                             selected=lambda pr=prop, pid=p.id: a.wm_get(pr) == pid,
                             on_click=lambda pr=prop, pid=p.id: a.wm_set(pr, pid))
                      for p in presets]
-            rows.append(Row([head, Grid(cells, columns=6, gap=3.0)], gap=12.0))
+            rows.append(Row([head, Grid(cells, columns=7, gap=3.0)], gap=12.0))
         per_tool = Column(rows + [self._hint(("Left: the tool (tap selects it); right: its falloff.",))], gap=5.0)
         edit = IconButton("Edit Custom Curve", painter=_paint_curve, layout='row', size=(200.0, 30.0),
                           key='SET_EDIT_CURVE')

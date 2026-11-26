@@ -25,10 +25,12 @@ everything here works with press, drag and release only.
   - bottom left: *Blend* (inner ring, opens the flyout; shows the mode),
     *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing),
     *RMB* (the pen tip paints like the right mouse button);
-  - bottom right: *Undo* / *Redo* arrows (inner ring), the falloff presets
-    (outer ring, continued in a second row along the circle in the corner;
-    hard to soft to sharp from the top, then the special shapes); *Custom*
-    in its own color.
+  - bottom right: *Undo* / *Redo* arrows (inner ring); outside them, through
+    the outer ring and on into the corner, the falloff: beside Redo the
+    *falloff field* (the Shape falloff, swiped like the color selector: toward
+    the center = hard, outward = soft; top = linear fade, bottom = sharp; a tap
+    jumps; preview discs in its four quadrants, the marker shows the current
+    falloff), beside Undo *Custom* (in its own color) and *Curve*.
 
   The corners of the square around the circle are buttons shaped to fit
   between the circle and the square (icons). Top left the color section: the
@@ -43,9 +45,8 @@ everything here works with press, drag and release only.
   *Palettes* (switches the band between the active palette's colors and the
   project's 24 palettes), *Color* (hue ring around the pen's color: shows /
   hides the color selector) and *Library* (the palette library window);
-  bottom right, past the second falloff row, the *curve* button behind the
-  Custom falloff (opens the curve flyout, selects Custom) and *Settings*
-  (gear: the settings popup); top right a small *Save* at the right side
+  bottom right, past the falloff controls, *Settings* (gear: the settings
+  popup); top right a small *Save* at the right side
   (saves / packs the painted image as set in settings > Pen > Save Image; a
   green dot while it has unsaved changes) and the paint mask up to the top
   edge: *UV / Mesh* (islands or parts), *Mask* (on / off), *Invert* and
@@ -67,7 +68,9 @@ everything here works with press, drag and release only.
 * **Curve flyout**: the custom falloff curve (the brush's falloff curve; x =
   distance from the center, y = weight). *Move*: drag anchors, drag one out of
   the box to remove it; *Add*: a tap adds an anchor; *Draw*: draw the falloff
-  freehand, it becomes anchors on release; *Reset*: a smooth fade.
+  freehand, it becomes anchors on release; *Reset*: a smooth fade. The
+  preset buttons load the falloffs the field does not cover (Smooth, Sphere,
+  Root, Plateau, Stepped, Ring, Inverted) into the curve.
 * **Size knob**: press and drag up / down; the value changes relative to
   where the drag started. A readout -- for Size with a preview of the brush
   footprint -- shows beside the menu while a knob or slider is dragged. Pens
@@ -95,7 +98,7 @@ layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
 import colorsys
 import math
 
-from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Label, Overlay, Panel, Rect,
+from .kit import (Button, ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect,
                   CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
 from .kit import draw
 from .kit.events import PRESS, RUNNING
@@ -163,11 +166,10 @@ TINT_HISTORY = (0.95, 0.40, 0.45)
 TINT_FALLOFF = (0.30, 0.85, 0.72)
 TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
 CUSTOM_TINT_AMOUNT = 0.45
-# Falloff presets, both rows listed from the bottom (270 degrees) up; read from the
-# top they go hard -> soft -> sharp (outer ring, then the band), then the special shapes.
-# Custom sits near the diagonal, in front of its curve button.
-FALLOFF_RING_ORDER = ('LINEAR', 'SMOOTH', 'ROOT', 'SPHERE', 'PLATEAU', 'CONSTANT')
-FALLOFF_BAND_ORDER = ('INVERTED', 'RING', 'CUSTOM', 'STEPPED', 'SPIKE', 'SHARPEN')
+# Falloff (bottom right, outside Undo / Redo): through the outer ring and the corner band
+# (out to FALLOFF_OUTER). The Shape field beside Redo; Curve | Custom beside Undo.
+FALLOFF_FIELD_ARC = (322.5, 375.0)
+FALLOFF_CUSTOM_ARC = (270.0, 322.5)
 # Corner buttons: between the dial's circle and its enclosing square (angles as above).
 CORNER_INNER = OUTER_RING[1] + CORNER_GAP
 CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
@@ -185,9 +187,10 @@ PALETTE_BUTTON_ARC = (200.0, 250.0)
 PALETTE_BUTTON_WEIGHTS = (1.2, 1.0, 1.2)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
-FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the second falloff row (bottom right), as deep as the palette
-FALLOFF_CORNER_INNER = CORNER_INNER + FALLOFF_BAND_DEPTH + DIAL_GAP
-CURVE_SETTINGS_ARC = (295.0, 335.0)  # bottom right past the band: Curve | Settings, around the diagonal
+FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the falloff controls reach this far into the corner (as the palette)
+FALLOFF_OUTER = CORNER_INNER + FALLOFF_BAND_DEPTH
+FALLOFF_CORNER_INNER = FALLOFF_OUTER + DIAL_GAP
+SETTINGS_ARC = (295.0, 335.0)        # bottom right past the falloff controls: Settings, around the diagonal
 # Top right, past the S / A / M sliders (the X sits in the cut corner): a small Save at the
 # right side, the pixel grid (opacity %), then the Mask and View windows' buttons up to the top.
 SAVE_ARC = (15.0, 28.0)
@@ -203,6 +206,9 @@ MASK_PICK_HINT = "Tap islands / parts to toggle them (Pick again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
 CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
+FALLOFF_PREVIEW_SIZE = 56.0          # the falloff disc beside the readout while the field is dragged
+CURVE_PRESET_SIZE = (52.0, 40.0)     # the curve flyout's preset buttons (icon + label)
+CURVE_PRESET_COLUMNS = 4
 CURVE_HINTS = {'MOVE': "Drag anchors; drag out of the box: remove",
                'ADD': "Tap to add an anchor (keep the pen down to place it)",
                'DRAW': "Draw the falloff: center left, edge right"}
@@ -606,6 +612,149 @@ class _GridCorner(CornerSegment):
         color = theme.text if on else theme.text_muted
         draw.text_centered(f"{int(round(value * 100.0))}%", x, y, min(theme.px(10.0), size * 0.42),
                            with_alpha(color, (1.0 if on else 0.7) * alpha), theme.font_id)
+
+
+class FalloffField(RingSegment):
+    """The Shape falloff as a 2D field (a pie segment), swiped like the color selector.
+
+    Radially (relative to the menu's center) it runs from hard (inner edge: full strength
+    out to the brush edge) to soft (outer edge); along the circle from linear (top) to
+    sharp (bottom). ``value()`` / ``on_value(hardness, sharpness)`` read / set the two
+    values (setting them selects the Shape falloff); ``active()``: Shape is in use.
+
+    A drag moves the marker by the pointer's motion (``gain``), not under the pen; a tap
+    jumps to the tapped spot; ESC / RMB restore the values from before the drag. The
+    quadrants show preview discs (``previews``: ``((hardness, sharpness), icon key)``),
+    the marker the current falloff (``marker_icon``)."""
+
+    draggable = True
+
+    def __init__(self, label="", *, value, on_value, active, previews=(), marker_icon=None,
+                 gain=0.5, **kwargs):
+        super().__init__(label, selected=active, **kwargs)
+        self.value = value
+        self.on_value = on_value
+        self.active = active
+        self.previews = tuple(previews)
+        self.marker_icon = marker_icon
+        self.gain = gain
+        self.dragging = False
+        self._drag = None
+        self._theme = None
+
+    # ---- field coordinates ---------------------------------------------------------
+
+    def _track(self):
+        """Screen radii of the hard (0) and soft (1) ends; angles (degrees) of the sharp
+        (bottom) and linear (top) ends -- the drawn area minus a margin for the marker."""
+        margin = self._marker_radius() + min(self.insets)
+        r0, r1 = self.pr0 + margin, max(self.pr0 + margin + 1.0, self.pr1 - margin)
+        mid = max(1.0, (self.pr0 + self.pr1) * 0.5)
+        pad = [math.degrees(min(1.0, (inset + self._marker_radius()) / mid)) for inset in self.insets]
+        a0, a1 = self.a0 + pad[0], self.a1 - pad[1]
+        if a1 <= a0:
+            a0 = a1 = (self.a0 + self.a1) * 0.5
+        return r0, r1, a0, a1
+
+    def _marker_radius(self):
+        theme = self._theme
+        return theme.px(9.0) if theme is not None else 9.0
+
+    def _polar(self, x, y):
+        """``(radius, angle in degrees)`` of a screen point, the angle unwrapped around the field."""
+        r = math.hypot(x - self.cx, y - self.cy)
+        a = math.degrees(math.atan2(y - self.cy, x - self.cx))
+        mid = (self.a0 + self.a1) * 0.5
+        a = mid + (a - mid + 180.0) % 360.0 - 180.0
+        return r, a
+
+    def field_at(self, x, y):
+        """``(hardness, sharpness)`` of a screen point, unclamped."""
+        r0, r1, a0, a1 = self._track()
+        r, a = self._polar(x, y)
+        hardness = 1.0 - (r - r0) / max(1e-6, r1 - r0)
+        sharpness = (a1 - a) / max(1e-6, a1 - a0)
+        return hardness, sharpness
+
+    def point_at(self, hardness, sharpness):
+        """Screen point of field values."""
+        r0, r1, a0, a1 = self._track()
+        r = r0 + (1.0 - hardness) * (r1 - r0)
+        a = math.radians(a1 - sharpness * (a1 - a0))
+        return self.cx + math.cos(a) * r, self.cy + math.sin(a) * r
+
+    def _current(self):
+        value = _resolve(self.value, None) or (0.0, 0.0)
+        return float(value[0]), float(value[1])
+
+    # ---- drag ----------------------------------------------------------------------
+
+    def drag_begin(self, x, y):
+        start = self._current()
+        self._drag = {'start': start, 'value': start, 'last': (x, y), 'travel': 0.0}
+        self.dragging = True
+
+    def drag_update(self, x, y):
+        drag = self._drag
+        if drag is None:
+            return
+        lx, ly = drag['last']
+        drag['last'] = (x, y)
+        drag['travel'] += math.hypot(x - lx, y - ly)
+        tap = self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
+        if drag['travel'] < tap:
+            return    # might still be a tap
+        h0, s0 = self.field_at(lx, ly)
+        h1, s1 = self.field_at(x, y)
+        h, s = drag['value']
+        drag['value'] = (max(0.0, min(1.0, h + (h1 - h0) * self.gain)),
+                         max(0.0, min(1.0, s + (s1 - s0) * self.gain)))
+        self.on_value(*drag['value'])
+
+    def drag_end(self, x, y, cancelled=False):
+        drag, self._drag = self._drag, None
+        self.dragging = False
+        if drag is None:
+            return
+        tap = self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
+        if cancelled:
+            if drag['travel'] >= tap:
+                self.on_value(*drag['start'])
+        elif drag['travel'] < tap and x is not None:
+            h, s = self.field_at(x, y)
+            self.on_value(max(0.0, min(1.0, h)), max(0.0, min(1.0, s)))
+
+    # ---- drawing -------------------------------------------------------------------
+
+    def draw_self(self, dc):
+        self._theme = theme = dc.theme
+        alpha = self.draw_frame(dc, active=1.0 if self.dragging else None)
+        inner, _outer = self.points()
+        if not inner:
+            return
+        r0, r1, a0, a1 = self._track()
+        guide = with_alpha(theme.text_muted, 0.35 * alpha)
+        width = max(1.0, theme.px(1.0))
+        # 2 x 2: the middle along the circle and across it.
+        rm, am = (r0 + r1) * 0.5, math.radians((a0 + a1) * 0.5)
+        draw.arc(self.cx, self.cy, rm, math.radians(a0), math.radians(a1), guide, width=width)
+        draw.polyline([(self.cx + math.cos(am) * r0, self.cy + math.sin(am) * r0),
+                       (self.cx + math.cos(am) * r1, self.cy + math.sin(am) * r1)], guide, width)
+        cell = min((r1 - r0) * 0.5, rm * math.radians(a1 - a0) * 0.5)
+        if self.icons is not None:
+            for (h, s), key in self.previews:
+                px, py = self.point_at(h, s)
+                self.icons.draw(key, px, py, cell * 0.62, 0.35 * alpha)
+        # Marker: the current falloff in a ring (dimmed while another falloff is in use).
+        on = bool(_resolve(self.active, False))
+        mx, my = self.point_at(*self._current())
+        mr = self._marker_radius()
+        marker_alpha = alpha if on else 0.55 * alpha
+        draw.circle(mx, my, mr, with_alpha(theme.surface_dark, 0.85 * marker_alpha))
+        if self.icons is not None and self.marker_icon:
+            self.icons.draw(self.marker_icon, mx, my, mr * 1.7, marker_alpha)
+        draw.circle_outline(mx, my, mr, with_alpha(theme.accent if on else theme.text, marker_alpha),
+                            width=max(1.0, theme.px(1.5)))
 
 
 def _paint_curve(dc, x, y, size, alpha):
@@ -1204,19 +1353,25 @@ class PenBar:
             RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
             RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
         ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
-        # Falloff presets: the outer ring, then a band along the circle in the corner
-        # (both from the bottom up); Custom in its own color.
-        def falloff_button(preset):
-            return RingSegment(preset.label, key=f"FALLOFF_{preset.id}", icon=preset.icon_key, icons=self.icons,
-                               font_size=8.0, selected=lambda p=preset.id: a.active_falloff() == p,
-                               on_click=lambda p=preset.id: a.set_falloff(p))
-        ring = [falloff_button(falloff.get(i)) for i in FALLOFF_RING_ORDER]
-        band = [falloff_button(falloff.get(i)) for i in FALLOFF_BAND_ORDER]
-        self.falloff_buttons = ring + band
-        custom = self.falloff_buttons[(FALLOFF_RING_ORDER + FALLOFF_BAND_ORDER).index('CUSTOM')]
-        custom.tint, custom.tint_amount = TINT_CUSTOM, CUSTOM_TINT_AMOUNT
-        dial.add_arc(ring, *OUTER_RING, *HISTORY_ARC, tint=TINT_FALLOFF)
-        dial.add_band(band, CORNER_INNER, CORNER_INNER + FALLOFF_BAND_DEPTH, *HISTORY_ARC, tint=TINT_FALLOFF)
+        # Falloff, through the outer ring and the corner band: the Shape field beside Redo,
+        # Custom and its Curve button beside Undo (Custom in its own color).
+        from .falloff_icons import SHAPE_PREVIEWS, shape_preview_key
+        self.falloff_field = FalloffField(
+            "Falloff", key='FALLOFF_FIELD', icons=self.icons, value=a.falloff_shape,
+            on_value=a.set_falloff_shape, active=lambda: a.active_falloff() == 'SHAPE',
+            previews=[(hs, shape_preview_key(*hs)) for hs in SHAPE_PREVIEWS],
+            marker_icon=falloff.get('SHAPE').icon_key)
+        dial.add_band([self.falloff_field], OUTER_RING[0], FALLOFF_OUTER, *FALLOFF_FIELD_ARC, tint=TINT_FALLOFF)
+        custom_preset = falloff.get('CUSTOM')
+        custom = RingSegment(custom_preset.label, key='FALLOFF_CUSTOM', icon=custom_preset.icon_key,
+                             icons=self.icons, font_size=8.0, tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
+                             selected=lambda: a.active_falloff() == 'CUSTOM',
+                             on_click=lambda: a.set_falloff('CUSTOM'))
+        curve = RingSegment("Curve", key='CURVE', painter=_paint_curve,
+                            tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
+                            selected=lambda: self.flyout is self.curve_flyout,
+                            on_click=lambda: self._open_curve(curve))
+        dial.add_band([curve, custom], OUTER_RING[0], FALLOFF_OUTER, *FALLOFF_CUSTOM_ARC, tint=TINT_FALLOFF)
         self._add_corners(dial)
         return dial
 
@@ -1274,16 +1429,11 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # Past the second falloff row, around the diagonal: the curve button (behind
-        # the Custom falloff) and Settings.
-        curve = CornerSegment("Curve", key='CURVE', painter=_paint_curve,
-                              tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
-                              selected=lambda: self.flyout is self.curve_flyout,
-                              on_click=lambda: self._open_curve(curve))
+        # Past the falloff controls, around the diagonal: Settings.
         settings = CornerSegment("Settings", key='SETTINGS', painter=_paint_gear,
                                  selected=lambda: self.flyout is self.settings_flyout,
                                  on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
-        dial.add_corner([curve, settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *CURVE_SETTINGS_ARC, **corner)
+        dial.add_corner([settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *SETTINGS_ARC, **corner)
 
         # Top right, past the S / A / M sliders: a small Save at the right side, the grid
         # (tap: on / off, drag: opacity), then the Mask and View windows' buttons.
@@ -1396,7 +1546,13 @@ class PenBar:
         buttons = [mode_button(mode, label) for mode, label in CURVE_MODES]
         buttons.append(Button("Reset", key='CURVE_RESET', size=(52.0, 26.0), on_click=a.reset_custom_curve))
         hint = _HintLabel(lambda: CURVE_HINTS.get(self.curve_mode, ""), size=9.0)
-        return Panel(Column([self.curve_editor, Row(buttons, gap=4.0), hint], gap=6.0),
+        # Presets: the falloffs the Shape field does not cover, loaded into the curve.
+        presets = [Button(label, key=f"CURVE_PRESET_{pid}", icon=falloff.get(pid).icon_key, icons=self.icons,
+                          size=CURVE_PRESET_SIZE, on_click=lambda p=pid: a.load_curve_preset(p))
+                   for pid, label, _points in falloff.CURVE_PRESETS]
+        return Panel(Column([self.curve_editor, Row(buttons, gap=4.0), hint,
+                             Label("Load a preset", size=9.0),
+                             Grid(presets, columns=CURVE_PRESET_COLUMNS, gap=4.0)], gap=6.0),
                      title="Custom Falloff", padding=8.0)
 
     def _flyout_action(self, fn):
@@ -1769,6 +1925,10 @@ class PenBar:
             self._pill(f"Scale  {self._scale(name) * 100:.0f}%", window.rect, window.grip.rect.cy, 14.0,
                        theme.accent)
             return
+        field = getattr(self, 'falloff_field', None)
+        if field is not None and field.dragging:
+            self._draw_falloff_readout(field)
+            return
         if self._drag is None:
             return
         channel = self._drag[0]
@@ -1783,6 +1943,18 @@ class PenBar:
         box = self._pill(text, self.menu.rect, knob.rect.cy, 16.0, theme.accent)
         if channel == 'size':
             self._draw_size_preview(box, value)
+
+    def _draw_falloff_readout(self, field):
+        """Hardness / sharpness beside the menu, and the falloff as a large disc beyond it."""
+        theme = self.overlay.theme
+        hardness, sharpness = field._current()
+        box = self._pill(f"Hard {hardness * 100:.0f}%   Sharp {sharpness * 100:.0f}%", self.menu.rect,
+                         field.rect.cy, 14.0, theme.accent)
+        size = theme.px(FALLOFF_PREVIEW_SIZE)
+        gap = theme.px(FLYOUT_GAP)
+        cx = box.x1 + gap + size * 0.5 if box.cx > self.menu.rect.cx else box.x0 - gap - size * 0.5
+        draw.circle(cx, box.cy, size * 0.5 + theme.px(3.0), theme.surface_dark)
+        self.icons.draw(falloff.get('SHAPE').icon_key, cx, box.cy, size, 1.0)
 
     def _draw_size_preview(self, box, radius):
         """The brush footprint at the current zoom, next to the readout (away from the menu)."""

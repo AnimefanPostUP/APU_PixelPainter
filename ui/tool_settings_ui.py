@@ -60,6 +60,10 @@ def draw_falloff_section(layout, context, prop_name):
     else:
         layout.label(text="Falloff")
         _draw_falloff_preset_buttons(layout, wm, prop_name)
+        if getattr(wm, prop_name) == 'SHAPE':
+            col = layout.column(align=True)
+            col.prop(wm, falloff.SHAPE_HARDNESS_PROPERTY, text="Hardness", slider=True)
+            col.prop(wm, falloff.SHAPE_SHARPNESS_PROPERTY, text="Sharpness", slider=True)
 
 
 def _in_tool_header(context):

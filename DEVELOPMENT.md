@@ -22,7 +22,7 @@ tools/
   selection_ops.py     selection box geometry and pixel-region operations
   subtools/            color_pick (E), strength (Shift+E), eyedropper (hold Ctrl),
                        tool_switch (hold Alt -> Line, hold Shift -> Smooth/Eraser, Shift+1..9)
-  falloff.py           falloff presets (enum, curve preset, icon keys)
+  falloff.py           falloff presets (enum, curve preset, icon keys), Shape field keys, curve presets
   blend_modes.py       blend modes (enum, groups, favorites)
   draw_*.py, overlays*.py  pixel writing and canvas overlays
 ui/
@@ -200,8 +200,8 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
   the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
   S / A / M radial sliders top right, the tools top left (two rings), Blend /
-  Alphalock / Pixel-Free / RMB bottom left, Undo / Redo and the falloff presets
-  bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
+  Alphalock / Pixel-Free / RMB bottom left, Undo / Redo and the falloff
+  controls bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
   extreme corners cut for the lock / X / resize triangle, except top left): top
@@ -227,12 +227,25 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `('color' | 'palette', value, origin)`; a short press stays a tap; targets
   define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
   take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
-  palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu); the falloff presets continue
-  in a second row along the circle bottom right (`FALLOFF_RING_ORDER` /
-  `FALLOFF_BAND_ORDER`); past it, around the diagonal, the custom curve button
-  (behind the Custom falloff) and Settings. The curve button
+  palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu). The
+  falloff controls fill the outer ring and the corner band bottom right (out to
+  `FALLOFF_OUTER`): beside Redo the falloff field (`FalloffField`,
+  `FALLOFF_FIELD_ARC`), beside Undo Curve | Custom (`FALLOFF_CUSTOM_ARC`); past
+  them, around the diagonal, Settings (`SETTINGS_ARC`). The field sets the
+  *Shape* falloff (`falloff.SHAPE_*`, `math_utils.shape_falloff`): global
+  `pixel_painter_falloff_hardness` (radial: inner edge = 1 = constant, outer = 0)
+  and `_sharpness` (along the circle: top = 0 = linear fade, bottom = 1 =
+  `(1 - u) ** SHAPE_MAX_POWER`); touching it selects Shape for the active tool.
+  `DrawEnvironment.falloff` turns Shape into the hashable key
+  `('SHAPE', hardness, sharpness)` (rounded to `SHAPE_DECIMALS`), so the C#
+  kernel cache keys on the values. It is swiped like the color selector
+  (relative, `gain` 0.5; a tap jumps; ESC restores) and shows a readout plus a
+  preview disc while dragged. The curve button
   opens a flyout with a `kit.CurveEditor` on the brush's falloff curve
-  (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`).
+  (`PenBarTool.set_custom_curve_points`; Reset: `falloff.CUSTOM_DEFAULT_POINTS`)
+  and preset buttons (`falloff.CURVE_PRESETS`: the falloffs the field does not
+  cover, as anchors with handle types; `PenBarTool.load_curve_preset`). Anchors
+  that stay in place keep their handle type while others are edited.
   The Settings gear opens the settings flyout (`ui/pen_settings.py`): icon tabs
   and the tab's page of `kit.Group`s (one tint per tab), the same settings and
   remembered tab as the Blender settings popup, read / written through

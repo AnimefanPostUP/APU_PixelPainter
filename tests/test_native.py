@@ -95,7 +95,7 @@ math_utils = _mod('utils.math_utils')
 
 BLENDS = list(native.BLEND_IDS)
 FALLOFFS = ('CONSTANT', 'LINEAR', 'SMOOTH', 'SPHERE', 'SHARPEN', 'PLATEAU', 'ROOT', 'SPIKE',
-            'STEPPED', 'RING', 'INVERTED')
+            'STEPPED', 'RING', 'INVERTED', ('SHAPE', 0.4, 0.6), ('SHAPE', 0.0, 1.0), ('SHAPE', 1.0, 0.0))
 
 
 class FakePixels:

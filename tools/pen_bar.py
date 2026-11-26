@@ -607,8 +607,11 @@ class PenBarTool(ToolFrame):
             return []
 
     def set_custom_curve_points(self, points):
-        """Replace the curve's anchors (at least 2, sorted by x; auto handles)."""
-        points = sorted(points)
+        """Replace the curve's anchors (at least 2, sorted by x): ``(x, y)`` or ``(x, y,
+        handle_type)``. An ``(x, y)`` anchor at an existing anchor's spot keeps its handle
+        type (e.g. a preset's sharp corners while other anchors are edited); new ones get
+        auto handles."""
+        points = sorted(tuple(p) for p in points)
         if len(points) < 2:
             return
         try:
@@ -616,13 +619,16 @@ class PenBarTool(ToolFrame):
             if curve is None:
                 return
             pts = curve.points
+            kept = {(round(p.location[0], 4), round(p.location[1], 4)): p.handle_type for p in pts}
+            handles = [p[2] if len(p) > 2 else kept.get((round(p[0], 4), round(p[1], 4)), 'AUTO')
+                       for p in points]
             while len(pts) > len(points):
                 pts.remove(pts[len(pts) - 1])
             while len(pts) < len(points):
                 pts.new(0.5, 0.5)
-            for point, (x, y) in zip(pts, points):
-                point.location = (x, y)
-                point.handle_type = 'AUTO'
+            for point, p, handle in zip(pts, points, handles):
+                point.location = (p[0], p[1])
+                point.handle_type = handle
             mapping.update()
         except Exception:
             traceback.print_exc()
@@ -630,6 +636,31 @@ class PenBarTool(ToolFrame):
 
     def reset_custom_curve(self):
         self.set_custom_curve_points(falloff.CUSTOM_DEFAULT_POINTS)
+
+    def load_curve_preset(self, preset_id):
+        """Load one of ``falloff.CURVE_PRESETS`` into the custom curve (selects Custom)."""
+        points = falloff.curve_preset_points(preset_id)
+        if points:
+            self.set_custom_curve_points(points)
+
+    # ---- Shape falloff (the pen menu's falloff field) ------------------------------------
+
+    def falloff_shape(self):
+        """``(hardness, sharpness)`` of the Shape falloff."""
+        try:
+            return falloff.shape_values(self._c().wm)
+        except Exception:
+            return falloff.SHAPE_DEFAULT
+
+    def set_falloff_shape(self, hardness, sharpness):
+        """Set the Shape falloff's values and use it for the active tool."""
+        _key, hardness, sharpness = falloff.shape_key(hardness, sharpness)
+        ctx = self._c()
+        if falloff.shape_values(ctx.wm) != (hardness, sharpness):
+            setattr(ctx.wm, falloff.SHAPE_HARDNESS_PROPERTY, hardness)
+            setattr(ctx.wm, falloff.SHAPE_SHARPNESS_PROPERTY, sharpness)
+        if self.active_falloff() != 'SHAPE':
+            self.set_falloff('SHAPE')
 
     def use_custom_falloff(self):
         """Editing the curve selects the Custom falloff (so the edit shows)."""

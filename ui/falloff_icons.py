@@ -2,7 +2,9 @@
 
 Each preset gets a :class:`FalloffIcon` generator for :class:`kit.icons.IconSet`.
 The 'Custom' icon samples the active brush curve, so its signature changes
-(and the icon re-renders) whenever the curve is edited.
+(and the icon re-renders) whenever the curve is edited; the 'Shape' icon follows
+the falloff field's hardness / sharpness. :func:`shape_preview_key` icons show a
+fixed Shape (the field's quadrant previews).
 """
 
 import math
@@ -21,11 +23,39 @@ _LUT_STEPS = 128          # radial samples per render (interpolated per pixel)
 _SIGNATURE_STEPS = 24     # samples used to detect custom-curve edits
 
 
-class FalloffIcon:
-    """Icon generator for one falloff preset."""
+# Fixed Shape previews (hardness, sharpness) drawn in the pen menu's falloff field.
+SHAPE_PREVIEWS = ((0.6, 0.0), (0.0, 0.0), (0.6, 1.0), (0.0, 1.0))
 
-    def __init__(self, preset_id):
+
+def shape_preview_key(hardness, sharpness):
+    return f"FALLOFF_SHAPE_PREVIEW_{int(round(hardness * 100))}_{int(round(sharpness * 100))}"
+
+
+def _live_shape():
+    """The field's current Shape key (the default outside Blender)."""
+    wm = None
+    if bpy is not None:
+        try:
+            wm = bpy.context.window_manager
+        except Exception:
+            wm = None
+    values = falloff.shape_values(wm) if wm is not None else falloff.SHAPE_DEFAULT
+    return falloff.shape_key(*values)
+
+
+class FalloffIcon:
+    """Icon generator for one falloff preset (``shape``: a fixed Shape key instead)."""
+
+    def __init__(self, preset_id, shape=None):
         self.preset_id = preset_id
+        self.shape = shape
+
+    def _falloff_type(self):
+        if self.shape is not None:
+            return self.shape
+        if self.preset_id == 'SHAPE':
+            return _live_shape()
+        return self.preset_id
 
     def _weight_fn(self):
         sampler = None
@@ -35,13 +65,13 @@ class FalloffIcon:
                 sampler = PixelPainterSettingsService().get_falloff_curve_sampler(bpy.context)
             except Exception:
                 sampler = None
-        preset_id = self.preset_id
-        return lambda t: math_utils.get_falloff(t, preset_id, curve_sampler=sampler)
+        falloff_type = self._falloff_type()
+        return lambda t: math_utils.get_falloff(t, falloff_type, curve_sampler=sampler)
 
     def signature(self):
         """Cheap value that changes whenever the rendered icon would change."""
         if self.preset_id != 'CUSTOM':
-            return self.preset_id
+            return self._falloff_type()
         weight = self._weight_fn()
         return tuple(round(weight(i / _SIGNATURE_STEPS), 3) for i in range(_SIGNATURE_STEPS + 1))
 
@@ -70,5 +100,9 @@ class FalloffIcon:
 
 
 def generators():
-    """``icon_key -> FalloffIcon`` for every falloff preset."""
-    return {p.icon_key: FalloffIcon(p.id) for p in falloff.FALLOFF_PRESETS if p.icon_key}
+    """``icon_key -> FalloffIcon`` for every falloff preset and the Shape previews."""
+    icons = {p.icon_key: FalloffIcon(p.id) for p in falloff.FALLOFF_PRESETS if p.icon_key}
+    for hardness, sharpness in SHAPE_PREVIEWS:
+        icons[shape_preview_key(hardness, sharpness)] = FalloffIcon(
+            'SHAPE', shape=falloff.shape_key(hardness, sharpness))
+    return icons

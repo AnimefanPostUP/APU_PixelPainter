@@ -22,6 +22,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from ..core.framework import ToolFrame
 from ..utils import math_utils, pixel_io
+from . import falloff as falloff_presets
 
 
 @dataclass(frozen=True)
@@ -84,8 +85,11 @@ class DrawEnvironment:
         return self.islands.labels, self.islands.center_labels(centers)
 
     def falloff(self, prop_name):
-        """``(falloff_enum, curve_sampler_or_None)`` read from a WindowManager property."""
+        """``(falloff_type, curve_sampler_or_None)`` read from a WindowManager property
+        (Shape: ``falloff.shape_key(...)`` of the field's values)."""
         falloff = getattr(self.wm, prop_name)
+        if falloff == 'SHAPE':
+            return falloff_presets.shape_key(*falloff_presets.shape_values(self.wm)), None
         sampler = self.curve_sampler_factory(self.context) if falloff == 'CUSTOM' else None
         return falloff, sampler
 

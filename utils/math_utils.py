@@ -60,12 +60,26 @@ PLATEAU_CORE = 0.5        # full strength up to here, then a smooth fade
 STEPPED_LEVELS = 4
 RING_CENTER = 0.65        # strongest here
 RING_WIDTH = 0.35         # fades to 0 this far on both sides
+SHAPE_MAX_POWER = 4.0     # Shape falloff: the fade's exponent at sharpness 1 (1 at sharpness 0)
+
+
+def shape_falloff(t, hardness, sharpness):
+    """Shape falloff (the pen menu's field): full strength out to ``hardness`` (0 soft ..
+    1 hard = constant), then a fade ``(1 - u) ** p`` with ``p`` from 1 (``sharpness`` 0,
+    linear) to ``SHAPE_MAX_POWER`` (sharpness 1)."""
+    core = max(0.0, min(1.0, hardness))
+    if t <= core or core >= 1.0:
+        return 1.0
+    u = (t - core) / (1.0 - core)
+    power = 1.0 + (SHAPE_MAX_POWER - 1.0) * max(0.0, min(1.0, sharpness))
+    return max(0.0, 1.0 - u) ** power
 
 
 def get_falloff(t, falloff_type, curve_sampler=None):
     """Return a weight in [0, 1] for a normalised distance t in [0, 1].
 
     t = 0 is the brush centre (full strength), t = 1 is the edge (zero strength).
+    ``falloff_type`` is a preset id or a Shape key ``('SHAPE', hardness, sharpness)``.
     """
     t = max(0.0, min(1.0, t))
     if curve_sampler is not None:
@@ -73,6 +87,12 @@ def get_falloff(t, falloff_type, curve_sampler=None):
             return max(0.0, min(1.0, float(curve_sampler(t))))
         except Exception:
             pass
+    if isinstance(falloff_type, tuple):
+        if falloff_type and falloff_type[0] == 'SHAPE':
+            return shape_falloff(t, *falloff_type[1:3])
+        return 1.0
+    if falloff_type == 'SHAPE':        # no values given: the default (linear)
+        return 1.0 - t
     if falloff_type == 'CONSTANT':
         return 1.0
     elif falloff_type == 'LINEAR':
