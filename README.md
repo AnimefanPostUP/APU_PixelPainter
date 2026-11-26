@@ -5,6 +5,8 @@ A Blender 4.2 addon for painting low-resolution, pixel-art textures **directly o
 Paint in the 3D Viewport (Texture Paint mode) with pixel-exact brushes: every stroke snaps to the texel grid of the model's texture, without anti-aliasing or blur. The Image Editor is supported as well, with the same tools and settings.
 
 <!-- Screenshot: pixel-art model being painted in the 3D Viewport, pen menu open -->
+<img width="1994" height="951" alt="2026-11-27 00-56-41" src="https://github.com/user-attachments/assets/2d39f9cf-42b8-4ea1-9562-470df0ffe442" />
+
 
 > DISCLAIMER: Coded primarily with Claude, partially by hand. The main goal was a drawing tool and UI that is easier to use, especially for the niche use case of pixel art.
 
@@ -34,7 +36,6 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
 - **Dial layout**: the Size knob in the center, with pie segments in two rings around it. Categories are separated by a wider gap and a divider line.
 - **Radial sliders** (Strength, Alpha, Modifier): pressing sets the value from the distance to the center, and dragging keeps setting it.
 - **Color section**: primary and secondary color, each with its own eyedropper, plus Swap. A gradient slider between the two picks an optional third (tertiary) color.
-- **RMB lock**: tapping the secondary color makes the pen tip paint with the secondary color and right-button settings.
 - **Color history**: the last painted colors along the outer ring; tap one to paint with it.
 - **Palette band**: 24 slots. **Palettes** switches the band to the project's 24 palettes.
 - **Palettes**: stored per project in the .blend. A library window imports and exports them to `palettes.json` or the clipboard. *From image...* builds a palette from an image's colors.
