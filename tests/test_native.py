@@ -76,7 +76,7 @@ _stub('bpy.app', handlers=sys.modules['bpy.app.handlers'])
 
 _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'utils.native', 'utils.pixel_io', 'utils.math_utils', 'tools.draw_blending', 'tools.draw_functions',
-    'tools.draw_tool_smooth', 'tools.native_paint', 'tools.mask', 'tools.mask_geometry',
+    'tools.draw_tool_smooth', 'tools.native_paint', 'tools.mask', 'tools.mask_guard', 'tools.mask_geometry',
     'tools.selection_ops', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
@@ -358,7 +358,7 @@ class FootprintTest(NativeTestCase):
 
 class RegionMaskRasterTest(NativeTestCase):
     def test_restore_blocked(self):
-        mask = _mod('tools.mask')
+        guard = _mod('tools.mask_guard')
         w, h = 25, 20
         before = random_image(w, h, 12)
         after = before.copy()
@@ -368,10 +368,14 @@ class RegionMaskRasterTest(NativeTestCase):
         results = []
         for use_native in (False, True):
             native.set_override(use_native)
-            img = FakeImage(w, h, after)
-            mask.restore_blocked(img, before.copy(), allowed)
-            results.append(img.arr.copy())
+            buf = after.copy()
+            guard.restore_all(buf, before.copy(), allowed)
+            results.append(buf)
         np.testing.assert_array_equal(results[0], results[1])
+        # protected pixels back to ``before``, the others untouched
+        b4, a4, r4 = before.reshape(-1, 4), after.reshape(-1, 4), results[0].reshape(-1, 4)
+        np.testing.assert_array_equal(r4[~allowed], b4[~allowed])
+        np.testing.assert_array_equal(r4[allowed], a4[allowed])
 
     def test_blend_region_every_mode(self):
         blending = _mod('tools.draw_blending')

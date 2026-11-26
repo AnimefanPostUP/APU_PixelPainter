@@ -15,7 +15,7 @@ choice survives mesh edits that keep that face in the element).
 * Painting: chosen elements are paintable, everything else is protected
   (*invert* swaps that). :func:`allowed` gives the paintable pixels;
   ``StrokeTool.paint`` puts protected pixels back after every draw step
-  (:func:`restore_blocked`), so every tool is masked the same way.
+  (:mod:`tools.mask_guard`), so every tool is masked the same way.
 * Choosing: while *Edit* is on (state ``mask_picking``; the Mask window's
   center button or ``image.pixel_painter_mask_pick``), a press on the canvas toggles
   the element under the cursor; dragging sets every element it passes to the
@@ -34,7 +34,6 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..core.framework import Shortcut, ToolFrame
-from ..utils import native, pixel_io
 from . import mask_geometry as geo
 
 
@@ -301,29 +300,6 @@ def allowed(context, image, refresh_data=True):
         _allowed = ~chosen if invert else chosen
         _allowed_key = key
     return _allowed
-
-
-def snapshot(image):
-    return pixel_io.read(image)
-
-
-def restore_blocked(image, before, allowed_pixels):
-    """Put back the protected pixels a draw step changed."""
-    if before is None or allowed_pixels is None or len(before) != len(allowed_pixels) * 4:
-        return
-    if native.enabled():
-        after = pixel_io.buffer(image)
-        restored = native.restore_blocked(after, before, allowed_pixels)
-        if restored is not None:
-            if restored:
-                pixel_io.write(image, after)
-            return
-    after = snapshot(image)
-    a4, b4 = after.reshape(-1, 4), before.reshape(-1, 4)
-    changed = ~allowed_pixels & np.any(a4 != b4, axis=1)
-    if changed.any():
-        a4[changed] = b4[changed]
-        pixel_io.write(image, after)
 
 
 # ---------------------------------------------------------------------------

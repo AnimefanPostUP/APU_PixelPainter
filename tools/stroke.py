@@ -3,12 +3,31 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
-from . import color_history, mask, pen_pressure, tertiary_color
+from . import color_history, mask, mask_guard, pen_pressure, tertiary_color
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
 from .subtools.strength import StrengthTool
 from .subtools.tool_switch import ShiftToolSwitch, TemporaryToolSwitch
+
+
+REGION_MARGIN = 2        # px added around a step's stamps for its written region
+_ANYWHERE = object()     # _stroke_region: some step could write anywhere
+
+
+def _memoize_steps(env):
+    """Compute ``env.interpolation_steps`` once per draw step (the tool and the
+    written region both need them); returns the memoized function."""
+    compute = env.interpolation_steps
+    cache = []
+
+    def steps():
+        if not cache:
+            cache.append(list(compute()))
+        return list(cache[0])
+
+    env.interpolation_steps = steps
+    return steps
 
 
 class StrokeTool(ToolBase):
@@ -131,6 +150,7 @@ class StrokeTool(ToolBase):
         self._buttons.discard(button)
         if not self._buttons:
             pixel_io.end_stroke()
+            mask_guard.GUARD.reset()   # drop the stroke's reference copy
         history.commit_all()  # one Blender undo step per stroke
         self._reset_stroke_state(ctx)
         ctx.redraw()
@@ -260,6 +280,7 @@ class StrokeTool(ToolBase):
 
         # First draw call of a stroke: let the tool prepare its caches.
         if state['last_paint_cx'] is None:
+            self._stroke_region = None
             self.on_stroke_begin(env)
 
         # Pixel spacing: skip if the cursor hasn't moved to a new pixel.
@@ -269,14 +290,49 @@ class StrokeTool(ToolBase):
                 and cy == state['last_paint_cy']):
             return
 
-        # Paint mask: protected pixels are put back after the draw step (every tool alike).
+        # Paint mask: protected pixels are put back after the draw step (every tool alike),
+        # only inside the region the step can have written (tools/mask_guard.py).
         # The step's writes are uploaded once, after the mask (utils/pixel_io.py).
         with pixel_io.deferred(img):
             allowed = mask.allowed(context, img)
-            before = mask.snapshot(img) if allowed is not None else None
+            steps = _memoize_steps(env)
+            if allowed is not None:
+                mask_guard.GUARD.before_step(img)
             self.on_draw(env)
-            if before is not None:
-                mask.restore_blocked(img, before, allowed)
+            if allowed is not None or self.rewrites_stroke(env):   # keeps the stroke union current
+                region = self._written_region(ctx, env, steps())
+                if allowed is not None:
+                    mask_guard.GUARD.after_step(img, allowed, region)
+
+    # ---- written region (paint mask) ------------------------------------------------
+
+    _stroke_region = None   # union of this stroke's step regions (rewrites_stroke tools)
+
+    def rewrites_stroke(self, env):
+        """True when a draw step may rewrite pixels of earlier steps of the stroke
+        (e.g. re-applying a stroke-wide weight map): the written region then is the
+        whole stroke so far."""
+        return False
+
+    def step_region(self, ctx, env, steps):
+        """End-exclusive ``(x0, y0, x1, y1)`` holding every pixel one draw step can
+        write, or None (anywhere). Default: the stamps around ``steps`` (and the
+        cursor), grown by the radius. Tools that write elsewhere override this."""
+        if env.edge_mode or env.expand_stamp is not None:
+            return None   # stamps are carried over UV seams: anywhere in the texture
+        return mask_guard.bounds_of(list(steps) + [(env.cursor_x, env.cursor_y)],
+                                    max(0, int(env.radius)) + REGION_MARGIN)
+
+    def _written_region(self, ctx, env, steps):
+        region = self.step_region(ctx, env, steps)
+        if not self.rewrites_stroke(env):
+            return region
+        previous = self._stroke_region
+        if previous is _ANYWHERE or region is None:
+            self._stroke_region = _ANYWHERE
+            return None
+        self._stroke_region = region if previous is None else mask_guard.union(previous, region)
+        return self._stroke_region
 
 
 class BrushTool(StrokeTool):

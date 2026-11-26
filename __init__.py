@@ -97,6 +97,7 @@ _MODULES = (
     'utils.palette_image',
     'tools.mask_geometry',
     'tools.mask',
+    'tools.mask_guard',
     'tools.view_nav',
     'tools.native_paint',
     'tools.stroke',

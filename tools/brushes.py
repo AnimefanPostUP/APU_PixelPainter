@@ -3,7 +3,8 @@
 from . import draw_functions
 from . import native_paint
 from .base import SettingDefaults
-from .stroke import BrushTool
+from . import mask_guard
+from .stroke import REGION_MARGIN, BrushTool
 from ..utils import math_utils, native, pixel_io
 
 
@@ -68,6 +69,10 @@ class WeightedBrushTool(BrushTool):
     def sample(self, env, x, y, falloff, curve_sampler):
         """Return ``(pixels, weights)`` for one stamp at ``(x, y)``."""
         raise NotImplementedError
+
+    def rewrites_stroke(self, env):
+        # 'Pixel' spacing re-applies the whole stroke's weight map every step.
+        return env.spacing == 'PIXEL'
 
     def native_draw(self, env, falloff, curve_sampler):
         """C# version of :meth:`on_draw` (tools/native_paint.py); False = not handled."""
@@ -178,6 +183,15 @@ class LineBrushTool(BrushTool):
     def on_stroke_begin(self, env):
         # Lines re-render from their own back buffer; no stroke caches needed.
         pass
+
+    def step_region(self, ctx, env, steps):
+        # The line from its start to the cursor (the back buffer written around it
+        # holds the press-time pixels, so protected ones are unchanged there).
+        start = env.state.get('start_position')
+        if env.edge_mode or env.expand_stamp is not None or start is None:
+            return None
+        return mask_guard.bounds_of([start, (env.cursor_x, env.cursor_y)],
+                                    max(0, int(env.radius)) + REGION_MARGIN)
 
     # ---- stroke hooks: press snapshots, drag previews, release commits ------
 

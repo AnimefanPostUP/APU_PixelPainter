@@ -364,9 +364,16 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
 * Chosen elements: scene property `pixel_painter_mask_selection` (JSON, one
   face index per element). `mask.allowed()` = chosen pixels (inverted with
   *invert*); with no mesh / UVs there is no masking.
-* Enforcement: `StrokeTool.paint` snapshots the image before `on_draw` and
-  `mask.restore_blocked()` puts protected pixels back, so every tool is masked
-  without knowing about it. (Selection paste is not masked.)
+* Enforcement (`tools/mask_guard.py`, `tests/test_mask_guard.py`): `StrokeTool.paint`
+  wraps every `on_draw` in `mask_guard.GUARD` (`StrokeMaskGuard`), so every tool is
+  masked without knowing about it. (Selection paste is not masked.) The guard copies
+  the image once per stroke (protected pixels keep that value for the whole stroke)
+  and after each step restores protected pixels only inside the step's written
+  region: `StrokeTool.step_region` (default: the steps' stamps grown by the radius;
+  `LineBrushTool`: start to cursor; `None` = the whole image, e.g. Edge mode). Tools
+  whose step rewrites earlier stamps (Circle / Spray in Pixel spacing) return True
+  from `rewrites_stroke`, and the region is the union over the stroke. A tool that
+  writes outside its stamps must override `step_region`.
 * `MaskTool` (global, priority 150): while state `mask_picking` is on, a
   canvas press toggles the element under the cursor, a drag sets the ones it
   passes to the same state; Esc / RMB end it. The pen bar does not remap the
@@ -415,7 +422,7 @@ tools/native_paint.py   tool-level fast paths (footprint + paint of a whole draw
   operating systems: build Linux / macOS libraries there. Blender keeps the
   library loaded: restart Blender after rebuilding.
 * **Two layers**: the pixel kernels (`draw_functions.write_pixels_to_image`,
-  `set_pixels_alpha`, `draw_tool_smooth.*`, `mask.restore_blocked`,
+  `set_pixels_alpha`, `draw_tool_smooth.*`, `mask_guard.restore_all`,
   `selection_ops.blit_region`, `draw_blending.blend_region_pixels`,
   `mask_geometry.raster_triangles`, Paint Selected Faces) each start with an
   `if native.enabled():` branch. On top of that, the stroke tools' `on_draw`

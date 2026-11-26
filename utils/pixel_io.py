@@ -26,9 +26,12 @@ import numpy as np
 
 
 class _Session:
-    __slots__ = ('key', 'size', 'img', 'arr', 'dirty')
+    __slots__ = ('key', 'size', 'img', 'arr', 'dirty', 'serial')
 
     def __init__(self, img, arr):
+        global _serial
+        _serial += 1
+        self.serial = _serial
         self.key = _key(img)
         self.size = tuple(img.size)
         self.img = img
@@ -38,6 +41,7 @@ class _Session:
 
 _session = None
 _defer_depth = 0
+_serial = 0   # numbers the stroke sessions (stroke_token)
 
 
 def _key(img):
@@ -170,6 +174,12 @@ def invalidate():
     """Forget the working buffer without writing it (the image changed elsewhere)."""
     global _session
     _session = None
+
+
+def stroke_token(img):
+    """An id of the stroke session working on ``img`` (None outside a stroke)."""
+    s = _match(img)
+    return s.serial if s is not None else None
 
 
 def in_stroke(img=None):
