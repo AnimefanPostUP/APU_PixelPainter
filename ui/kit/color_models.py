@@ -94,3 +94,37 @@ def from_tone_weights(model, hue_w, white_w, old_s):
     t = clamp01(hue_w + white_w)
     s = clamp01(hue_w / t) if t > _EPS else old_s
     return s, t
+
+
+# ---- text codes (input fields, copy / paste) ------------------------------------------------
+
+def to_hex(rgb):
+    """``rgb`` (0..1) as ``#RRGGBB``."""
+    return "#" + "".join(f"{int(round(clamp01(float(c)) * 255)):02X}" for c in rgb)
+
+
+def parse_color(text):
+    """RGB (0..1) from a color code, or None. Accepts ``#RRGGBB`` / ``RRGGBB`` /
+    ``#RGB`` (with or without ``#`` / ``0x``) and three numbers separated by commas,
+    spaces or semicolons: 0..255, or 0..1 when every number has a decimal point and
+    none is above 1 (e.g. ``0.5, 0.2, 1.0``); an optional ``rgb( ... )`` around them."""
+    if not text:
+        return None
+    t = text.strip().lower()
+    if t.startswith("rgb(") and t.endswith(")"):
+        t = t[4:-1]
+    code = t[1:] if t.startswith("#") else t[2:] if t.startswith("0x") else t
+    if len(code) in (3, 6) and all(c in "0123456789abcdef" for c in code):
+        if len(code) == 3:
+            code = "".join(c * 2 for c in code)
+        return tuple(int(code[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    parts = [p for p in t.replace(";", " ").replace(",", " ").split() if p]
+    if len(parts) != 3:
+        return None
+    try:
+        values = [float(p) for p in parts]
+    except ValueError:
+        return None
+    if all("." in p for p in parts) and all(v <= 1.0 for v in values):
+        return tuple(clamp01(v) for v in values)
+    return tuple(clamp01(v / 255.0) for v in values)

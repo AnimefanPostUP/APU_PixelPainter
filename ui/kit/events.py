@@ -44,6 +44,7 @@ class UIEvent:
     shift: bool = False
     ctrl: bool = False
     alt: bool = False
+    unicode: str = ''      # the typed character of a key press ('' for others)
 
     @classmethod
     def from_blender(cls, event, offset=(0.0, 0.0)):
@@ -55,6 +56,7 @@ class UIEvent:
             shift=bool(event.shift),
             ctrl=bool(event.ctrl),
             alt=bool(event.alt),
+            unicode=getattr(event, 'unicode', '') or '',
         )
 
     @property

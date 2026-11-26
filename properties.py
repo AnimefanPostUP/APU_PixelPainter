@@ -316,6 +316,10 @@ def _static_properties():
             name="Color Selector Sliders", description="Channel sliders shown under the color selector",
             items=[(i, label, desc) for i, label, desc in color_selector.SLIDER_SPACES],
             options={'ENUM_FLAG'}, default=set(), update=_persist),
+        'color_selector_sliders_open': bpy.props.BoolProperty(
+            name="Show Color Sliders",
+            description="Fold out the channel sliders, their input fields and the hex code under the pen color selector",
+            default=False, update=_persist),
     }
 
 

@@ -83,9 +83,11 @@ everything here works with press, drag and release only.
   where the drag started. A readout -- for Size with a preview of the brush
   footprint -- shows beside the menu while a knob or slider is dragged. Pens
   cannot scroll, so the knob and sliders stand in for the wheel.
-* **Color selector** (:class:`~.kit.ColorSelector`): layout (Sheet, Square,
-  Triangle, Wheel), model (HSV / HSL) and optional RGB / HSV / HSL sliders
-  come from the settings popup (Color Selector tab). Every part is swiped
+* **Color selector** (:class:`~.kit.ColorSelector`): the row at the top holds the
+  old / new bubble, the Shape button (a popup: Sheet, Square, Triangle, Wheel) and the
+  sliders button, which folds out the RGB / HSV / HSL channel sliders (each
+  with an input field), their toggles and a hex field with Copy / Paste. The
+  model (HSV / HSL) comes from the settings (Color Selector tab). Every part is swiped
   like a touchpad; a tap jumps. It edits the color the pen paints (secondary
   with the RMB lock; with the tertiary color selected, the dotted one). The change applies when the pen is lifted; the color
   from before editing stays marked with a cross and shows in the old / new
@@ -118,8 +120,9 @@ import colorsys
 import math
 
 from .kit import (ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect,
-                  CornerSegment, RingSegment, RingSlider, Row, RoundButton, Widget)
-from .kit import anim, draw
+                  CornerSegment, RingSegment, RingSlider, Row, RoundButton, Spacer, TextField, Widget)
+from .kit import anim, clipboard, draw
+from .kit.color_models import parse_color, to_hex
 from .kit.events import PRESS, RUNNING
 from .kit.geometry import best_circle, clamp_box, ring_segment_points
 from .kit.theme import mix, with_alpha
@@ -146,6 +149,9 @@ LAYOUT_STATE = {
 # (content: ui/pen_windows.py, ui/pen_settings.py, ui/pen_palettes.py); shown while
 # the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
 TOOL_WINDOWS = ('mask', 'view', 'settings', 'library')
+_POINTER_TYPES = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE',
+                  'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TIMER'}
+COLOR_SHAPES = (('SHEET', "Sheet"), ('SQUARE', "Square"), ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))
 COLOR_WIDTH = 220.0      # the color selector's width at scale 1, unscaled px
 _HANDLE_SIZE = 18.0      # resize triangle legs, unscaled px (follows the UI scale, not the element's)
 WINDOW_MARGIN = 4.0      # elements keep this far from the editor borders, unscaled px
@@ -603,6 +609,17 @@ def _paint_color_wheel(rgb):
         cur = _resolve(rgb, (1.0, 1.0, 1.0))
         draw.circle(x, y, r * 0.42, (cur[0], cur[1], cur[2], alpha), segments=24)
     return paint
+
+
+def _paint_sliders(dc, x, y, size, alpha):
+    """Channel sliders icon: three bars with knobs."""
+    theme = dc.theme
+    w = size * 0.34
+    color = with_alpha(theme.text, 0.9 * alpha)
+    for row, knob in ((1, 0.35), (0, -0.4), (-1, 0.1)):
+        cy = y + row * size * 0.2
+        draw.polyline([(x - w, cy), (x + w, cy)], color, max(1.0, size * 0.06))
+        draw.circle(x + knob * w, cy, size * 0.08, color, segments=12)
 
 
 def _paint_gear(dc, x, y, size, alpha):
@@ -1595,6 +1612,15 @@ class _MenuLayer(Widget):
                 continue
             fw, fh = flyout.measure(theme)
             opener = self.openers.get(flyout)
+            if opener is not None and getattr(flyout, 'below_opener', False):
+                # A popup of another window (the color selector's shapes): under its button.
+                o = opener.rect
+                fy0 = o.y0 - gap - fh
+                if fy0 < margin:
+                    fy0 = o.y1 + gap
+                fx, y0 = clamp_box(o.cx - fw * 0.5, fy0, fw, fh, (margin, margin, width - margin, height - margin))
+                flyout.arrange(Rect.from_size(fx, y0, fw, fh), theme)
+                continue
             fy = opener.rect.cy if opener is not None else win.cy
             right = win.cx < width * 0.5
             fx = win.x1 + gap if right else win.x0 - gap - fw
@@ -1810,6 +1836,8 @@ class PenBar:
         self.curve_mode = 'MOVE'
         self.curve_flyout = self._build_curve_flyout()
         self.curve_flyout.visible = False
+        self.shape_flyout = self._build_shape_flyout()
+        self.shape_flyout.visible = False
         from .pen_settings import SettingsMenu  # late import: it imports this module
         self.settings_menu = SettingsMenu(self)
         from .pen_palettes import ConfirmDialog, PaletteLibrary  # late import: they import this module
@@ -1821,19 +1849,25 @@ class PenBar:
                                  _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
                                  tab=tab, lock_bottom=True,   # top left: the tertiary bubble
                                  shape=lambda panel, theme: [dial_star(panel.content, theme.px(SHAPE_PAD))])
-        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout], self.confirm_dialog.panel)
+        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.shape_flyout],
+                               self.confirm_dialog.panel)
         self.overlay = Overlay(self.root, modal=False, animate=False)
 
         # Color selector.
         a = actions
         self.color_pad = ColorSelector(a.pen_hsv, a.set_pen_hsv, original=a.original_hsv,
-                                       live=a.color_preview, layout=a.color_layout,
-                                       model=a.color_model, sliders=a.color_sliders, key='COLOR_PAD')
+                                       live=a.color_preview, layout=a.color_layout, model=a.color_model,
+                                       sliders=lambda: a.color_sliders() if a.color_sliders_open() else (),
+                                       fields=True, key='COLOR_PAD')
         self.color_bubble = _BubbleDrag(self, a.preview_colors, True, a.has_color_change, radius=12.0,
                                         on_click=a.accept_color_change, key='COLOR_BUBBLE')
-        content = Column([Row([self.color_bubble]), self.color_pad], gap=6.0)
-        self.color_window = self._window('color', content,
-                                         _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel))
+        self.color_extras = self._build_color_extras()
+        content = Column([self._build_color_header(), self.color_pad, self.color_extras,
+                          Spacer(0.0, 2.0)], gap=6.0)
+        from .pen_windows import body_shapes, build_body_window   # late import: it imports this module
+        self.color_window = self._window('color', build_body_window("Color", content, _paint_color_wheel(None)),
+                                         _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel),
+                                         shape=body_shapes)
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
         # Mask / View / Settings / Palettes windows (opened from the Windows ring).
@@ -1864,6 +1898,81 @@ class PenBar:
                         **self.tool_windows}
 
     # ---- building ------------------------------------------------------------------
+
+    def _build_color_header(self):
+        """The color selector's top row: the old / new bubble, the Shape button (opens the
+        shape popup; shows the current shape) and the button that folds the channel
+        sliders out."""
+        from .pen_settings import _icon_layout   # late import: it imports this module
+        a = self.actions
+        labels = dict(COLOR_SHAPES)
+        shape = PenButton(lambda: labels.get(a.color_layout(), "Shape"), layout='row', size=(92.0, 26.0),
+                          painter=lambda dc, x, y, size, alpha: _icon_layout(a.color_layout())(dc, x, y, size, alpha),
+                          key='COLOR_SHAPE', selected=lambda: self.flyout is self.shape_flyout,
+                          on_click=lambda: self.toggle_flyout(self.shape_flyout, shape))
+        fold = PenButton("Sliders", painter=_paint_sliders, layout='icon', size=(26.0, 26.0),
+                         key='COLOR_SLIDERS', selected=a.color_sliders_open, on_click=self._toggle_color_sliders)
+        return Row([self.color_bubble, Spacer(6.0), shape, fold], gap=4.0)
+
+    def _build_shape_flyout(self):
+        """The color selector's shape popup (under its Shape button): Sheet, Square,
+        Triangle, Wheel."""
+        from .pen_settings import _icon_layout   # late import: it imports this module
+        a = self.actions
+
+        def choose(kind):
+            a.wm_set('color_selector_layout', kind)
+            self.close_flyout()
+            self._relayout()
+
+        entries = [PenFlyoutButton(label, painter=_icon_layout(kind), layout='column', size=(58.0, 54.0),
+                                   key=f'COLOR_SHAPE_{kind}', selected=lambda k=kind: a.color_layout() == k,
+                                   on_click=lambda k=kind: choose(k))
+                   for kind, label in COLOR_SHAPES]
+        panel = PenPanel(Row(entries, gap=4.0), title="Shape", padding=8.0)
+        panel.below_opener = True
+        return panel
+
+    def _build_color_extras(self):
+        """Under the folded-out sliders: which sliders show, and the hex code (typed or
+        pasted; Copy / Paste use the system clipboard)."""
+        a = self.actions
+        spaces = Row([PenButton(space, layout='row', size=(46.0, 18.0), font_size=8.0,
+                                key=f'COLOR_SPACE_{space}',
+                                selected=lambda sp=space: a.wm_flag('color_selector_sliders', sp),
+                                on_click=lambda sp=space: self._toggle_color_space(sp))
+                      for space in ('RGB', 'HSV', 'HSL')], gap=3.0)
+        self.color_hex = TextField(lambda: to_hex(self.color_pad.rgb()), self._apply_color_text,
+                                   size=(80.0, 20.0), font_size=9.0, max_length=32, key='COLOR_HEX')
+        copy = PenButton("Copy", layout='row', size=(44.0, 20.0), font_size=8.0, key='COLOR_COPY',
+                         on_click=lambda: clipboard.set_text(to_hex(self.color_pad.rgb())))
+        paste = PenButton("Paste", layout='row', size=(44.0, 20.0), font_size=8.0, key='COLOR_PASTE',
+                          on_click=lambda: self._apply_color_text(clipboard.get_text()))
+        extras = Column([spaces, Row([self.color_hex, copy, paste], gap=3.0)], gap=4.0)
+        extras.visible = False
+        return extras
+
+    def _set_color_option(self, name, value):
+        self.actions.wm_set(name, value)
+        self._relayout()
+
+    def _toggle_color_space(self, space):
+        self.actions.wm_toggle_flag('color_selector_sliders', space)
+        self._relayout()
+
+    def _toggle_color_sliders(self):
+        a = self.actions
+        opened = not a.color_sliders_open()
+        a.wm_set('color_selector_sliders_open', opened)
+        if opened and not a.color_sliders():
+            a.wm_set('color_selector_sliders', {'HSV'})
+        self._relayout()
+
+    def _apply_color_text(self, text):
+        """A hex code / RGB triple (typed or pasted) becomes the edited color."""
+        rgb = parse_color(text)
+        if rgb is not None:
+            self.color_pad.set_rgb(rgb)
 
     def _window(self, name, content, close, tab=None, lock_bottom=False, help=None, shape=None):
         locked = lambda: self._locked(name)
@@ -2227,6 +2336,7 @@ class PenBar:
         base = self._args[-1]
         theme = base.scaled(base.scale * BAR_SCALE * self._scale(name))
         if name == 'color':
+            self.color_extras.visible = bool(self.actions.color_sliders_open())
             self.color_pad.fit_width = theme.px(COLOR_WIDTH)
         w, h = self.windows[name][0].measure(theme)
         bx0, by0, bx1, by1 = self.bounds
@@ -2462,6 +2572,15 @@ class PenBar:
         for overlay in stack:
             if overlay.dragging is not None:
                 return overlay.handle(event) == RUNNING
+        if event.type == 'LEFTMOUSE' and event.value == PRESS:
+            for overlay in stack:   # a press off an input field commits it
+                overlay.blur_unless_over(event.x, event.y)
+        elif event.type not in _POINTER_TYPES:
+            for overlay in stack:   # typing goes to the input field being edited
+                if overlay.focus is not None:
+                    if overlay.handle(event) == RUNNING:
+                        return True
+                    break
         if self.confirm_dialog.is_open:
             # Modal: only the dialog reacts; a press elsewhere, ESC or right click cancel.
             if event.value == PRESS and event.type in {'ESC', 'RIGHTMOUSE'}:

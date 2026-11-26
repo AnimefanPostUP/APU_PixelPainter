@@ -152,7 +152,8 @@ class PenBarTool(ToolFrame):
         mouse = ctx.mouse_region(event)
         if bar is not None and mouse is not None:
             ui_event = UIEvent(type=event.type, value=event.value, x=mouse[0], y=mouse[1],
-                               shift=event.shift, ctrl=event.ctrl, alt=event.alt)
+                               shift=event.shift, ctrl=event.ctrl, alt=event.alt,
+                               unicode=getattr(event.raw, 'unicode', '') or '')
             if bar.handle(ui_event):
                 event.consume()
                 return
@@ -348,6 +349,10 @@ class PenBarTool(ToolFrame):
 
     def color_sliders(self):
         return set(getattr(self._c().wm, 'pixel_painter_color_selector_sliders', set()))
+
+    def color_sliders_open(self):
+        """The color selector's channel sliders are folded out."""
+        return bool(getattr(self._c().wm, 'pixel_painter_color_selector_sliders_open', False))
 
     def _apply_hsv(self, ctx, h, s, v):
         rgb = colorsys.hsv_to_rgb(h, s, v)

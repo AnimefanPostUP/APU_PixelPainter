@@ -250,5 +250,106 @@ class SliderTests(_SelectorCase):
         self.assertEqual(sel.layout_id, 'WHEEL')
 
 
+def key(type_, char='', value='PRESS', ctrl=False, shift=False):
+    return UIEvent(type=type_, value=value, unicode=char, ctrl=ctrl, shift=shift)
+
+
+def type_text(ui, text):
+    for c in text:
+        ui.handle(key(c.upper() if c.isalpha() else 'X', c))
+
+
+class SliderFieldTests(_SelectorCase):
+    sliders = ('RGB', 'HSV')
+    start = (0.0, 1.0, 1.0)    # red
+
+    def setUp(self):
+        super().setUp()
+        self.sel = ColorSelector(lambda: self.hsv, self._set, sliders=self.sliders, fields=True,
+                                 area=(100.0, 100.0), bar=10.0, gap=5.0, gain=1.0)
+        self.ui = Overlay(self.sel, modal=False, animate=False)
+
+    def _set(self, h, s, v):
+        self.hsv = (h, s, v)
+
+    def _field(self, part):
+        return self.sel.value_fields[part]
+
+    def _edit(self, part):
+        f = self._field(part)
+        self.tap(f.rect.cx, f.rect.cy)
+        return f
+
+    def test_fields_sit_right_of_their_sliders(self):
+        for key_, _s, _i in self.sel.sliders:
+            bar, f = self.sel.parts[key_], self._field(key_)
+            self.assertGreater(f.rect.x0, bar.x1)
+            self.assertAlmostEqual(f.rect.cy, bar.cy)
+            self.assertAlmostEqual(bar.height, 10.0)   # slider_bar default
+        self.assertEqual(self._field('RGB_R').shown_text(), '255')
+        self.assertEqual(self._field('HSV_H').shown_text(), '0°')
+
+    def test_typing_a_value_and_enter(self):
+        f = self._edit('RGB_G')
+        self.assertIs(self.ui.focus, f)
+        self.assertTrue(f.select_all)
+        type_text(self.ui, '128')
+        self.assertEqual(f.text, '128')
+        self.ui.handle(key('RET'))
+        self.assertIsNone(self.ui.focus)
+        r, g, b = colorsys.hsv_to_rgb(*self.hsv)
+        self.assertAlmostEqual(r, 1.0)
+        self.assertAlmostEqual(g, 128 / 255)
+        self.assertAlmostEqual(b, 0.0)
+
+    def test_escape_cancels_and_letters_are_filtered(self):
+        f = self._edit('HSV_H')
+        type_text(self.ui, 'ab12')
+        self.assertEqual(f.text, '12')
+        self.ui.handle(key('ESC'))
+        self.assertEqual(self.hsv, self.start)
+
+    def test_hue_in_degrees_wraps_and_tab_moves_on(self):
+        f = self._edit('HSV_H')
+        type_text(self.ui, '450')
+        self.ui.handle(key('TAB'))
+        self.assertAlmostEqual(self.hsv[0], 0.25)
+        self.assertIs(self.ui.focus, self._field('HSV_S'))
+        type_text(self.ui, '50')
+        self.ui.handle(key('BACK_SPACE'))
+        self.ui.handle(key('ONE', '1'))
+        self.assertEqual(self.ui.focus.text, '51')
+
+    def test_press_elsewhere_commits(self):
+        self._edit('HSV_V')
+        type_text(self.ui, '40')
+        main = self.sel.main_rect
+        self.ui.handle(ev('LEFTMOUSE', 'PRESS', main.cx, main.cy))
+        self.ui.handle(ev('LEFTMOUSE', 'RELEASE', main.cx, main.cy))
+        self.assertIsNone(self.ui.focus)
+        self.assertAlmostEqual(self.hsv[1], 1.0)
+
+    def test_set_rgb_keeps_hue_through_grey(self):
+        self.sel.set_rgb((0.5, 0.5, 0.5))
+        self.assertAlmostEqual(self.hsv[0], 0.0)
+        self.assertAlmostEqual(self.hsv[2], 0.5)
+        self.assertEqual(cm.to_hex(self.sel.rgb()), '#808080')
+
+
+class ColorCodeTests(unittest.TestCase):
+    def test_hex_round_trip(self):
+        self.assertEqual(cm.to_hex((1.0, 0.5, 0.0)), '#FF8000')
+        for text in ('#ff8000', 'FF8000', '0xff8000', ' #FF8000 '):
+            self.assertEqual(cm.to_hex(cm.parse_color(text)), '#FF8000')
+        self.assertEqual(cm.to_hex(cm.parse_color('#f80')), '#FF8800')
+
+    def test_rgb_triples(self):
+        self.assertEqual(cm.to_hex(cm.parse_color('255, 128, 0')), '#FF8000')
+        self.assertEqual(cm.to_hex(cm.parse_color('rgb(255 128 0)')), '#FF8000')
+        self.assertEqual(cm.to_hex(cm.parse_color('1.0, 0.5, 0.0')), '#FF8000')
+        for bad in ('', 'hello', '#12345', '1, 2'):
+            self.assertIsNone(cm.parse_color(bad))
+
+
 if __name__ == '__main__':
     unittest.main()

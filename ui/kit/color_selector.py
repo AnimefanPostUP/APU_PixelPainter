@@ -25,7 +25,9 @@ and commits it on release (``set_hsv``); with ``live`` true it also commits
 every step while the pen is down. ESC / right-click during a drag discard it.
 
 Sliders (``sliders``: any of 'RGB', 'HSV', 'HSL') add three horizontal
-channel bars per color space under the main area, swiped the same way.
+channel bars per color space under the main area, swiped the same way. With
+``fields`` each slider's value is an input field (tap, type, Enter): hue in
+degrees, RGB 0..255, the rest in percent.
 
 ``layout``, ``model`` and ``sliders`` may be callables: they are re-read on
 every layout pass (never during a drag), so settings apply immediately.
@@ -41,6 +43,7 @@ from . import draw
 from .color_models import (CHANNELS, HSL, HSV, RGB, clamp01, convert, from_tone_weights, to_rgb,
                            tone_weights, wraps)
 from .geometry import Rect
+from .textfield import NUMBER_CHARS, TextField
 from .theme import with_alpha
 from .widget import Widget, _resolve
 
@@ -69,8 +72,13 @@ SLIDER_SPACES = (
 H, S, T = 0, 1, 2          # channel indices: hue, saturation, tone (value / lightness)
 _LABEL_W = 12.0            # slider letter column, unscaled px
 _VALUE_W = 28.0            # slider value column, unscaled px
+_FIELD_W = 36.0            # the value column with input fields (``fields``)
 _SLIDER_GAP = 3.0          # between the sliders of one space
-_GROUP_GAP = 7.0           # between spaces / above the first slider
+_GROUP_GAP = 6.0           # between spaces
+_TOP_GAP = 12.0            # between the main area and the first slider
+_PLATE_PAD = 5.0           # the sliders' plate reaches this far past them
+_PLATE_ROUND = 8.0
+_SLIDER_FONT = 8.0         # slider letters / values, unscaled px
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +129,15 @@ def _handle_h(r, f, alpha, theme):
     x = r.x0 + f * r.width
     ext = theme.px(3.0)
     _double_line([(x, r.y0 - ext), (x, r.y1 + ext)], alpha, theme)
+
+
+def _knob(r, f, rgba, grabbed, alpha, theme):
+    """A channel slider's handle: a round knob in the slider's color (like the cursor)."""
+    x = r.x0 + f * r.width
+    radius = r.height * (0.72 if grabbed else 0.62)
+    draw.circle(x, r.cy, radius, rgba, segments=20)
+    draw.circle_outline(x, r.cy, radius, (0.0, 0.0, 0.0, 0.9 * alpha), width=theme.px(2.5), segments=20)
+    draw.circle_outline(x, r.cy, radius, (1.0, 1.0, 1.0, alpha), width=theme.px(1.2), segments=20)
 
 
 def _tick_v(r, f, color, theme):
@@ -659,14 +676,16 @@ class ColorSelector(Widget):
     ``layout``: 'SHEET' / 'SQUARE' / 'TRIANGLE' / 'WHEEL'; ``model``: 'HSV' / 'HSL';
     ``sliders``: iterable of 'RGB' / 'HSV' / 'HSL' -- each a value or a callable.
     ``area``: unscaled size of the sheet (the other layouts derive their size from it);
-    ``bar`` / ``gap``: bar thickness and spacing; ``gain``: swipe speed.
+    ``bar`` / ``gap``: bar thickness and spacing; ``slider_bar``: the channel sliders'
+    thickness; ``fields``: input fields for the slider values; ``gain``: swipe speed.
     """
 
     interactive = True
     draggable = True
 
     def __init__(self, get_hsv, set_hsv, *, original=None, live=False, layout='SHEET', model=HSV,
-                 sliders=(), area=(150.0, 96.0), bar=14.0, gap=5.0, gain=0.5, **kwargs):
+                 sliders=(), area=(150.0, 96.0), bar=14.0, gap=5.0, gain=0.5, slider_bar=10.0,
+                 fields=False, **kwargs):
         super().__init__(**kwargs)
         self.get_hsv = get_hsv
         self.set_hsv = set_hsv
@@ -681,6 +700,9 @@ class ColorSelector(Widget):
         self.bar = bar
         self.gap = gap
         self.gain = gain
+        self.slider_bar = slider_bar
+        self.fields = fields
+        self.value_fields = {}        # slider part key -> TextField (with ``fields``)
 
         self.model = HSV
         self.shape = None
@@ -717,6 +739,14 @@ class ColorSelector(Widget):
         self.sliders = [(f"{space}_{letter}", space, i)
                         for space in sliders for i, letter in enumerate(CHANNELS[space])]
         self.parts = {}
+        self.children = []
+        self.value_fields = {}
+        if self.fields:
+            for key, space, index in self.sliders:
+                self.value_fields[key] = self.add(TextField(
+                    lambda s=space, i=index: self._field_text(s, i),
+                    lambda text, s=space, i=index: self.set_channel_text(s, i, text),
+                    font_size=_SLIDER_FONT, allowed=NUMBER_CHARS, max_length=8, key=f"FIELD_{key}"))
 
     @property
     def layout_id(self):
@@ -729,7 +759,11 @@ class ColorSelector(Widget):
         if not self.slider_spaces:
             return 0.0
         groups = len(self.slider_spaces)
-        return groups * (_GROUP_GAP + 3.0 * self.bar + 2.0 * _SLIDER_GAP)
+        return (_TOP_GAP + _PLATE_PAD + (groups - 1) * _GROUP_GAP
+                + groups * (3.0 * self.slider_bar + 2.0 * _SLIDER_GAP))
+
+    def _value_w(self):
+        return _FIELD_W if self.fields else _VALUE_W
 
     def _natural_size(self, theme):
         w, h = self.shape.natural_size()
@@ -762,11 +796,20 @@ class ColorSelector(Widget):
         parts = dict(self.shape.arrange(main, theme))
         y = main.y0
         space = None
+        bar = px(self.slider_bar)
         for key, slider_space, _i in self.sliders:
-            y -= px(_GROUP_GAP if slider_space != space else _SLIDER_GAP)
+            if space is None:
+                y -= px(_TOP_GAP)
+            else:
+                y -= px(_GROUP_GAP if slider_space != space else _SLIDER_GAP)
             space = slider_space
-            parts[key] = Rect(rect.x0 + px(_LABEL_W), y - px(self.bar), rect.x1 - px(_VALUE_W), y)
-            y -= px(self.bar)
+            r = parts[key] = Rect(rect.x0 + px(_LABEL_W), y - bar, rect.x1 - px(self._value_w()), y)
+            field = self.value_fields.get(key)
+            if field is not None:
+                field.scale = f
+                fh = bar + px(_SLIDER_GAP) * 0.8
+                field.arrange(Rect(r.x1 + px(4.0), r.cy - fh * 0.5, rect.x1, r.cy + fh * 0.5), theme)
+            y -= bar
         self.parts = parts
 
     def part_at(self, x, y):
@@ -804,6 +847,37 @@ class ColorSelector(Widget):
         if original is not None:
             return convert(original, HSV, self.model, hint=original)
         return self.drag['start'] if self.drag is not None else None
+
+    def rgb(self):
+        """The edited color as RGB (0..1)."""
+        return tuple(to_rgb(self.model, self._current()))
+
+    def set_rgb(self, rgb):
+        """Commit ``rgb`` (0..1); hue / saturation survive greys. Ignored during a drag."""
+        if self.drag is not None:
+            return
+        self._commit(convert(tuple(rgb), RGB, self.model, hint=self._current()))
+        self._rested()
+
+    def _field_text(self, space, index):
+        color = self.drag['color'] if self.drag is not None else self._current()
+        return _format(space, index, self._slider_values(space, color)[index])
+
+    def set_channel_text(self, space, index, text):
+        """An input field's text: channel ``index`` of ``space`` in display units (hue
+        degrees, RGB 0..255, else percent). Unreadable text is ignored."""
+        value = _parse_number(text)
+        if value is None or self.drag is not None:
+            return
+        if wraps(space, index):
+            value = (value % 360.0) / 360.0
+        else:
+            value = clamp01(value / (255.0 if space == RGB else 100.0))
+        color = self._current()
+        values = self._slider_values(space, color)
+        values[index] = value
+        self._commit(convert(values, space, self.model, hint=color))
+        self._rested()
 
     # ---- pointer following (mouse hosts, e.g. the E key selector) -------------
 
@@ -968,8 +1042,14 @@ class ColorSelector(Widget):
     def _draw_sliders(self, dc, color, grabbed, original):
         theme, alpha = dc.theme, dc.alpha
         f = self.fit_factor
-        size = max(6.0, theme.px(self.bar * 0.72) * f)
+        size = max(6.0, theme.px(_SLIDER_FONT) * f)
         label_color = with_alpha(theme.text_muted, alpha)
+        # A soft plate behind the slider block (letters, bars, values).
+        first, last = self.parts[self.sliders[0][0]], self.parts[self.sliders[-1][0]]
+        pad = theme.px(_PLATE_PAD) * f
+        plate = Rect(self.rect.x0, last.y0 - pad, self.rect.x1, first.y1 + pad)
+        draw.rounded_rect(plate, theme.px(_PLATE_ROUND) * f, with_alpha(theme.surface_dark, 0.55 * alpha),
+                          rim=theme.edge_for(theme.surface_dark, 0.55 * alpha))
         value_color = with_alpha(theme.text, 0.9 * alpha)
         faint = _faint(alpha)
         for key, space, index in self.sliders:
@@ -988,12 +1068,13 @@ class ColorSelector(Widget):
             _outline(r, grabbed == key, alpha, theme)
             if original is not None:
                 _tick_h(r, self._slider_values(space, original)[index], faint, theme)
-            _handle_h(r, values[index], alpha, theme)
+            _knob(r, values[index], (*to_rgb(space, values), alpha), grabbed == key, alpha, theme)
 
             draw.text_centered(CHANNELS[space][index], r.x0 - theme.px(_LABEL_W) * f * 0.5, r.cy,
                                size, label_color)
-            draw.text_centered(_format(space, index, values[index]),
-                               r.x1 + theme.px(_VALUE_W) * f * 0.5, r.cy, size, value_color)
+            if key not in self.value_fields:
+                draw.text_centered(_format(space, index, values[index]),
+                                   r.x1 + theme.px(_VALUE_W) * f * 0.5, r.cy, size, value_color)
 
 
 def _format(space, index, value):
@@ -1002,3 +1083,14 @@ def _format(space, index, value):
     if space == RGB:
         return str(int(round(value * 255)))
     return str(int(round(value * 100)))
+
+
+def _parse_number(text):
+    """The number in an input field's text (``°`` / ``%`` and spaces ignored, a comma
+    counts as the decimal point), or None."""
+    t = (text or "").replace("°", "").replace("%", "").replace(",", ".").strip()
+    try:
+        value = float(t)
+    except ValueError:
+        return None
+    return value if value == value and abs(value) != float('inf') else None

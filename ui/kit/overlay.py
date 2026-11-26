@@ -21,6 +21,10 @@ Interaction rules
 * Holding the key that opened the overlay, moving, and releasing it
   confirms the hot widget (after ``theme.hold_release_delay``).
 * ESC / right-click cancel a modal overlay.
+* A widget with ``takes_focus`` (a :class:`~.textfield.TextField`) that starts
+  editing when activated gets the keyboard focus: every key event goes to its
+  ``key_input(event)`` until it stops editing. Tab moves on to the next such widget
+  (Shift+Tab: back); a press elsewhere commits it, a right click cancels it.
 * While the close animation runs, input is swallowed; the chosen widget's
   action runs once the animation has finished.
 
@@ -41,6 +45,10 @@ from .widget import DrawContext
 
 _CONFIRM_KEYS = {'RET', 'NUMPAD_ENTER', 'SPACE'}
 _CANCEL_KEYS = {'ESC', 'RIGHTMOUSE'}
+# Not keyboard input: these keep their usual meaning while a field has the focus.
+_POINTER_EVENTS = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE',
+                   'WHEELINMOUSE', 'WHEELOUTMOUSE', 'TRACKPADPAN', 'TRACKPADZOOM', 'MOUSEROTATE',
+                   'MOUSESMARTZOOM', 'PEN', 'ERASER', 'WINDOW_DEACTIVATE', 'NONE'}
 
 
 class Overlay:
@@ -64,6 +72,7 @@ class Overlay:
         self.hot = None              # interactive widget under the pointer
         self.pressed = None          # widget that received the current LMB press
         self.dragging = None         # draggable widget capturing the pointer
+        self.focus = None            # editing widget receiving the keyboard (TextField)
         self._press_seen = False
         self._last_frame = None
         self.layout()
@@ -135,6 +144,9 @@ class Overlay:
         if self.dragging is not None:
             return self._handle_drag(event)
 
+        if self._live_focus() is not None and self._handle_focus(event):
+            return RUNNING
+
         if event.type == 'MOUSEMOVE':
             return self._unhandled()
 
@@ -190,6 +202,80 @@ class Overlay:
             self.end_drag(cancelled=True)
         return RUNNING
 
+    # ---- keyboard focus ------------------------------------------------------
+
+    def _in_tree(self, widget):
+        """``widget`` is shown in this overlay's tree (not hidden, not replaced)."""
+        while widget is not None:
+            if not widget.visible:
+                return False
+            if widget is self.root:
+                return True
+            parent = widget.parent
+            if parent is None or widget not in parent.children:
+                return False
+            widget = parent
+        return False
+
+    def _live_focus(self):
+        focus = self.focus
+        if focus is not None and (not focus.editing or not self._in_tree(focus)):
+            self.focus = None
+            if focus.editing:
+                focus.end_edit(commit=False)
+        return self.focus
+
+    def set_focus(self, widget):
+        """Give ``widget`` (editing) the keyboard; the previous focus commits."""
+        if self.focus is not None and self.focus is not widget:
+            self.focus.end_edit(commit=True)
+        self.focus = widget
+
+    def blur(self, commit=True):
+        """End the focused widget's editing (``commit`` its text or discard it)."""
+        focus, self.focus = self.focus, None
+        if focus is not None:
+            focus.end_edit(commit=commit)
+
+    def blur_unless_over(self, x, y):
+        """Commit the focused field unless ``x``/``y`` is on it (a press anywhere else)."""
+        if self.focus is not None and self.root.pick(x, y) is not self.focus:
+            self.blur(commit=True)
+
+    def _focus_order(self):
+        return [w for w in self.root.walk() if getattr(w, 'takes_focus', False) and self._in_tree(w)]
+
+    def _handle_focus(self, event):
+        """True when the focused widget used ``event``."""
+        focus = self.focus
+        kind = event.type
+        if kind in _POINTER_EVENTS or kind.startswith(('TIMER', 'NDOF', 'EVT_')):
+            return False
+        if kind == 'LEFTMOUSE':
+            if self.root.pick(event.x, event.y) is focus:
+                return True                      # on the field: keep editing
+            if event.value == PRESS:
+                self.blur(commit=True)           # elsewhere: commit, then the press acts
+            return False
+        if kind == 'RIGHTMOUSE':
+            if event.value == PRESS:
+                self.blur(commit=False)
+            return True
+        if kind == 'TAB':
+            if event.value == PRESS:
+                order = self._focus_order()
+                self.blur(commit=True)
+                if focus in order and len(order) > 1:
+                    step = -1 if event.shift else 1
+                    nxt = order[(order.index(focus) + step) % len(order)]
+                    nxt.begin_edit()
+                    self.focus = nxt
+            return True
+        focus.key_input(event)
+        if not focus.editing:
+            self.focus = None
+        return True
+
     def end_drag(self, x=None, y=None, cancelled=False):
         """Finish the running drag (e.g. the host lost the pointer: ``cancelled=True``)."""
         widget, self.dragging = self.dragging, None
@@ -204,6 +290,8 @@ class Overlay:
             return self._unhandled()
         if not self.modal or widget.keep_open:
             widget.activate()
+            if getattr(widget, 'takes_focus', False) and getattr(widget, 'editing', False):
+                self.set_focus(widget)
             return RUNNING
         self.chosen = widget
         self.pointer_widget = widget
