@@ -104,7 +104,6 @@ def stroke_grid(env):
     if grid is None or grid.size != w * h:
         grid = np.zeros(w * h, dtype=np.float32)
         env.state['native_stroke_grid'] = grid
-        env.state['native_stroke_pixels'] = np.zeros((0, 2), dtype=np.int32)
     return grid
 
 
@@ -138,16 +137,32 @@ def paint_shape(env, shape, stroke_unique):
     return _paint(env, result[0], None)
 
 
+def _box(steps, r, w, h):
+    """End-exclusive ``(x0, y0, x1, y1)`` around the stamps at ``steps``, in the image."""
+    x0 = max(0, int(steps[:, 0].min()) - r)
+    y0 = max(0, int(steps[:, 1].min()) - r)
+    x1 = min(w, int(steps[:, 0].max()) + r + 1)
+    y1 = min(h, int(steps[:, 1].max()) + r + 1)
+    return x0, y0, x1, y1
+
+
 def paint_weighted(env, falloff, curve_sampler, spray_density=None):
-    """Circle / Spray brush. 'Pixel' spacing re-applies the stroke's max weights
-    onto the pre-stroke snapshot, exactly like the Python path."""
+    """Circle / Spray brush. 'Pixel' spacing keeps the stroke's max weight per pixel
+    (the stroke grid) and paints each pixel from the pre-stroke snapshot with it,
+    exactly like the Python path's full reset + repaint: a step only repaints the
+    pixels whose max weight rose (the others already show their final weight)."""
     w, h = env.img.size
-    r = env.radius
+    r = max(0, int(env.radius))
     kernel = falloff_kernel(r, falloff, curve_sampler)
     steps = centers(env.interpolation_steps())
     pixel_spacing = env.spacing == 'PIXEL'
     grid = stroke_grid(env) if pixel_spacing else None
     islands = env.island_labels(steps)
+    box = before = None
+    if pixel_spacing and len(steps):
+        box = _box(steps, r, w, h)
+        x0, y0, x1, y1 = box
+        before = grid.reshape(h, w)[y0:y1, x0:x1].copy()
     if spray_density is None:
         result = native.stamp(steps, r, kernel, w, h, grid, islands=islands)
     else:
@@ -158,16 +173,15 @@ def paint_weighted(env, falloff, curve_sampler, spray_density=None):
     xy, weights = result
     if not pixel_spacing:
         return _paint(env, xy, weights)
-
-    if len(xy):
-        env.state['native_stroke_pixels'] = np.concatenate([env.state['native_stroke_pixels'], xy])
-    stroke_xy = env.state['native_stroke_pixels']
-    if len(stroke_xy) == 0:
+    if box is None or before.size == 0:
         return True
-    stroke_weights = grid[stroke_xy[:, 1].astype(np.int64) * w + stroke_xy[:, 0]]
-    # Pixels outside the stroke still equal the snapshot, so painting the stroke
-    # pixels from it equals the Python path's full reset + repaint.
-    return _paint(env, stroke_xy, stroke_weights, base=env.state['stroke_back_buffer'])
+    x0, y0, x1, y1 = box
+    after = grid.reshape(h, w)[y0:y1, x0:x1]
+    rows, cols = np.nonzero(after > before)
+    if len(rows) == 0:
+        return True
+    rose = np.stack((cols + x0, rows + y0), axis=1).astype(np.int32)
+    return _paint(env, rose, after[rows, cols], base=env.state['stroke_back_buffer'])
 
 
 def line_footprint(env, line, tip):

@@ -141,7 +141,6 @@ class ToolBase(ToolFrame):
         # A full image copy: only for tools that repaint the stroke from it.
         env.state['stroke_back_buffer'] = pixel_io.read(env.img) if self.uses_stroke_snapshot(env) else None
         env.state['native_stroke_grid'] = None     # C# path equivalents (paint/native_paths.py)
-        env.state['native_stroke_pixels'] = None
 
     def on_draw(self, env: DrawEnvironment) -> None:
         """Apply one step of the tool at ``env.cursor_x/y`` into ``env.img``."""

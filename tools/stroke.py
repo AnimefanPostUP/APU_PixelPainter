@@ -52,7 +52,6 @@ class StrokeTool(ToolBase):
         'stroke_weight_map':  None,  # dict (px,py)->max_weight for CIRCLE/SPRAY Pixel mode
         'stroke_back_buffer': None,  # pre-stroke snapshot (tools whose uses_stroke_snapshot() is True)
         'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (paint/native_paths.py)
-        'native_stroke_pixels': None,  # C# path: (N, 2) pixels covered by the stroke so far
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
         color_history.HISTORY_KEY: (),  # recently painted colors, newest first
