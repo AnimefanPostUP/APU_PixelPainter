@@ -3,9 +3,24 @@
 The single place in the kit that talks to ``gpu``/``blf``. Imports are guarded
 so the rest of the kit (layout, hit-testing, interaction) can be imported and
 unit-tested outside Blender.
+
+Submission
+----------
+Every shape becomes colored triangles (``SMOOTH_COLOR``), as NumPy arrays:
+
+* Shapes are memoized in coordinates relative to an integer origin (their first
+  point), so a shape that only moved -- a window being dragged -- is a cache hit
+  and costs one array addition.
+* Inside :class:`batched` (``Overlay.draw``) the triangles are collected and
+  drawn as **one** batch per run; text, icons and blend changes end a run
+  (:func:`flush`), so the drawing order stays exactly as issued. Outside it every
+  shape is drawn at once, as before.
 """
 
 import math
+from collections import OrderedDict
+
+import numpy as np
 
 from . import aa, geometry
 
@@ -19,23 +34,63 @@ except ImportError:  # pragma: no cover
     batch_for_shader = None
 
 
-def _shader():
-    return gpu.shader.from_builtin('UNIFORM_COLOR')
+# ---------------------------------------------------------------------------
+# Submission: triangle arrays, batched per run
+# ---------------------------------------------------------------------------
+
+_batch_depth = 0
+_chunks_v = []      # (N, 2) float32 vertex arrays of the current run
+_chunks_c = []      # (N, 4) float32 color arrays (may be broadcast views)
 
 
-def _alpha_blending():
-    """Every fill blends: text drawing (blf) and other code may turn GPU blending off
-    between our calls, which would draw translucent shapes opaque."""
+def _submit(verts, colors):
+    """Draw ``verts`` (N, 2) with per-vertex ``colors`` (N, 4) as triangles, blended."""
+    # Every draw blends: text drawing (blf) and other code may turn GPU blending
+    # off between our calls, which would draw translucent shapes opaque.
     gpu.state.blend_set('ALPHA')
+    shader = gpu.shader.from_builtin('SMOOTH_COLOR')
+    batch_for_shader(shader, 'TRIS', {'pos': np.ascontiguousarray(verts, dtype=np.float32),
+                                      'color': np.ascontiguousarray(colors, dtype=np.float32)}).draw(shader)
 
 
-def _draw(prim, verts, color):
-    _alpha_blending()
-    shader = _shader()
-    batch = batch_for_shader(shader, prim, {'pos': verts})
-    shader.bind()
-    shader.uniform_float('color', color)
-    batch.draw(shader)
+def _emit(verts, colors):
+    if _batch_depth > 0:
+        _chunks_v.append(verts)
+        _chunks_c.append(colors)
+    else:
+        _submit(verts, colors)
+
+
+def flush():
+    """Draw the triangles collected in the current run (call before drawing anything
+    that is not a kit shape: text, textures, raw ``gpu`` calls)."""
+    if not _chunks_v:
+        return
+    verts = _chunks_v[0] if len(_chunks_v) == 1 else np.concatenate(_chunks_v)
+    colors = _chunks_c[0] if len(_chunks_c) == 1 else np.concatenate(_chunks_c)
+    _chunks_v.clear()
+    _chunks_c.clear()
+    _submit(verts, colors)
+
+
+class batched:
+    """Context manager: collect shapes and draw them as few batches as possible."""
+
+    def __enter__(self):
+        global _batch_depth
+        _batch_depth += 1
+        return self
+
+    def __exit__(self, *exc):
+        global _batch_depth
+        _batch_depth -= 1
+        if _batch_depth == 0:
+            if exc[0] is None:
+                flush()
+            else:
+                _chunks_v.clear()
+                _chunks_c.clear()
+        return False
 
 
 class blend_mode:
@@ -46,12 +101,116 @@ class blend_mode:
         self.restore = restore
 
     def __enter__(self):
+        flush()
         gpu.state.blend_set(self.mode)
         return self
 
     def __exit__(self, *exc):
+        flush()
         gpu.state.blend_set(self.restore)
         return False
+
+
+def _arrays(verts, colors):
+    """``(verts (N, 2), colors (N, 4))`` float32 from lists; ``colors`` may be one RGBA.
+    ``(None, None)`` when there are no vertices."""
+    v = np.asarray(verts, dtype=np.float32).reshape(-1, 2)
+    if len(v) == 0:
+        return None, None
+    c = np.asarray(colors, dtype=np.float32)
+    if c.ndim == 1:
+        c = np.broadcast_to(c, (len(v), 4))
+    return v, c
+
+
+def _emit_lists(verts, colors):
+    v, c = _arrays(verts, colors)
+    if v is not None:
+        _emit(v, c)
+
+
+_PLACED = OrderedDict()   # (kind, exact points, extra) -> (verts, colors) where drawn, LRU
+_SHAPES = OrderedDict()   # (kind, points relative to the origin, extra) -> (verts, colors), LRU
+_MESH_CACHE_SIZE = 4096
+
+
+def _remember(cache, key, value):
+    cache[key] = value
+    if len(cache) > _MESH_CACHE_SIZE:
+        cache.popitem(last=False)
+
+
+def _exact_key(points):
+    try:
+        key = tuple(points)
+        hash(key)
+        return key
+    except TypeError:   # points given as lists / arrays
+        return tuple(tuple(float(c) for c in p) for p in points)
+
+
+def _cached(kind, points, extra, build):
+    """Emit the mesh ``build(rel_points)`` (lists, see :func:`_arrays`) of ``points``.
+    ``extra``: everything else the mesh depends on (hashable).
+
+    Two levels: the exact points (a shape drawn where it was last frame: no work),
+    then the points relative to the integer origin at the first point (a moved
+    shape: one array addition instead of rebuilding its soft edges)."""
+    key = (kind, _exact_key(points), extra)
+    hit = _PLACED.get(key)
+    if hit is not None:
+        _PLACED.move_to_end(key)
+    else:
+        pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        if len(pts) == 0:
+            return
+        origin = np.floor(pts[0])
+        rel = np.round(pts - origin, 4)
+        shape_key = (kind, rel.tobytes(), extra)
+        shape = _SHAPES.get(shape_key)
+        if shape is None:
+            shape = _arrays(*build([tuple(p) for p in rel.tolist()]))
+            _remember(_SHAPES, shape_key, shape)
+        else:
+            _SHAPES.move_to_end(shape_key)
+        verts, colors = shape
+        hit = (verts + origin.astype(np.float32), colors) if verts is not None else shape
+        _remember(_PLACED, key, hit)
+    if hit[0] is not None:
+        _emit(*hit)
+
+
+def _rgba(color):
+    return tuple(float(c) for c in color)
+
+
+def _fan(points):
+    """Triangles of a fan around ``points[0]``."""
+    p0 = points[0]
+    out = []
+    for i in range(1, len(points) - 1):
+        out += [p0, points[i], points[i + 1]]
+    return out
+
+
+def _strip(inner, outer):
+    """Triangles between two point rows of equal length."""
+    out = []
+    for i in range(len(inner) - 1):
+        out += [inner[i], outer[i], outer[i + 1], inner[i], outer[i + 1], inner[i + 1]]
+    return out
+
+
+# The memoized builders of .aa without their own (absolute-coordinate) caches.
+_fringe = aa._fringe_mesh.__wrapped__
+_stroke = aa._stroke_mesh.__wrapped__
+_offset = aa._offset_points.__wrapped__
+
+
+def _draw(prim, verts, color):
+    """Uniform-color ``'TRIS'`` or ``'TRI_FAN'`` (kept for callers outside the kit)."""
+    verts = list(verts)
+    _emit_lists(_fan(verts) if prim == 'TRI_FAN' else verts, _rgba(color))
 
 
 # ---------------------------------------------------------------------------
@@ -59,18 +218,20 @@ class blend_mode:
 # (see .aa): overlays have no multisampling.
 # ---------------------------------------------------------------------------
 
-def _mesh(verts, colors):
-    if verts:
-        shaded_tris(verts, colors)
-
-
 def _fill(points, color, rim=None):
     """Convex polygon (or a fan around its first point): the solid part EDGE px
     smaller, the coverage ramp across the edge, then the optional ``rim`` line."""
     if len(points) < 3:
         return
-    _draw('TRI_FAN', aa.offset_points(points, -aa.EDGE), color)
-    _mesh(*aa.fringe_mesh(points, color))
+    color = _rgba(color)
+
+    def build(rel):
+        rel = tuple(rel)
+        solid = _fan(_offset(rel, -aa.EDGE))
+        fv, fc = _fringe(rel, color, aa.AA)
+        return solid + fv, [color] * len(solid) + list(fc)
+
+    _cached('fill', points, color, build)
     if rim is not None:
         polyline(points, rim, 1.0, closed=True)
 
@@ -82,16 +243,14 @@ def _snap(r):
 
 def shaded_tris(verts, colors):
     """Triangles with per-vertex colors (gradients): 3 verts / colors per triangle."""
-    _alpha_blending()
-    shader = gpu.shader.from_builtin('SMOOTH_COLOR')
-    batch_for_shader(shader, 'TRIS', {'pos': verts, 'color': colors}).draw(shader)
+    _emit_lists(verts, colors)
 
 
 def rect(r, color):
     """Filled rectangle (``r``: :class:`geometry.Rect`), snapped to whole pixels."""
     x0, y0, x1, y1 = _snap(r)
     if x1 > x0 and y1 > y0:
-        _draw('TRI_FAN', [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], color)
+        _emit_lists([(x0, y0), (x1, y0), (x1, y1), (x0, y0), (x1, y1), (x0, y1)], _rgba(color))
 
 
 def rect_outline(r, color, width=1.5):
@@ -145,13 +304,16 @@ def ring_segment(inner, outer, color, rim=None):
     if n < 2 or n != len(outer):
         return
     outline = list(inner) + list(reversed(outer))
-    solid = aa.offset_points(outline, -aa.EDGE)
-    inner_s, outer_s = solid[:n], list(reversed(solid[n:]))
-    verts = []
-    for i in range(n - 1):
-        verts += [inner_s[i], outer_s[i], outer_s[i + 1], inner_s[i], outer_s[i + 1], inner_s[i + 1]]
-    _draw('TRIS', verts, color)
-    _mesh(*aa.fringe_mesh(outline, color))
+    color = _rgba(color)
+
+    def build(rel):
+        rel = tuple(rel)
+        solid = _offset(rel, -aa.EDGE)
+        tris = _strip(solid[:n], list(reversed(solid[n:])))
+        fv, fc = _fringe(rel, color, aa.AA)
+        return tris + fv, [color] * len(tris) + list(fc)
+
+    _cached(('ring', n), outline, color, build)
     if rim is not None:
         polyline(outline, rim, 1.0, closed=True)
 
@@ -176,33 +338,48 @@ def gradient_ring_segment(inner, outer, colors):
     n = len(inner)
     if n < 2 or n != len(outer) or len(colors) != n:
         return
-    verts, cols = [], []
-    for i in range(n - 1):
-        verts += [inner[i], outer[i], outer[i + 1], inner[i], outer[i + 1], inner[i + 1]]
-        cols += [colors[i], colors[i], colors[i + 1], colors[i], colors[i + 1], colors[i + 1]]
-    shaded_tris(verts, cols)
+    cols = tuple(_rgba(c) for c in colors)
+
+    def build(rel):
+        tris = _strip(rel[:n], rel[n:])
+        tri_cols = []
+        for i in range(n - 1):
+            ci, cj = cols[i], cols[i + 1]
+            tri_cols += [ci, ci, cj, ci, cj, cj]
+        return tris, tri_cols
+
+    _cached(('gradient_ring', n), list(inner) + list(outer), cols, build)
 
 
 def gradient_line(p0, p1, c0, c1, width=1.5):
     """Straight line ``width`` px wide, colored from ``c0`` at ``p0`` to ``c1`` at ``p1`` (e.g. a fade)."""
-    _mesh(*aa.stroke_mesh([p0, p1], c0, width, colors=[c0, c1]))
+    c0, c1 = _rgba(c0), _rgba(c1)
+    _cached(('gradient_line', width), [p0, p1], (c0, c1),
+            lambda rel: _stroke(tuple(rel), c0, width, False, (c0, c1)))
 
 
 def gradient_circle(cx, cy, radius, left, right, segments=36):
     """Disc shaded horizontally from color ``left`` to ``right`` (RGBA)."""
-    def _at(x):
-        t = (x - (cx - radius)) / max(2.0 * radius, 1e-6)
-        return tuple(left[i] + (right[i] - left[i]) * t for i in range(4))
+    left, right = _rgba(left), _rgba(right)
 
-    pts = aa.circle_points(cx, cy, radius, max(segments, aa.segments_for(radius)))
-    solid = aa.circle_points(cx, cy, max(0.0, radius - aa.EDGE), len(pts))
-    verts, colors = [], []
-    for i in range(len(solid)):
-        for p in ((cx, cy), solid[i], solid[(i + 1) % len(solid)]):
-            verts.append(p)
-            colors.append(_at(p[0]))
-    shaded_tris(verts, colors)
-    _mesh(*aa.fringe_mesh(pts, [_at(p[0]) for p in pts]))
+    def build(rel):
+        rcx, rcy = rel[0]
+
+        def _at(x):
+            t = (x - (rcx - radius)) / max(2.0 * radius, 1e-6)
+            return tuple(left[i] + (right[i] - left[i]) * t for i in range(4))
+
+        pts = aa.circle_points(rcx, rcy, radius, max(segments, aa.segments_for(radius)))
+        solid = aa.circle_points(rcx, rcy, max(0.0, radius - aa.EDGE), len(pts))
+        verts, colors = [], []
+        for i in range(len(solid)):
+            for p in ((rcx, rcy), solid[i], solid[(i + 1) % len(solid)]):
+                verts.append(p)
+                colors.append(_at(p[0]))
+        fv, fc = _fringe(aa._key(pts), tuple(_at(p[0]) for p in pts), aa.AA)
+        return verts + fv, colors + list(fc)
+
+    _cached(('gradient_circle', float(radius), segments), [(cx, cy)], (left, right), build)
 
 
 def gradient_ring_segment_radial(inner, outer, c_inner, c_outer):
@@ -211,15 +388,17 @@ def gradient_ring_segment_radial(inner, outer, c_inner, c_outer):
     n = len(inner)
     if n < 2 or n != len(outer):
         return
-    outline = list(inner) + list(reversed(outer))
-    solid = aa.offset_points(outline, -aa.EDGE)
-    inner_s, outer_s = solid[:n], list(reversed(solid[n:]))
-    verts, cols = [], []
-    for i in range(n - 1):
-        verts += [inner_s[i], outer_s[i], outer_s[i + 1], inner_s[i], outer_s[i + 1], inner_s[i + 1]]
-        cols += [c_inner, c_outer, c_outer, c_inner, c_outer, c_inner]
-    shaded_tris(verts, cols)
-    _mesh(*aa.fringe_mesh(outline, [c_inner] * n + [c_outer] * n))
+    c_inner, c_outer = _rgba(c_inner), _rgba(c_outer)
+
+    def build(rel):
+        rel = tuple(rel)
+        solid = _offset(rel, -aa.EDGE)
+        tris = _strip(solid[:n], list(reversed(solid[n:])))
+        cols = [c_inner, c_outer, c_outer, c_inner, c_outer, c_inner] * (n - 1)
+        fv, fc = _fringe(rel, (c_inner,) * n + (c_outer,) * n, aa.AA)
+        return tris + fv, cols + list(fc)
+
+    _cached(('radial_ring', n), list(inner) + list(reversed(outer)), (c_inner, c_outer), build)
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +501,7 @@ def rounded_grid(r, radius, color_at, cols, rows):
     for p, q in zip(corners, corners[1:] + corners[:1]):
         n = max(1, int(math.dist(p, q) / step))
         outline += [(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n) for k in range(n)]
-    _mesh(*aa.fringe_mesh(outline, [color(*p) for p in outline]))
+    shaded_tris(*_fringe(aa._key(outline), tuple(color(*p) for p in outline), aa.AA))
 
 
 def star_polygon(cx, cy, points, color, rim=None):
@@ -330,12 +509,18 @@ def star_polygon(cx, cy, points, color, rim=None):
     a silhouette sampled per angle), filled as a fan from there; soft edge, optional rim."""
     if len(points) < 3:
         return
-    solid = aa.offset_points(points, -aa.EDGE)
-    verts = []
-    for i in range(len(solid)):
-        verts += [(cx, cy), solid[i], solid[(i + 1) % len(solid)]]
-    _draw('TRIS', verts, color)
-    _mesh(*aa.fringe_mesh(points, color))
+    color = _rgba(color)
+
+    def build(rel):
+        center, outline = rel[0], tuple(rel[1:])
+        solid = _offset(outline, -aa.EDGE)
+        verts = []
+        for i in range(len(solid)):
+            verts += [center, solid[i], solid[(i + 1) % len(solid)]]
+        fv, fc = _fringe(outline, color, aa.AA)
+        return verts + fv, [color] * len(verts) + list(fc)
+
+    _cached('star', [(cx, cy)] + list(points), color, build)
     if rim is not None:
         polyline(points, rim, 1.0, closed=True)
 
@@ -346,7 +531,9 @@ def triangle(p0, p1, p2, color, rim=None):
 
 def polyline(points, color, width=1.0, closed=False):
     """Line through ``points`` (``closed``: back to the first), ``width`` px, soft edges."""
-    _mesh(*aa.stroke_mesh(list(points), color, width, closed=closed))
+    color = _rgba(color)
+    _cached(('stroke', float(width), bool(closed)), list(points), color,
+            lambda rel: _stroke(tuple(rel), color, width, closed, None))
 
 
 def bezier_points(p0, p1, p2, p3, segments=20):
@@ -382,6 +569,7 @@ def text_size(text, size, font_id=0):
 def text_centered(text, x, y, size, color, font_id=0):
     if not text or size < 1.0 or color[3] <= 0.0:
         return
+    flush()   # text goes on top of the shapes issued before it
     blf.size(font_id, size)
     w, h = blf.dimensions(font_id, text)
     blf.position(font_id, x - w * 0.5, y - h * 0.5, 0)
@@ -394,6 +582,7 @@ def text_along(text, x, y, size, color, angle, font_id=0):
     starting at ``(x, y)``, centered on that line (its height straddles the point)."""
     if not text or size < 1.0 or color[3] <= 0.0:
         return
+    flush()   # text goes on top of the shapes issued before it
     blf.size(font_id, size)
     _w, h = blf.dimensions(font_id, text)
     # Baseline start: half the height "down" (perpendicular to the direction).

@@ -2,6 +2,8 @@
 
 import os
 
+from . import draw
+
 try:  # pragma: no cover
     import bpy
     import bpy.utils.previews
@@ -184,6 +186,7 @@ class IconSet:
         tex = self.texture(key)
         if tex is None:
             return False
+        draw.flush()   # the icon goes on top of the shapes issued before it
         try:
             from gpu_extras.batch import batch_for_shader
             try:
@@ -213,6 +216,7 @@ class IconSet:
             return False
         x = cx - size * 0.5
         y = cy - size * 0.5
+        draw.flush()   # the icon goes on top of the shapes issued before it
         for attempt in range(2):
             try:
                 gpu.state.blend_set('ALPHA_PREMULT')

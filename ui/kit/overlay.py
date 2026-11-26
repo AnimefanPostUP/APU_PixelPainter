@@ -355,5 +355,5 @@ class Overlay:
     def draw(self):
         """Draw the widget tree (call from a POST_PIXEL draw handler)."""
         dc = self.draw_context()
-        with draw.blend_mode('ALPHA'):
+        with draw.blend_mode('ALPHA'), draw.batched():
             self.root.draw(dc)
