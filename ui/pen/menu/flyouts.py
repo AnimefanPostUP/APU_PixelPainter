@@ -3,23 +3,16 @@ the Blend modes; opening and closing them.
 """
 
 
-from ..kit import (
-    Column, CurveEditor, Grid, Label, Row, Spacer, TextField,
-)
-from ..kit import clipboard
-from ..kit.color_models import parse_color, to_hex
-from .style import PenButton, PenFlyoutButton, PenPanel
-from ...model import blend_modes, falloff
-from .blend_widgets import StarButton
-from .icons import (
-    paint_sliders,
-)
-from .metrics import (
-    BLEND_ENTRY_SIZE, BLEND_GROUPS, BLEND_STAR_GAP, BLEND_STAR_SIZE,
-    COLOR_SHAPES, CURVE_EDITOR_SIZE, CURVE_HINTS, CURVE_MODES, CURVE_PRESET_COLUMNS,
-    CURVE_PRESET_SIZE, TINT_CUSTOM,
-)
-from .window import HintLabel
+from ...kit import Column, CurveEditor, Grid, Label, Row, Spacer, TextField
+from ...kit import clipboard
+from ...kit.color_models import parse_color, to_hex
+from ..icons.settings import icon_layout
+from ..style import PenButton, PenFlyoutButton, PenPanel
+from ....model import blend_modes, falloff
+from ..widgets.blend import StarButton
+from ..icons.menu import paint_sliders
+from ..metrics import BLEND_ENTRY_SIZE, BLEND_GROUPS, BLEND_STAR_GAP, BLEND_STAR_SIZE, COLOR_SHAPES, CURVE_EDITOR_SIZE, CURVE_HINTS, CURVE_MODES, CURVE_PRESET_COLUMNS, CURVE_PRESET_SIZE, TINT_CUSTOM
+from ..windows.frame import HintLabel
 
 
 class Flyouts:
@@ -31,11 +24,10 @@ class Flyouts:
         """The color selector's top row: the old / new bubble, the Shape button (opens the
         shape popup; shows the current shape) and the button that folds the channel
         sliders out."""
-        from .settings import _icon_layout   # late import: it imports this module
         a = self.actions
         labels = dict(COLOR_SHAPES)
         shape = PenButton(lambda: labels.get(a.color_layout(), "Shape"), layout='row', size=(92.0, 26.0),
-                          painter=lambda dc, x, y, size, alpha: _icon_layout(a.color_layout())(dc, x, y, size, alpha),
+                          painter=lambda dc, x, y, size, alpha: icon_layout(a.color_layout())(dc, x, y, size, alpha),
                           key='COLOR_SHAPE', selected=lambda: self.flyout is self.shape_flyout,
                           on_click=lambda: self.toggle_flyout(self.shape_flyout, shape))
         fold = PenButton("Sliders", painter=paint_sliders, layout='icon', size=(26.0, 26.0),
@@ -45,7 +37,6 @@ class Flyouts:
     def _build_shape_flyout(self):
         """The color selector's shape popup (under its Shape button): Sheet, Square,
         Triangle, Wheel."""
-        from .settings import _icon_layout   # late import: it imports this module
         a = self.actions
 
         def choose(kind):
@@ -53,7 +44,7 @@ class Flyouts:
             self.close_flyout()
             self._relayout()
 
-        entries = [PenFlyoutButton(label, painter=_icon_layout(kind), layout='column', size=(58.0, 54.0),
+        entries = [PenFlyoutButton(label, painter=icon_layout(kind), layout='column', size=(58.0, 54.0),
                                    key=f'COLOR_SHAPE_{kind}', selected=lambda k=kind: a.color_layout() == k,
                                    on_click=lambda k=kind: choose(k))
                    for kind, label in COLOR_SHAPES]

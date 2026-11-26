@@ -3,14 +3,11 @@ and size previews, the dragged color, the picker hint.
 """
 
 
-from ..kit import (
-    Rect,
-)
-from ..kit import draw
-from ...model import falloff
-from .metrics import (
-    ARM_HINTS, CHANNEL_LABELS, FALLOFF_PREVIEW_SIZE, FLYOUT_GAP, MASK_PICK_HINT, TINT_MASK,
-)
+from ...kit import Rect
+from ...kit import draw
+from ....model import falloff
+from ..metrics import ARM_HINTS, CHANNEL_LABELS, FALLOFF_PREVIEW_SIZE, FLYOUT_GAP, MASK_PICK_HINT, TINT_MASK
+from ..windows.palettes import draw_palette_cells
 
 
 class Readouts:
@@ -109,7 +106,6 @@ class Readouts:
         if payload[0] == 'palette':
             w, h = theme.px(96.0), theme.px(18.0)
             box = Rect.from_center(x, y + h * 1.6, w, h)
-            from .palettes import draw_palette_cells
             draw_palette_cells(box, payload[1], 1.0, theme)
             draw.rect_outline(box, theme.text, width=theme.px(1.5))
             cx, cy, r = box.cx, box.cy, h * 0.5

@@ -117,25 +117,26 @@ layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
 """
 
 
-from ..kit import (
-    ColorSelector, Column, Overlay, RoundButton, Spacer,
-)
+from ..kit import ColorSelector, Column, Overlay, RoundButton, Spacer
 from ..kit import draw
 from ..kit.events import PRESS, RUNNING
-from .color_widgets import BubbleDrag
-from .icons import (
-    paint_color_wheel, paint_gear,
-)
-from .metrics import (
-    SHAPE_PAD, TOOL_WINDOWS,
-    POINTER_TYPES,
-)
-from .window import CornerButton, MenuLayer
-from .dial import DialControls
-from .flyouts import Flyouts
-from .drag_drop import ColorDragDrop
-from .window_layout import WindowLayout
-from .readouts import Readouts
+from .widgets.color import BubbleDrag
+from .icons.menu import paint_color_wheel, paint_gear
+from .metrics import SHAPE_PAD, TOOL_WINDOWS, POINTER_TYPES
+from .windows.frame import CornerButton, MenuLayer
+from .menu.dial import DialControls
+from .menu.flyouts import Flyouts
+from .menu.drag_drop import ColorDragDrop
+from .menu.window_layout import WindowLayout
+from .windows.dialog import ConfirmDialog
+from .windows.mask import build_mask_window
+from .icons.palettes import paint_library
+from .windows.palettes import PaletteLibrary
+from .windows.settings import SettingsMenu
+from .windows.shapes import dial_star
+from .windows.parts import body_shapes, build_body_window, window_shapes
+from .windows.view import build_view_window
+from .menu.readouts import Readouts
 
 
 def _is_inside(widget, ancestor):
@@ -174,13 +175,10 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
         self.curve_flyout.visible = False
         self.shape_flyout = self._build_shape_flyout()
         self.shape_flyout.visible = False
-        from .settings import SettingsMenu  # late import: it imports this module
         self.settings_menu = SettingsMenu(self)
-        from .palettes import ConfirmDialog, PaletteLibrary  # late import: they import this module
         self.library_menu = PaletteLibrary(self)
         self.confirm_dialog = ConfirmDialog(self)
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
-        from .shapes import dial_star   # late import: it imports the kit only
         self.menu = self._window('bar', self._build_dial(),
                                  CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
                                  tab=tab, lock_bottom=True,   # top left: the tertiary bubble
@@ -200,18 +198,12 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
         self.color_extras = self._build_color_extras()
         content = Column([self._build_color_header(), self.color_pad, self.color_extras,
                           Spacer(0.0, 2.0)], gap=6.0)
-        from .tool_windows import body_shapes, build_body_window   # late import: it imports this module
         self.color_window = self._window('color', build_body_window("Color", content, paint_color_wheel(None)),
                                          CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel),
                                          shape=body_shapes)
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
         # Mask / View / Settings / Palettes windows (opened from the Windows ring).
-        # late import: they import this module
-        from .tool_windows import (
-            body_shapes, build_body_window, build_mask_window, build_view_window, window_shapes,
-        )
-        from .palettes import paint_library
         builders = {
             'mask': (build_mask_window, window_shapes, True),
             'view': (build_view_window, window_shapes, True),

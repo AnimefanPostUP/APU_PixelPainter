@@ -3,7 +3,7 @@ confirm dialog for deleting / replacing palettes.
 """
 
 
-from ...model import color_palette
+from ....model import color_palette
 
 
 class ColorDragDrop:

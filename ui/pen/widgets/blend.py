@@ -4,15 +4,12 @@ and the favorite stars of the Blend flyout.
 
 import math
 
-from ..kit import Rect, RingSegment, Widget
-from ..kit import draw
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from .style import PenButton
-from .metrics import (
-    BLEND_GRADIENT, DIAL_GAP, FAVORITE_CAPS_LETTERS, FAVORITE_ROWS, FAVORITE_SIZE_TEXTS,
-    FAVORITE_TEXT_COLOR, FAVORITE_TEXT_PAD, STAR_COLOR,
-)
+from ...kit import Rect, RingSegment, Widget
+from ...kit import draw
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ..style import PenButton
+from ..metrics import BLEND_GRADIENT, DIAL_GAP, FAVORITE_CAPS_LETTERS, FAVORITE_ROWS, FAVORITE_SIZE_TEXTS, FAVORITE_TEXT_COLOR, FAVORITE_TEXT_PAD, STAR_COLOR
 
 
 class StarButton(PenButton):

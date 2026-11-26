@@ -4,15 +4,12 @@ radius, sharpness along the circle).
 
 import math
 
-from ..kit import RingSegment
-from ..kit import anim, draw
-from ..kit.theme import mix, with_alpha
-from ..kit.widget import _resolve
-from ...utils.math_utils import shape_falloff
-from .metrics import (
-    DRAG_THRESHOLD, FIELD_CROSS_ARM, FIELD_CURVE_FILL, FIELD_CURVE_SAMPLES, FIELD_EDGE_MARGIN,
-    FIELD_GUIDE_ALPHA, FIELD_GUIDE_GRAY, FIELD_MARKER_RADIUS, FIELD_PREVIEW_SCALE,
-)
+from ...kit import RingSegment
+from ...kit import anim, draw
+from ...kit.theme import mix, with_alpha
+from ...kit.widget import _resolve
+from ....utils.math_utils import shape_falloff
+from ..metrics import DRAG_THRESHOLD, FIELD_CROSS_ARM, FIELD_CURVE_FILL, FIELD_CURVE_SAMPLES, FIELD_EDGE_MARGIN, FIELD_GUIDE_ALPHA, FIELD_GUIDE_GRAY, FIELD_MARKER_RADIUS, FIELD_PREVIEW_SCALE
 
 
 class FalloffField(RingSegment):

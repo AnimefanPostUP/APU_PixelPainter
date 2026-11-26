@@ -14,9 +14,9 @@ it contains a point: presses outside every shape fall through to the canvas.
 
 import math
 
-from ..kit import draw
-from ..kit.geometry import Rect
-from ..kit.ring import CornerSegment, RingSegment
+from ...kit import draw
+from ...kit.geometry import Rect
+from ...kit.ring import CornerSegment, RingSegment
 
 STEP_DEG = 2.0           # silhouette resolution
 BRIDGE_DEG = 7.0         # gaps narrower than this (between bands) are filled

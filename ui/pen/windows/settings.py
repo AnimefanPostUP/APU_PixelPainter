@@ -15,18 +15,17 @@ Values are read and written through the pen menu's actions
 / ``wm_range`` for ``pixel_painter_*`` properties).
 """
 
-import colorsys
-import math
 
-from ..kit import Column, Grid, Rect, Row, Slider, TextBlock, Widget
-from ..kit import draw
-from ..kit.form import text_left
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from ...model import blend_modes, falloff
-from .icons import paint_color_wheel, paint_curve, paint_eyedropper, paint_save, thick_line
-from .metrics import TINT_FALLOFF, TINT_MODES, TINT_TOOLS
-from .style import PenButton, PlainGroup
+from ...kit import Column, Grid, Rect, Row, Slider, TextBlock, Widget
+from ...kit import draw
+from ...kit.form import text_left
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ....model import blend_modes, falloff
+from ..icons.menu import paint_color_wheel, paint_curve, paint_eyedropper, paint_save
+from ..metrics import TINT_FALLOFF, TINT_MODES, TINT_TOOLS
+from ..style import PenButton, PlainGroup
+from ..icons.settings import icon_blend, icon_bolt, icon_brush, icon_eye, icon_falloff, icon_grid, icon_keyboard, icon_layout, icon_pen, icon_pressure, icon_reset
 
 
 PAGE_WIDTH = 300.0       # unscaled width of every group
@@ -77,135 +76,15 @@ SAVE_HINTS = {
 }
 
 
-# ---- icons: painter(dc, x, y, size, alpha) ------------------------------------------------
-
-def _ink(dc, alpha, amount=0.92):
-    return with_alpha(dc.theme.text, amount * alpha)
-
-
-def _icon_brush(dc, x, y, size, alpha):
-    s = size * 0.6
-    color = _ink(dc, alpha)
-    thick_line((x + s * 0.45, y + s * 0.45), (x - s * 0.05, y - s * 0.05), s * 0.13, color)
-    draw.circle(x - s * 0.22, y - s * 0.22, s * 0.24, color, segments=16)
-
-
-def _icon_blend(dc, x, y, size, alpha):
-    r = size * 0.24
-    draw.circle(x - r * 0.45, y, r, (0.15, 0.15, 0.15, alpha), segments=20)
-    draw.circle(x + r * 0.45, y, r, (1.0, 1.0, 1.0, 0.7 * alpha), segments=20)
-    draw.circle_outline(x - r * 0.45, y, r, _ink(dc, alpha, 0.6), width=1.0, segments=20)
-
-
-def _icon_falloff(dc, x, y, size, alpha):
-    paint_curve(dc, x, y, size * 1.2, alpha)
-
-
-def _icon_pen(dc, x, y, size, alpha):
-    s = size * 0.6
-    color = _ink(dc, alpha)
-    ux = uy = math.sqrt(0.5)
-    tip = (x - ux * s * 0.5, y - uy * s * 0.5)
-    base = (x - ux * s * 0.2, y - uy * s * 0.2)
-    thick_line(base, (x + ux * s * 0.5, y + uy * s * 0.5), s * 0.22, color)
-    draw.triangle(tip, (base[0] - uy * s * 0.11, base[1] + ux * s * 0.11),
-                  (base[0] + uy * s * 0.11, base[1] - ux * s * 0.11), color)
-
-
-def _icon_eye(dc, x, y, size, alpha):
-    w, h = size * 0.34, size * 0.2
-    color = _ink(dc, alpha)
-    top = [(x - w + 2 * w * i / 16, y + h * math.sin(math.pi * i / 16)) for i in range(17)]
-    bottom = [(px, y - (py - y)) for px, py in top]
-    draw.polyline(top, color, 1.5)
-    draw.polyline(bottom, color, 1.5)
-    draw.circle(x, y, h * 0.7, color, segments=16)
-
-
-def _icon_keyboard(dc, x, y, size, alpha):
-    w, h = size * 0.36, size * 0.22
-    color = _ink(dc, alpha)
-    draw.rect_outline(Rect(x - w, y - h, x + w, y + h), color, width=1.5)
-    k = w * 0.22
-    for row, keys in ((0.35, 5), (-0.15, 5)):
-        for i in range(keys):
-            kx = x - w + w * 2.0 * (i + 0.5) / keys
-            draw.rect(Rect.from_center(kx, y + h * row, k, k * 0.8), color)
-    draw.rect(Rect.from_center(x, y - h * 0.6, w * 1.1, k * 0.7), color)
-
-
-def _icon_reset(dc, x, y, size, alpha):
-    r = size * 0.28
-    color = _ink(dc, alpha)
-    draw.arc(x, y, r, math.radians(60), math.radians(360), color, width=max(1.0, size * 0.07), segments=24)
-    hx, hy = x + math.cos(math.radians(60)) * r, y + math.sin(math.radians(60)) * r
-    head = r * 0.5
-    draw.triangle((hx + head * 0.9, hy + head * 0.1), (hx - head * 0.3, hy + head * 0.7),
-                  (hx - head * 0.1, hy - head * 0.6), color)
-
-
-def _icon_pressure(dc, x, y, size, alpha):
-    color = _ink(dc, alpha)
-    w = size * 0.1
-    for i, h in enumerate((0.25, 0.45, 0.65)):
-        bx = x + (i - 1) * w * 1.7
-        draw.rect(Rect(bx - w * 0.5, y - size * 0.3, bx + w * 0.5, y - size * 0.3 + size * h), color)
-
-
-def _icon_bolt(dc, x, y, size, alpha):
-    s = size * 0.3
-    color = _ink(dc, alpha)
-    draw.triangle((x + s * 0.35, y + s * 1.05), (x - s * 0.55, y - s * 0.1), (x + s * 0.05, y - s * 0.1), color)
-    draw.triangle((x - s * 0.35, y - s * 1.05), (x + s * 0.55, y + s * 0.1), (x - s * 0.05, y + s * 0.1), color)
-
-
-def _icon_grid(dc, x, y, size, alpha):
-    w = size * 0.3
-    color = _ink(dc, alpha, 0.8)
-    for i in range(4):
-        t = -w + 2.0 * w * i / 3.0
-        draw.polyline([(x + t, y - w), (x + t, y + w)], color, 1.0)
-        draw.polyline([(x - w, y + t), (x + w, y + t)], color, 1.0)
-
-
-def _icon_layout(kind):
-    """Color selector layout glyphs: Sheet, Square, Triangle, Wheel."""
-    def paint(dc, x, y, size, alpha):
-        s = size * 0.36
-        if kind == 'SHEET':
-            steps = 12
-            for i in range(steps):
-                c = colorsys.hsv_to_rgb(i / steps, 1.0, 1.0)
-                cell = Rect(x - s + 2 * s * i / steps, y - s * 0.7, x - s + 2 * s * (i + 1) / steps, y + s * 0.7)
-                draw.gradient_quad(cell, (0, 0, 0, alpha), (0, 0, 0, alpha), (*c, alpha), (*c, alpha))
-        elif kind == 'SQUARE':
-            r = Rect(x - s * 0.8, y - s * 0.8, x + s * 0.8, y + s * 0.8)
-            draw.gradient_quad(r, (0, 0, 0, alpha), (0, 0, 0, alpha), (1, 0.1, 0.1, alpha), (1, 1, 1, alpha))
-        elif kind == 'TRIANGLE':
-            for i in range(24):
-                c = colorsys.hsv_to_rgb(i / 24, 1.0, 1.0)
-                draw.sector(x, y, s, math.tau * i / 24, math.tau * (i + 1) / 24, (*c, alpha), segments=2)
-            draw.circle(x, y, s * 0.75, with_alpha(dc.theme.surface_dark, alpha), segments=24)
-            p = [(x + math.cos(a) * s * 0.7, y + math.sin(a) * s * 0.7)
-                 for a in (math.radians(90), math.radians(210), math.radians(330))]
-            draw.shaded_tris(p, [(1, 0.1, 0.1, alpha), (0, 0, 0, alpha), (1, 1, 1, alpha)])
-        else:
-            for i in range(24):
-                c = colorsys.hsv_to_rgb(i / 24, 1.0, 1.0)
-                draw.sector(x, y, s, math.tau * i / 24, math.tau * (i + 1) / 24, (*c, alpha), segments=2)
-            draw.circle(x, y, s * 0.35, (1, 1, 1, 0.8 * alpha), segments=16)
-    return paint
-
-
 TABS = (
     ('COLOR', "Color Selector", TINT_COLOR, paint_color_wheel(None)),
-    ('TOOLS', "Tools", TINT_TOOLS, _icon_brush),
-    ('BLENDING', "Blending", TINT_MODES, _icon_blend),
-    ('FALLOFF', "Falloff", TINT_FALLOFF, _icon_falloff),
-    ('PEN', "Pen", TINT_PEN, _icon_pen),
-    ('DISPLAY', "Display", TINT_DISPLAY, _icon_eye),
-    ('PERFORMANCE', "Performance", TINT_PERFORMANCE, _icon_bolt),
-    ('SHORTCUTS', "Shortcuts", TINT_KEYS, _icon_keyboard),
+    ('TOOLS', "Tools", TINT_TOOLS, icon_brush),
+    ('BLENDING', "Blending", TINT_MODES, icon_blend),
+    ('FALLOFF', "Falloff", TINT_FALLOFF, icon_falloff),
+    ('PEN', "Pen", TINT_PEN, icon_pen),
+    ('DISPLAY', "Display", TINT_DISPLAY, icon_eye),
+    ('PERFORMANCE', "Performance", TINT_PERFORMANCE, icon_bolt),
+    ('SHORTCUTS', "Shortcuts", TINT_KEYS, icon_keyboard),
 )
 
 
@@ -346,7 +225,7 @@ class SettingsMenu:
     def _page_color(self, tint):
         a = self.a
         layouts = Row([self._choice('color_selector_layout', kind, label, size=(64.0, 58.0),
-                                    painter=_icon_layout(kind), layout='column')
+                                    painter=icon_layout(kind), layout='column')
                        for kind, label in (('SHEET', "Sheet"), ('SQUARE', "Square"),
                                            ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))], gap=6.0)
         model = Row([self._choice('color_selector_model', m, m, size=(130.0, 26.0)) for m in ('HSV', 'HSL')], gap=6.0)
@@ -355,7 +234,7 @@ class SettingsMenu:
                           on_click=lambda: a.wm_set('color_selector_sliders', set()))
         sliders = Row([none] + [self._flag('color_selector_sliders', s, s, size=(62.0, 26.0))
                                 for s in ('RGB', 'HSV', 'HSL')], gap=6.0)
-        preview = Column([self._toggle('pen_color_preview', "Preview only", size=(150.0, 28.0), painter=_icon_eye),
+        preview = Column([self._toggle('pen_color_preview', "Preview only", size=(150.0, 28.0), painter=icon_eye),
                           self._hint(("On: the selector only previews; tap the old / new",
                                       "bubble to apply. Off: applies when the pen lifts."))], gap=6.0)
         def clear_active():
@@ -366,7 +245,7 @@ class SettingsMenu:
 
         palette = Column([
             Row([self._toggle('pen_color_drag', "Drag & drop colors", size=(170.0, 28.0)),
-                 PenButton("Clear palette", painter=_icon_reset, layout='row', size=(110.0, 28.0),
+                 PenButton("Clear palette", painter=icon_reset, layout='row', size=(110.0, 28.0),
                             key='SET_CLEAR_PALETTE', on_click=clear_active)], gap=6.0),
             self._hint(("Palettes are saved in the .blend (per project); the",
                         "Library button imports / exports them (palettes.json).",
@@ -378,7 +257,7 @@ class SettingsMenu:
             self._group("Layout", layouts, tint, paint_color_wheel(None)),
             self._group("Color Model", model, tint),
             self._group("Channel Sliders", sliders, tint),
-            self._group("Pen Color Selector", preview, tint, _icon_eye),
+            self._group("Pen Color Selector", preview, tint, icon_eye),
             self._group("Palette (bottom-left corner)", palette, tint),
         ]
 
@@ -402,13 +281,13 @@ class SettingsMenu:
             rows.append(Row([toggle, slider], gap=6.0))
         rows.append(self._hint(("Global: the tool uses the shared value.",)))
         per_tool = Column(rows, gap=5.0)
-        reset = PenButton("Reset Tool Settings", painter=_icon_reset, layout='row', size=(200.0, 28.0),
+        reset = PenButton("Reset Tool Settings", painter=icon_reset, layout='row', size=(200.0, 28.0),
                            key='SET_RESET_TOOLS', on_click=a.reset_tool_settings)
         title = lambda: f"Per-Tool Settings: {self._tool_label(a.active_tool())}"
         return [
-            self._group("Tool", tools, tint, _icon_brush),
+            self._group("Tool", tools, tint, icon_brush),
             self._group(title, per_tool, tint),
-            self._group("Reset", reset, tint, _icon_reset),
+            self._group("Reset", reset, tint, icon_reset),
         ]
 
     def _tool_label(self, tool_id):
@@ -419,7 +298,7 @@ class SettingsMenu:
         active = Column([TextBlock(lambda: [blend_modes.label(a.active_blend())], size=12.0,
                                    color=(1.0, 1.0, 1.0, 1.0), width=PAGE_WIDTH - 20.0),
                          self._hint(("Change it with Blend in the pen menu.",))], gap=4.0)
-        groups = [self._group("Active Blend Mode", active, tint, _icon_blend)]
+        groups = [self._group("Active Blend Mode", active, tint, icon_blend)]
         for title, group in FAVORITE_GROUPS:
             buttons = [self._flag('blend_favorites', b, blend_modes.label(b), size=(88.0, 24.0))
                        for b in blend_modes.ids(group)]
@@ -450,7 +329,7 @@ class SettingsMenu:
                           key='SET_EDIT_CURVE')
         edit.on_click = lambda: self.bar._open_curve(edit)
         return [
-            self._group("Falloff per Tool", per_tool, tint, _icon_falloff),
+            self._group("Falloff per Tool", per_tool, tint, icon_falloff),
             self._group("Custom Falloff", edit, tint),
         ]
 
@@ -459,7 +338,7 @@ class SettingsMenu:
         side = Row([TextBlock(["Default side"], size=9.5, color=(1.0, 1.0, 1.0, 0.9)),
                     self._choice('pen_bar_side', 'LEFT', "Left", size=(70.0, 26.0)),
                     self._choice('pen_bar_side', 'RIGHT', "Right", size=(70.0, 26.0))], gap=8.0)
-        reset = PenButton("Reset Pen UI", painter=_icon_reset, layout='row', size=(200.0, 28.0),
+        reset = PenButton("Reset Pen UI", painter=icon_reset, layout='row', size=(200.0, 28.0),
                            key='SET_RESET_PEN_UI', on_click=a.reset_layout)
         menu = Column([side, reset, self._hint(("Reset: default size and position of the",
                                                  "pen menu and the color selector."))], gap=6.0)
@@ -468,8 +347,8 @@ class SettingsMenu:
             self._slider('pen_pressure_min', "Minimum pressure", fill_color=(*TINT_PEN, 1.0)),
         ], gap=6.0)
         return [
-            self._group("Pen Menu", menu, tint, _icon_pen),
-            self._group("Pen Pressure Affects", pressure, tint, _icon_pressure),
+            self._group("Pen Menu", menu, tint, icon_pen),
+            self._group("Pen Pressure Affects", pressure, tint, icon_pressure),
             self._group("Save Image (top right)", self._save_settings(), tint, paint_save(None)),
             self._group("How to Use", self._hint(USAGE), tint, paint_eyedropper),
         ]
@@ -498,12 +377,12 @@ class SettingsMenu:
                             fill_color=(*TINT_DISPLAY, 1.0))
         hint = self._hint(("Pen menu (top right): tap the % to toggle, drag up / down to adjust.",))
         return [self._group("Pixel Grid", Column([Row([show, grid], gap=6.0), hint], gap=6.0),
-                            tint, _icon_grid)]
+                            tint, icon_grid)]
 
     def _page_performance(self, tint):
-        from ...utils import native
+        from ....utils import native
         a = self.a
-        toggle = self._toggle('use_native', "Use C# Backend", size=(200.0, 28.0), painter=_icon_bolt)
+        toggle = self._toggle('use_native', "Use C# Backend", size=(200.0, 28.0), painter=icon_bolt)
 
         def status():
             if not native.available():
@@ -515,7 +394,7 @@ class SettingsMenu:
         hint = self._hint(("Both backends give the same result; C# is much",
                            "faster on large textures and large brushes."))
         content = Column([toggle, TextBlock(status, size=9.0, width=PAGE_WIDTH - 20.0), hint], gap=6.0)
-        return [self._group("Backend", content, tint, _icon_bolt)]
+        return [self._group("Backend", content, tint, icon_bolt)]
 
     def _page_shortcuts(self, tint):
         groups = []

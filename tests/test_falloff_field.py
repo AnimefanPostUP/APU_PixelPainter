@@ -18,7 +18,7 @@ sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ i
 
 falloff = importlib.import_module(f'{_PACKAGE}.model.falloff')
 math_utils = importlib.import_module(f'{_PACKAGE}.utils.math_utils')
-pen_falloff_field = importlib.import_module(f'{_PACKAGE}.ui.pen.falloff_field')
+pen_falloff_field = importlib.import_module(f'{_PACKAGE}.ui.pen.widgets.falloff_field')
 pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
 theme_mod = importlib.import_module(f'{_PACKAGE}.ui.kit.theme')
 

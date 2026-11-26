@@ -4,12 +4,13 @@ X, resize triangle, help), its corner buttons, the menu layer.
 
 import math
 
-from ..kit import Label, Panel, Rect, Widget
-from ..kit import draw
-from ..kit.geometry import clamp_box
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from .metrics import FLYOUT_GAP, CORNER_CAP, CORNER_HIT, CORNER_INSET, CORNER_RADIUS
+from ...kit import Label, Panel, Rect, Widget
+from ...kit import draw
+from ...kit.geometry import clamp_box
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ..metrics import FLYOUT_GAP, CORNER_CAP, CORNER_HIT, CORNER_INSET, CORNER_RADIUS
+from .shapes import draw_shapes
 
 
 class HintLabel(Label):
@@ -162,7 +163,6 @@ class MovePanel(Panel):
         if shapes is None:
             super().draw_self(dc)
             return
-        from .shapes import draw_shapes   # late import: it imports the kit only
         draw_shapes(shapes, with_alpha(dc.theme.panel_background, dc.alpha))
 
     @property

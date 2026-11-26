@@ -6,11 +6,11 @@ square (``kit.RingSegment`` / ``PenButton`` painters); factories (``paint_save(u
 import colorsys
 import math
 
-from ..kit import Rect
-from ..kit import draw
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from .metrics import TINT_CUSTOM, TINT_MASK, TINT_SAVE
+from ...kit import Rect
+from ...kit import draw
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ..metrics import TINT_CUSTOM, TINT_MASK, TINT_SAVE
 
 
 def paint_swap(dc, x, y, size, alpha):

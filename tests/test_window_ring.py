@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
 pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
-pen_window_ring = importlib.import_module(f'{_PACKAGE}.ui.pen.window_ring')
+pen_window_ring = importlib.import_module(f'{_PACKAGE}.ui.pen.widgets.window_ring')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 events = importlib.import_module(f'{_PACKAGE}.ui.kit.events')
 

@@ -2,7 +2,6 @@
 import bpy
 import numpy as np
 from bpy.types import Operator
-from bpy.props import StringProperty
 from mathutils import Vector
 
 from ...core import operator as core

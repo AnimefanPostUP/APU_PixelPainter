@@ -4,29 +4,16 @@ dragging the knobs (size / strength / alpha / modifier).
 
 import math
 
-from ..kit import (
-    Dial, DragBubble, CornerSegment, RingSegment, RingSlider,
-)
-from ...model import blend_modes, color_history, color_palette, falloff
-from .blend_widgets import BlendButton, BlendFavorite, BlendFavorites
-from .color_widgets import ColorCorner, GradientSlider, PaletteSlot, Swatch, TertiaryBubble
-from .falloff_field import FalloffField
-from .grid_corner import GridCorner
-from .icons import (
-    captioned, paint_alpha_lock, paint_arrow, paint_color_wheel, paint_curve, paint_gear,
-    paint_mask_menu, paint_save, paint_spacing, paint_swap, paint_target_picker,
-    paint_view, paint_windows,
-)
-from .metrics import (
-    BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, COLORS_ARC,
-    COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC,
-    FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP,
-    HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING,
-    PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS,
-    SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_FALLOFF, TINT_GRID, TINT_HISTORY,
-    TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL,
-)
-from .window_ring import WindowRing
+from ...kit import Dial, DragBubble, CornerSegment, RingSegment, RingSlider
+from ....model import blend_modes, color_history, color_palette, falloff
+from ..widgets.blend import BlendButton, BlendFavorite, BlendFavorites
+from ..widgets.color import ColorCorner, GradientSlider, PaletteSlot, Swatch, TertiaryBubble
+from ..widgets.falloff_field import FalloffField
+from ..widgets.grid_corner import GridCorner
+from ..icons.menu import captioned, paint_alpha_lock, paint_arrow, paint_color_wheel, paint_curve, paint_gear, paint_mask_menu, paint_save, paint_spacing, paint_swap, paint_target_picker, paint_view, paint_windows
+from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL
+from ..widgets.window_ring import WindowRing
+from ..icons.palettes import paint_library, paint_palettes
 
 
 def _add_capsule(dial, segments, r0, r1, a0, a1, **kwargs):
@@ -109,7 +96,7 @@ class DialControls:
 
         # Bottom right, the falloff: the Shape field in the outer ring (reaching in through
         # the inner ring's outer half: no gap to Custom / Curve), in its inner half Custom | Curve.
-        from ..icons.falloff_icons import SHAPE_PREVIEWS, shape_preview_key
+        from ...icons.falloff_icons import SHAPE_PREVIEWS, shape_preview_key
         self.falloff_field = FalloffField(
             "Falloff", key='FALLOFF_FIELD', icons=self.icons, value=a.falloff_shape,
             on_value=a.set_falloff_shape, active=lambda: a.active_falloff() == 'SHAPE',
@@ -176,7 +163,6 @@ class DialControls:
         swap.edge_extra = (0.0, 0.0)      # side edges in line with the Mix slot's
         mix.r0 = swap_outer + DIAL_GAP
 
-        from .palettes import paint_library, paint_palettes
         palettes = RingSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
                                on_click=lambda: a.set_palette_view(not a.palette_view()))
         _add_capsule(dial, [palettes], CORNER_INNER, CORNER_INNER + PALETTE_DEPTH, *PALETTE_BUTTON_ARC)

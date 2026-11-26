@@ -3,11 +3,11 @@
 
 import math
 
-from ..kit import Rect, Widget
-from ..kit import draw
-from ..kit.geometry import ring_segment_points
-from ..kit.theme import with_alpha
-from .metrics import WINDOW_RING_BACKDROP
+from ...kit import Rect, Widget
+from ...kit import draw
+from ...kit.geometry import ring_segment_points
+from ...kit.theme import with_alpha
+from ..metrics import WINDOW_RING_BACKDROP
 
 
 class WindowRing(Widget):

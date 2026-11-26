@@ -57,7 +57,7 @@ for _name in ('bpy_extras', 'bpy_extras.view3d_utils', 'mathutils', 'mathutils.g
 _stub('bpy', types=_Anything(), props=_Anything(), utils=_Anything(), app=_Anything(), context=_Anything())
 
 pen_bar_tool = importlib.import_module(f'{_PACKAGE}.tools.pen.tool')
-pen_color_widgets = importlib.import_module(f'{_PACKAGE}.ui.pen.color_widgets')
+pen_color_widgets = importlib.import_module(f'{_PACKAGE}.ui.pen.widgets.color')
 pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 

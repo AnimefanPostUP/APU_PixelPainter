@@ -3,11 +3,11 @@
 
 import math
 
-from ..kit import RingSegment
-from ..kit import draw
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from .metrics import DRAG_THRESHOLD, GRID_DRAG_PX
+from ...kit import RingSegment
+from ...kit import draw
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ..metrics import DRAG_THRESHOLD, GRID_DRAG_PX
 
 
 class GridCorner(RingSegment):

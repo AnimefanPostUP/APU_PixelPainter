@@ -5,12 +5,12 @@ old / new bubble, the color history swatches and the palette slots.
 
 import math
 
-from ..kit import ColorBubble, CornerSegment, RingSegment
-from ..kit import draw
-from ..kit.geometry import best_circle, ring_segment_points
-from ..kit.theme import with_alpha
-from ..kit.widget import _resolve
-from .metrics import DRAG_THRESHOLD, GRADIENT_MARKER, MIX_BUBBLE_MARGIN
+from ...kit import ColorBubble, CornerSegment, RingSegment
+from ...kit import draw
+from ...kit.geometry import best_circle, ring_segment_points
+from ...kit.theme import with_alpha
+from ...kit.widget import _resolve
+from ..metrics import DRAG_THRESHOLD, GRADIENT_MARKER, MIX_BUBBLE_MARGIN
 
 
 class ColorDrag:

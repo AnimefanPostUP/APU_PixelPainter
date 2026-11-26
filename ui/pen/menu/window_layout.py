@@ -3,12 +3,9 @@ resizing, clamping to the editor, laying everything out.
 """
 
 
-from ..kit.geometry import clamp_box
-from .metrics import (
-    BAR_SCALE, COLOR_WIDTH,
-    EDGE_GAP, FLYOUT_GAP, WINDOW_MARGIN, HANDLE_SIZE, PANEL_PADDING, clamp_scale,
-)
-from .window import CornerButton, MovePanel, ResizeHandle, Window
+from ...kit.geometry import clamp_box
+from ..metrics import BAR_SCALE, COLOR_WIDTH, EDGE_GAP, FLYOUT_GAP, WINDOW_MARGIN, HANDLE_SIZE, PANEL_PADDING, clamp_scale
+from ..windows.frame import CornerButton, MovePanel, ResizeHandle, Window
 
 
 class WindowLayout:
