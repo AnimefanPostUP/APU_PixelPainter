@@ -211,7 +211,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `EYEDROPPER_PRIMARY` / `_SECONDARY`; the press sets state `pen_pick_target`
   for `PenEyedropperTool`), and between them Swap with the Mix field
   (`_MixCorner`, `PenBarTool.mix_color` / `use_mix_color`) behind it; bottom left the palette
-  band (24 slots in `PALETTE_ROWS` bands) and Palettes / Color / Library.
+  band (24 slots in `PALETTE_ROWS` bands) and Palettes.
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
   the .blend); the band shows the active palette's colors or, in the palette view
@@ -232,7 +232,14 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `FALLOFF_OUTER`): beside Redo the falloff field (`FalloffField`,
   `FALLOFF_FIELD_ARC`), under it in line with Redo Custom (outer ring) and Curve
   (band) (`FALLOFF_CUSTOM_ARC`); beside Undo it is empty; past them, around the
-  diagonal, Settings (`SETTINGS_ARC`). The field sets the
+  diagonal, Windows (`WINDOWS_ARC`, `activate_on_press`). It opens the Windows ring
+  (`_WindowRing`, `WINDOW_RING` = the inner ring's radii): Settings / Mask / View /
+  Color / Palettes (library) as `drag_release` `RingSegment`s over the full circle
+  from `WINDOW_RING_START`. The ring is the dial's last child (drawn on top, picked
+  first), paints an opaque backdrop from the inner ring out to `WINDOW_RING_COVER`
+  (the outer ring's edge: the tools are hidden too) and blocks the pointer there;
+  these are the only buttons for Settings / Mask / View / Color / Library; it is handled as the open flyout (`toggle_flyout` / `close_flyout`),
+  so a tap outside, ESC / RMB or Windows again close it. The field sets the
   *Shape* falloff (`falloff.SHAPE_*`, `math_utils.shape_falloff`): global
   `pixel_painter_falloff_hardness` (radial: inner edge = 1 = constant, outer = 0)
   and `_sharpness` (along the circle: top = 0 = linear fade, bottom = 1 =
@@ -250,7 +257,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   and preset buttons (`falloff.CURVE_PRESETS`: the falloffs the field does not
   cover, as anchors with handle types; `PenBarTool.load_curve_preset`). Anchors
   that stay in place keep their handle type while others are edited.
-  The Settings gear opens the settings flyout (`ui/pen_settings.py`): icon tabs
+  Settings (Windows ring) opens the settings flyout (`ui/pen_settings.py`): icon tabs
   and the tab's page of `kit.Group`s (one tint per tab), the same settings and
   remembered tab as the Blender settings popup, read / written through
   `PenBarTool.wm_get` / `wm_set` / `wm_toggle_flag` / `wm_range`. *Color* toggles the
@@ -282,11 +289,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   0 -> 100 %, ESC restores it). In the 3D Viewport `draw_pixel_grid_overlay_3d`
   (`tools/draw_gridoverlay.py`) draws the cached mesh with a texel-border shader
   (lines via `fwidth`, faded out below ~2-5 px per texel, small clip-space depth bias).
-  *Mask* (`MASK_ARC`) and *View* (`VIEW_ARC`) open floating windows
+  *Mask* and *View* (Windows ring) open floating windows
   (`TOOL_WINDOWS`, content in `ui/pen_windows.py`): movable / lockable /
   resizable like the color selector (state `pen_<name>_panel`, `_locked`,
   `_scale`, `_pos`; default spot beside the menu, tops level). Mask: the paint
-  mask controls (a dot on the corner button while the mask is on). View
+  mask controls (a dot on the ring entry while the mask is on). View
   (`tools/view_nav.py`, numpy math in `tests/test_view_nav.py`): axis views,
   15 degree orbit / roll, *Level* (world up is up on screen), *Fit* (pivot on the
   object, distance so every vertex is inside `FIT_MARGIN` of the view, from

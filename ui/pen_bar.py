@@ -45,14 +45,12 @@ everything here works with press, drag and release only.
   half and half; tap: the active color becomes the mix);
   bottom left the palette band (24 slots in two bands along the circle) and
   *Palettes* (switches the band between the active palette's colors and the
-  project's 24 palettes), *Color* (hue ring around the pen's color: shows /
-  hides the color selector) and *Library* (the palette library window);
-  bottom right, past the falloff controls, *Settings* (gear: the settings
-  popup); top right a small *Save* at the right side
+  project's 24 palettes);
+  bottom right, past the falloff controls, *Windows* (opens the Windows ring
+  on the press); top right a small *Save* at the right side
   (saves / packs the painted image as set in settings > Pen > Save Image; a
-  green dot while it has unsaved changes) and the paint mask up to the top
-  edge: *UV / Mesh* (islands or parts), *Mask* (on / off), *Invert* and
-  *Pick* (tap islands / parts on the canvas to toggle them).
+  green dot while it has unsaved changes) and the pixel *Grid* up to the top
+  edge.
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -88,6 +86,13 @@ everything here works with press, drag and release only.
   selector only previews: the brush keeps its color (marked with the cross)
   and the picked one shows in the bubble until the bubble is tapped, which
   applies it.
+* **Windows ring**: the Windows corner button's popup, a full ring over the
+  inner ring (around the Size knob; while open a backdrop hides both rings,
+  the tools too):
+  *Settings* (the settings flyout), *Mask* / *View* (their windows), *Color*
+  (the color selector) and *Palettes* (the palette library). Opened by the
+  *press* like a flyout: keep the pen down, drag onto an entry and lift -- or
+  lift anywhere and tap an entry. A tap outside or on Windows closes it.
 * **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
   onto an entry and lift -- or lift anywhere and tap an entry. A tap outside
   closes the flyout.
@@ -120,7 +125,7 @@ LAYOUT_STATE = {
     'pen_mask_scale': 0.8, 'pen_mask_pos': None,
     'pen_view_scale': 0.8, 'pen_view_pos': None,
 }
-# Windows besides the menu and the color selector, opened from the menu's top-right corner
+# Windows besides the menu and the color selector, opened from the Windows ring
 # (content: ui/pen_windows.py); shown while the state 'pen_<name>_panel' is set.
 TOOL_WINDOWS = ('mask', 'view')
 COLOR_WIDTH = 220.0      # the color selector's width at scale 1, unscaled px
@@ -188,22 +193,27 @@ COLORS_ARC = (90.0, 180.0)
 COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
 SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix field starts past it
 COLOR_WHEEL_ARC = (180.0, 270.0)     # bottom left: the palette (2 bands along the circle)
-# Palettes | Color | Library: pushed together toward the diagonal, the only part of
-# the corner with room left past the palette bands.
+# Palettes: around the diagonal, the only part of the corner with room left past the
+# palette bands. (Color / Library: the Windows ring.)
 PALETTE_BUTTON_ARC = (200.0, 250.0)
-PALETTE_BUTTON_WEIGHTS = (1.2, 1.0, 1.2)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
 FALLOFF_BAND_DEPTH = PALETTE_DEPTH   # the falloff controls reach this far into the corner (as the palette)
 FALLOFF_OUTER = CORNER_INNER + FALLOFF_BAND_DEPTH
 FALLOFF_CORNER_INNER = FALLOFF_OUTER + DIAL_GAP
-SETTINGS_ARC = (295.0, 335.0)        # bottom right past the falloff controls: Settings, around the diagonal
-# Top right, past the S / A / M sliders (the X sits in the cut corner): a small Save at the
-# right side, the pixel grid (opacity %), then the Mask and View windows' buttons up to the top.
-SAVE_ARC = (15.0, 28.0)
-GRID_ARC = (28.0, 42.0)
-MASK_ARC = (42.0, 64.0)
-VIEW_ARC = (64.0, 88.0)
+WINDOWS_ARC = (295.0, 335.0)         # bottom right past the falloff controls: Windows, around the diagonal
+# The Windows popup: a ring over the dial's inner ring (around the Size knob, hiding the
+# inner ring while open). Entries counter-clockwise from WINDOW_RING_START, each the same
+# angle; their order roughly follows where the old corner buttons sat.
+WINDOW_RING = INNER_RING
+WINDOW_RING_COVER = OUTER_RING[1]    # the backdrop reaches this far: hides both rings (the tools too)
+WINDOW_RING_START = 279.0            # Settings at the bottom right, by the Windows button
+WINDOW_RING_BACKDROP = (0.16, 0.16, 0.16, 0.97)
+TINT_WINDOWS = (0.62, 0.70, 0.95)
+# Top right, past the S / A / M sliders (the X sits in the cut corner): Save at the right
+# side, then the pixel grid (opacity %) up to the top. (Mask / View: the Windows ring.)
+SAVE_ARC = (15.0, 40.0)
+GRID_ARC = (40.0, 88.0)
 GRID_DRAG_PX = 120.0                 # unscaled px of vertical drag for 0 -> 100 % grid opacity
 TINT_GRID = (0.55, 0.78, 0.95)
 TINT_SAVE = (0.45, 0.80, 0.45)
@@ -459,6 +469,29 @@ def _paint_gear(dc, x, y, size, alpha):
                     (x + math.cos(a) * r, y + math.sin(a) * r), r * 0.34, color)
     draw.circle(x, y, r * 0.74, color, segments=24)
     draw.circle(x, y, r * 0.32, with_alpha(theme.surface_dark, alpha), segments=16)
+
+
+def _paint_windows(dc, x, y, size, alpha):
+    """Windows icon: two overlapping windows (title bars), the front one filled."""
+    theme = dc.theme
+    s = min(size * 0.3, theme.px(11.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    width = max(1.0, theme.px(1.2))
+    back = Rect.from_center(x - s * 0.35, y + s * 0.35, s * 1.5, s * 1.15)
+    draw.rect_outline(back, color, width=width)
+    draw.rect(Rect(back.x0, back.y1 - s * 0.25, back.x1, back.y1), color)
+    front = Rect.from_center(x + s * 0.35, y - s * 0.35, s * 1.5, s * 1.15)
+    draw.rect(front, with_alpha(theme.surface_dark, alpha))
+    draw.rect_outline(front, color, width=width)
+    draw.rect(Rect(front.x0, front.y1 - s * 0.25, front.x1, front.y1), color)
+
+
+def _captioned(painter, text):
+    """``painter`` moved up and shrunk a bit, ``text`` under it (Windows popup entries)."""
+    def paint(dc, x, y, size, alpha):
+        painter(dc, x, y + size * 0.12, size * 0.8, alpha)
+        _caption(dc, x, y - size * 0.36, text, alpha)
+    return paint
 
 
 def _paint_save(unsaved, caption=True):
@@ -1177,6 +1210,60 @@ class _MenuLayer(Widget):
             self.dialog.arrange(Rect.from_size(dx, dy, dw, dh), theme)
 
 
+class _WindowRing(Widget):
+    """The Windows popup: entries in a full ring over the dial's inner ring (``r0 .. r1``).
+
+    The dial's last child, so it draws on top and is picked first. An opaque backdrop
+    from ``r0`` out to ``cover`` hides the rings under it (inner and outer: the tools
+    too) and blocks the pointer there: a press in a gap or on the backdrop does not reach
+    the buttons under it. Entries confirm on release (``drag_release``): press Windows,
+    drag onto an entry, lift.
+    """
+
+    blocks_pointer = True
+
+    def __init__(self, r0, r1, cover=None, **kwargs):
+        super().__init__(visible=False, **kwargs)
+        self.r0, self.r1 = r0, r1
+        self.cover = r1 if cover is None else max(r1, cover)
+        self.cx = self.cy = 0.0
+        self.pr0 = self.pr1 = self.pcover = 0.0
+        self.gap = 0.0
+
+    def add_entries(self, dial, entries, start):
+        """Split the full circle from ``start`` (degrees, counter-clockwise) between ``entries``;
+        the dial places them (its ``corners``), this ring owns them (drawing / picking)."""
+        step = 360.0 / max(1, len(entries))
+        for i, entry in enumerate(entries):
+            entry.r0, entry.r1 = self.r0, self.r1
+            entry.a0, entry.a1 = start + i * step, start + (i + 1) * step
+            entry.drag_release = True
+            self.add(entry)
+            dial.corners.append(entry)
+        dial.corners.append(self)
+
+    def place_on(self, cx, cy, theme, gap):
+        self.cx, self.cy = cx, cy
+        self.pr0, self.pr1, self.pcover = theme.px(self.r0), theme.px(self.r1), theme.px(self.cover)
+        self.gap = theme.px(gap)
+        self.rect = Rect.from_center(cx, cy, self.pcover * 2.0, self.pcover * 2.0)
+
+    def contains(self, x, y):
+        return self.pr0 <= math.hypot(x - self.cx, y - self.cy) <= self.pcover + self.gap * 0.5
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        # Out past the covered rings' rims (half the gap on each side), so nothing shows through.
+        r0, r1 = max(0.0, self.pr0 - self.gap * 0.5), self.pcover + self.gap * 0.5
+        inner, outer = ring_segment_points(self.cx, self.cy, r0, r1, 0.0, math.tau)
+        draw.ring_segment(inner, outer, with_alpha(WINDOW_RING_BACKDROP, dc.alpha))
+        accent = with_alpha(theme.accent, 0.8 * dc.alpha)
+        draw.circle_outline(self.cx, self.cy, r1, accent, width=max(1.0, theme.px(1.5)), segments=96)
+        if self.pcover > self.pr1 + self.gap:   # a fainter line around the entries
+            draw.circle_outline(self.cx, self.cy, self.pr1 + self.gap * 0.5,
+                                with_alpha(theme.accent, 0.35 * dc.alpha), width=max(1.0, theme.px(1.0)), segments=96)
+
+
 def _is_inside(widget, ancestor):
     while widget is not None:
         if widget is ancestor:
@@ -1310,7 +1397,7 @@ class PenBar:
                                          _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel))
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
-        # Mask / View windows (top-right corner buttons).
+        # Mask / View windows (opened from the Windows ring).
         from .pen_windows import build_mask_window, build_view_window  # late import: they import this module
         builders = {'mask': build_mask_window, 'view': build_view_window}
         self.tool_windows = {}
@@ -1465,13 +1552,7 @@ class PenBar:
         from .pen_palettes import paint_library, paint_palettes
         palettes = CornerSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
                                  on_click=lambda: a.set_palette_view(not a.palette_view()))
-        color = CornerSegment("Color", key='COLOR', painter=_paint_color_wheel(a.pen_rgb),
-                              selected=a.color_panel_open, on_click=a.toggle_color_panel)
-        library = CornerSegment("Library", key='LIBRARY', painter=paint_library,
-                                selected=lambda: self.flyout is self.library_flyout,
-                                on_click=lambda: self.open_library(library))
-        dial.add_corner([palettes, color, library], WHEEL_CORNER_INNER, SQUARE_HALF, *PALETTE_BUTTON_ARC,
-                        weights=PALETTE_BUTTON_WEIGHTS, **corner)
+        dial.add_corner([palettes], WHEEL_CORNER_INNER, SQUARE_HALF, *PALETTE_BUTTON_ARC, **corner)
 
         # Palette band in front of them: the active palette's colors, or (palette view) the
         # project's palettes. Slot 0 at the left.
@@ -1481,29 +1562,42 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # Past the falloff controls, around the diagonal: Settings.
-        settings = CornerSegment("Settings", key='SETTINGS', painter=_paint_gear,
-                                 selected=lambda: self.flyout is self.settings_flyout,
-                                 on_click=lambda: self.toggle_flyout(self.settings_flyout, settings))
-        dial.add_corner([settings], FALLOFF_CORNER_INNER, SQUARE_HALF, *SETTINGS_ARC, **corner)
+        # Past the falloff controls, around the diagonal: Windows (opens the popup ring on
+        # the press -- keep the pen down, drag onto an entry, lift).
+        windows = CornerSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
+                                selected=lambda: self.flyout in (self.window_ring, self.settings_flyout,
+                                                                  self.library_flyout),
+                                on_click=lambda: self.toggle_flyout(self.window_ring, windows))
+        windows.activate_on_press = True
+        dial.add_corner([windows], FALLOFF_CORNER_INNER, SQUARE_HALF, *WINDOWS_ARC, **corner)
+        self.windows_button = windows
 
-        # Top right, past the S / A / M sliders: a small Save at the right side, the grid
-        # (tap: on / off, drag: opacity), then the Mask and View windows' buttons.
+        # Top right, past the S / A / M sliders: Save at the right side, then the grid
+        # (tap: on / off, drag: opacity).
         save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
                              tint=TINT_SAVE, on_click=a.save_image)
         dial.add_corner([save], CORNER_INNER, SQUARE_HALF, *SAVE_ARC, **corner)
         grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
         dial.add_corner([grid], CORNER_INNER, SQUARE_HALF, *GRID_ARC, **corner)
-        mask_button = CornerSegment("Mask", key='MASK', painter=_paint_mask_menu(a.mask_enabled),
-                                    tint=TINT_MASK, selected=lambda: a.panel_open('mask'),
-                                    on_click=lambda: self.toggle_window('mask'))
-        self.mask_pick_button = mask_button
-        dial.add_corner([mask_button], CORNER_INNER, SQUARE_HALF, *MASK_ARC, **corner)
-        view_button = CornerSegment("View", key='VIEW', painter=_paint_view, tint=TINT_VIEW,
-                                    selected=lambda: a.panel_open('view'),
-                                    on_click=lambda: self.toggle_window('view'))
-        dial.add_corner([view_button], CORNER_INNER, SQUARE_HALF, *VIEW_ARC, **corner)
+
+        # The Windows popup ring (added last: over everything else of the dial).
+        self.window_ring = dial.add(_WindowRing(*WINDOW_RING, cover=WINDOW_RING_COVER, key='WINDOW_RING'))
+        self.window_ring.add_entries(dial, [
+            RingSegment("Settings", key='RING_SETTINGS', painter=_captioned(_paint_gear, "Settings"),
+                        tint=TINT_WINDOWS, on_click=lambda: self.toggle_flyout(self.settings_flyout, windows)),
+            RingSegment("Mask", key='RING_MASK', painter=_paint_mask_menu(a.mask_enabled), tint=TINT_MASK,
+                        selected=lambda: a.panel_open('mask'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('mask'))),
+            RingSegment("View", key='RING_VIEW', painter=_paint_view, tint=TINT_VIEW,
+                        selected=lambda: a.panel_open('view'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('view'))),
+            RingSegment("Color", key='RING_COLOR', painter=_captioned(_paint_color_wheel(a.pen_rgb), "Color"),
+                        tint=TINT_WINDOWS, selected=a.color_panel_open,
+                        on_click=self._flyout_action(a.toggle_color_panel)),
+            RingSegment("Palettes", key='RING_PALETTES', painter=_captioned(paint_library, "Palettes"),
+                        tint=TINT_WINDOWS, on_click=lambda: self.open_library(windows)),
+        ], WINDOW_RING_START)
 
     def open_library(self, opener):
         """The library flyout; the palette band switches to its palette view (drag targets)."""
@@ -1702,6 +1796,7 @@ class PenBar:
     def close_flyout(self, relayout=True):
         for flyout in self.root.flyouts:
             flyout.visible = False
+        self.window_ring.visible = False
         self.flyout = None
         self.flyout_opener = None
         if relayout:
@@ -2061,7 +2156,7 @@ class PenBar:
 
     def _draw_arm_hint(self):
         if self.actions.mask_picking() and not self.menu.collapsed:
-            self._pill(MASK_PICK_HINT, self.menu.rect, self.mask_pick_button.rect.cy, 12.0, (*TINT_MASK, 1.0))
+            self._pill(MASK_PICK_HINT, self.menu.rect, self.windows_button.rect.cy, 12.0, (*TINT_MASK, 1.0))
             return
         kind = self.actions.armed()
         button = self.arm_buttons.get(kind)
