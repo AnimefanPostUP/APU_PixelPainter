@@ -16,7 +16,7 @@ _PACKAGE = os.path.basename(_ADDON_DIR)
 sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-guard_mod = importlib.import_module(f'{_PACKAGE}.tools.mask_guard')
+guard_mod = importlib.import_module(f'{_PACKAGE}.tools.mask.guard')
 pixel_io = importlib.import_module(f'{_PACKAGE}.utils.pixel_io')
 native = importlib.import_module(f'{_PACKAGE}.utils.native')
 

@@ -106,7 +106,7 @@ class ColorPickTool(ToolFrame):
             self.overlay.end_drag()
 
     def draw_overlay(self, ctx):
-        from .. import draw_functions
+        from ...paint import pixels as draw_functions
         draw_functions.draw_sub_mode_overlay(ctx.context, ctx.state)
         if self.overlay is not None:
             self.overlay.draw()

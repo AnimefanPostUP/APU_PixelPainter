@@ -3,7 +3,10 @@
 from ..core import history, view3d
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
-from . import color_history, mask, mask_guard, pen_pressure, tertiary_color
+from ..model import color_history, tertiary_color
+from .mask import data as mask_data
+from .mask import guard as mask_guard
+from .pen import pressure as pen_pressure
 from .base import DrawEnvironment, ToolBase
 from .subtools.color_pick import ColorPickTool
 from .subtools.eyedropper import EyedropperTool
@@ -294,7 +297,7 @@ class StrokeTool(ToolBase):
         # only inside the region the step can have written (tools/mask_guard.py).
         # The step's writes are uploaded once, after the mask (utils/pixel_io.py).
         with pixel_io.deferred(img):
-            allowed = mask.allowed(context, img)
+            allowed = mask_data.allowed(context, img)
             steps = _memoize_steps(env)
             if allowed is not None:
                 mask_guard.GUARD.before_step(img)

@@ -24,6 +24,8 @@ import tempfile
 
 import numpy as np
 
+from ..paths import NATIVE_RUNTIMES_DIR
+
 
 API_VERSION = 3  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
@@ -36,8 +38,7 @@ BLEND_IDS = {
     'VALUE': 17, 'LUMINOSITY': 18,
 }
 
-_ADDON_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUNTIMES_DIR = os.path.join(_ADDON_DIR, 'native', 'runtimes')
+RUNTIMES_DIR = NATIVE_RUNTIMES_DIR
 
 _lib = None
 _error = None        # why the library is unavailable (str) or None

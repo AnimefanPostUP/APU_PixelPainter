@@ -1,0 +1,2742 @@
+"""Pen UI: on-screen controls made for pens / tablets -- the pen menu (a dial) and
+the color selector, two floating elements.
+
+Pens often cannot move the pointer without touching (no reliable hover), so
+everything here works with press, drag and release only.
+
+* **Floating elements**: the pen menu and the color selector are moved by
+  dragging their empty background and resized by dragging the triangle in
+  their bottom-right corner (each has its own size: pen menu 0.2x .. 2x,
+  color selector 0.5x .. 2x, and never larger than the editor). The padlock
+  (pen menu: bottom-left corner; color selector: top left) locks both. They are clipped to the editor
+  borders (and an overlapping sidebar). Size and position are remembered;
+  *Reset Pen UI* (settings popup, N-panel) restores the defaults: the pen
+  menu in the bottom corner at the chosen side, the color selector beside it.
+  The *X* in the top-right corner collapses the pen menu to a *Pen* tab /
+  closes the color selector.
+* **Pen menu** (:class:`~.kit.Dial`): everything around the *Size* knob in
+  the center, as pie segments in two rings; categories are separated by a
+  wider gap with a divider line:
+
+  - top right: *S* / *A* / *M* (Strength, Alpha, Modifier) radial sliders,
+    as deep as both rings: press sets the value from the distance to the
+    center, drag keeps setting it; outside them, along the circle, the color
+    history (the last painted colors, newest at the top; tap paints with it);
+  - top left: the tools (half in each ring; tap selects);
+  - bottom: *Undo* / *Redo* arrows (inner ring); outside them (outer ring)
+    the favorite blend modes (tap: paint with it) in rows, names written
+    across (upright);
+  - bottom right: the falloff -- the *falloff field* (the Shape falloff, swiped
+    like the color selector: toward the center = hard, outward = soft; the
+    upper end = linear fade, the lower end = sharp; a swipe moves along two
+    fixed straight axes -- a cross through the field's middle -- not along the
+    arc; a tap jumps; while pressed the cursor is hidden and kept on the marker;
+    quarter preview discs in its corners, the marker is a cross; the current falloff
+    curve is drawn in the field, from the outer line (full strength) toward the inner
+    side; plain gray, only the outer band marks it as selected)
+    in the outer ring and the inner ring's outer half; *Custom* (in its own
+    color) and *Curve* in the inner ring's inner half.
+
+  The corners of the square around the circle are buttons shaped to fit
+  between the circle and the square (icons). Top left the color section: the
+  *gradient slider* along the circle (primary at the left end, secondary at the
+  top; press / drag picks the optional *tertiary color* on it and selects it --
+  the pen tip then paints with it), the secondary and primary color (tap a
+  color: the pen paints with it -- the secondary one sets the RMB lock; the
+  color buttons have round corners), each with its own
+  *Picker* on its outer side (eyedropper for that color: arms it for the next canvas
+  press; the picker of the color the selector edits is bright, the other grey), and
+  between them *Swap* with the *tertiary bubble* behind it toward the corner (shows
+  the tertiary color; tap: selects it / back to the color before). With the
+  tertiary color selected, the color selector still edits the primary or the
+  secondary color: that one has a dotted outline, a tap on the other switches.
+  bottom right the palette band (24 slots in two bands along the circle) and,
+  in the gap right of the circle (centered on the right), *Palettes* (switches
+  the band between the active palette's colors and the project's 24 palettes);
+  bottom left, a capsule (an arc band with round ends) along the circle: *Windows* (opens the Windows ring on the press), *Save* (saves /
+  packs the painted image as set in settings > Pen > Save Image; a green dot
+  while it has unsaved changes) and the pixel *Grid* (opacity %; tap: on / off,
+  drag up / down: opacity) and, ending at the bottom, *Blend* (opens the
+  flyout; a dark-to-light gray gradient with the mode's name). Top right, past the color history, a
+  capsule with *Pixel* / *Free* (spacing) and *Alphalock* (protect transparent pixels).
+* **Palettes** are stored per project (in the .blend); the library window
+  (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
+  clipboard -- project and library are not synced. *From image...* turns an
+  image file's pixel colors into a new project palette.
+* **Drag & drop** (setting *Drag Colors*): drag the primary / secondary color,
+  the tertiary bubble, a history color, a palette color or the color selector's old / new bubble (a
+  short press stays a tap). Drop it on a palette slot to store it (palette onto
+  palette: the two swap), on the primary / secondary color to set it; drop a
+  palette color off the menu to remove it. In the palette view, palettes are
+  dragged the same way: onto another slot (swap), into the library list
+  (saved there), from the library onto a slot (loaded; replacing a palette
+  asks first); a project palette dropped off the menu is deleted after a
+  confirmation. Tap an empty palette slot to store the current color; tap a
+  palette color to paint with it.
+* **Curve flyout**: the custom falloff curve (the brush's falloff curve; x =
+  distance from the center, y = weight). *Move*: drag anchors, drag one out of
+  the box to remove it; *Add*: a tap adds an anchor; *Draw*: draw the falloff
+  freehand, it becomes anchors on release; *Reset*: a smooth fade. The
+  preset buttons load the falloffs the field does not cover (Smooth, Sphere,
+  Root, Plateau, Stepped, Ring, Inverted) into the curve.
+* **Size knob**: press and drag up / down; the value changes relative to
+  where the drag started. A readout -- for Size with a preview of the brush
+  footprint -- shows beside the menu while a knob or slider is dragged. Pens
+  cannot scroll, so the knob and sliders stand in for the wheel.
+* **Color selector** (:class:`~.kit.ColorSelector`): the row at the top holds the
+  old / new bubble, the Shape button (a popup: Sheet, Square, Triangle, Wheel) and the
+  sliders button, which folds out the RGB / HSV / HSL channel sliders (each
+  with an input field), their toggles and a hex field with Copy / Paste. The
+  model (HSV / HSL) comes from the settings (Color Selector tab). Every part is swiped
+  like a touchpad; a tap jumps. It edits the color the pen paints (secondary
+  with the RMB lock; with the tertiary color selected, the dotted one). The change applies when the pen is lifted; the color
+  from before editing stays marked with a cross and shows in the old / new
+  bubble at the top until the bubble is tapped (accept: the new color becomes
+  the reference). With *Preview* on (settings popup, Color Selector tab) the
+  selector only previews: the brush keeps its color (marked with the cross)
+  and the picked one shows in the bubble until the bubble is tapped, which
+  applies it.
+* **Windows ring**: the Windows corner button's popup, a full ring over the
+  inner ring (around the Size knob; while open a backdrop hides both rings,
+  the tools too):
+  *Settings* (the settings flyout), *Mask* / *View* (their windows), *Color*
+  (the color selector) and *Palettes* (the palette library). Opened by the
+  *press* like a flyout: keep the pen down, drag onto an entry and lift -- or
+  lift anywhere and tap an entry. A tap outside or on Windows closes it.
+* **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
+  onto an entry and lift -- or lift anywhere and tap an entry. A tap outside
+  closes the flyout. Columns Common / Contrast / Math / HSL/HSV; a star right of
+  each mode marks / unmarks it as a favorite (gold while it is one; the flyout
+  stays open).
+* **Look**: the windows and flyouts share the pen style (``ui/pen_style.py``):
+  neutral grays, one accent color, rounded shapes, titles on plates.
+
+This module builds, lays out and draws the widgets (two non-modal UI-kit
+layers). :class:`tools.pen_bar.PenBarTool` forwards events and provides the
+``actions`` object the widgets call.
+"""
+
+import colorsys
+import math
+
+from ..kit import ColorBubble, ColorSelector, Column, CurveEditor, Dial, DragBubble, Grid, Label, Overlay, Panel, Rect, CornerSegment, RingSegment, RingSlider, Row, RoundButton, Spacer, TextField, Widget
+from ..kit import anim, clipboard, draw
+from ..kit.color_models import parse_color, to_hex
+from ..kit.events import PRESS, RUNNING
+from ..kit.geometry import best_circle, clamp_box, ring_segment_points
+from ..kit.theme import mix, with_alpha
+from ..kit.widget import _resolve
+from .style import PenButton, PenFlyoutButton, PenPanel
+from ...model import blend_modes, color_history, color_palette, falloff
+from ...utils.math_utils import shape_falloff
+
+
+BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
+# Each element's own size (resize triangle), relative to BAR_SCALE.
+SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0),
+                'settings': (0.4, 2.0), 'library': (0.4, 2.0)}
+# Tool state keys holding the elements' size and position; Reset Pen UI restores these.
+LAYOUT_STATE = {
+    'pen_bar_scale': 1.0, 'pen_bar_pos': None,       # pos: (x0, y1) top-left in region px, None = default
+    'pen_color_scale': 1.0, 'pen_color_pos': None,
+    'pen_mask_scale': 0.8, 'pen_mask_pos': None,
+    'pen_view_scale': 0.8, 'pen_view_pos': None,
+    'pen_settings_scale': 0.8, 'pen_settings_pos': None,
+    'pen_library_scale': 0.8, 'pen_library_pos': None,
+}
+# Windows besides the menu and the color selector, opened from the Windows ring
+# (content: ui/pen_windows.py, ui/pen_settings.py, ui/pen_palettes.py); shown while
+# the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
+TOOL_WINDOWS = ('mask', 'view', 'settings', 'library')
+_POINTER_TYPES = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE',
+                  'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TIMER'}
+COLOR_SHAPES = (('SHEET', "Sheet"), ('SQUARE', "Square"), ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))
+COLOR_WIDTH = 220.0      # the color selector's width at scale 1, unscaled px
+_HANDLE_SIZE = 18.0      # resize triangle legs, unscaled px (follows the UI scale, not the element's)
+WINDOW_MARGIN = 4.0      # elements keep this far from the editor borders, unscaled px
+FLYOUT_GAP = 10.0        # unscaled px between the menu and flyouts / readouts
+SIZE_STEP_PX = 12.0      # drag distance per size step
+MAX_SIZE = 64
+
+CHANNEL_LABELS = {'size': "Size", 'strength': "Strength", 'alpha': "Alpha", 'modifier': "Modifier"}
+# Pens cannot scroll: these sliders replace the wheel controls of the strength bubble.
+# Listed counter-clockwise (Modifier lowest, Strength next to the top).
+SLIDERS = (('modifier', "M", (0.84, 0.95, 0.36, 1.0)),
+           ('alpha', "A", (0.80, 0.83, 0.90, 1.0)),
+           ('strength', "S", (0.96, 0.38, 0.47, 1.0)))
+ARM_HINTS = {'EYEDROPPER_PRIMARY': "Tap canvas: pick the primary color",
+             'EYEDROPPER_SECONDARY': "Tap canvas: pick the secondary color"}
+# Blend flyout columns after Favorites (titles as in the Shift+W pie).
+BLEND_GROUPS = (("Contrast", 'CONTRAST'), ("Math", 'MATH'), ("HSL/HSV", 'HSL'))
+
+# Dial (unscaled px; angles in degrees counter-clockwise from +x, 90 = up).
+DIAL_GAP = 2.5                 # spacing between segments of a category / rings / the Size knob
+GROUP_GAP = 14.0               # spacing between categories (a divider line runs through it)
+SQUARE_HALF = 172.0                  # half size of the enclosing square
+HISTORY_DEPTH = 14.0                 # the gradient slider / color history band / each palette band
+PALETTE_ROWS = 2                     # palette bands; color_palette.PALETTE_SIZE slots split between them
+PALETTE_DEPTH = PALETTE_ROWS * HISTORY_DEPTH + (PALETTE_ROWS - 1) * DIAL_GAP
+CORNER_GAP = 4.0                     # circle -> first band (divider lines end in the bands' end gaps)
+# The circle fills the square except for the palette bands' depth on each side;
+# the rings keep their original proportions (designed for an outer radius of 115).
+DIAL_RADIUS = SQUARE_HALF - CORNER_GAP - PALETTE_DEPTH
+_RING_SCALE = DIAL_RADIUS / 115.0
+SIZE_RADIUS = 30.0 * _RING_SCALE
+INNER_RING = (SIZE_RADIUS + DIAL_GAP, 72.5 * _RING_SCALE)
+OUTER_RING = (INNER_RING[1] + DIAL_GAP, DIAL_RADIUS)
+SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
+TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
+# Bottom: Undo / Redo in the inner ring; outside them (outer ring) the favorite blend
+# modes in rows; right of them the falloff. (Blend: the bottom-left corner.)
+HISTORY_ARC = (210.0, 322.5)   # Undo / Redo (inner ring)
+FAVORITES_ARC = HISTORY_ARC    # the favorite blend modes (outer ring)
+FAVORITE_ROWS = 2              # the favorites split into this many rings (the outer one takes the odd one)
+# Top-right corner, past the color history: Pixel / Free (spacing) and Alphalock as
+# one capsule (an arc band with round ends; radii: BRUSH_MODE_RING, below).
+BRUSH_MODE_ARC = (25.0, 65.0)
+BLEND_GRADIENT = ((0.16, 0.16, 0.16), (0.78, 0.78, 0.78))   # the Blend button: dark gray -> light gray
+_INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
+# Category tints (mixed lightly into the segment fills).
+TINT_TOOLS = (0.35, 0.58, 1.00)
+TINT_MODES = (1.00, 0.62, 0.25)
+TINT_HISTORY = (0.95, 0.40, 0.45)
+TINT_FALLOFF = (1.00, 0.55, 0.15)    # orange
+TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
+CUSTOM_TINT_AMOUNT = 0.45
+# Falloff (bottom right): the Shape field in the outer ring, reaching in through the
+# outer half of the inner ring (no gap), and in the inner half Custom | Curve.
+FALLOFF_FIELD_ARC = (322.5, 375.0)
+FALLOFF_SPLIT = (INNER_RING[0] + INNER_RING[1]) * 0.5   # Custom / Curve end here, the field starts here
+FAVORITE_FONT = 16.0                 # favorite blend modes: largest label size
+FAVORITE_TEXT_PAD = 2.0              # their labels keep this far from the segment's side edges
+FAVORITE_CAPS_LETTERS = 4            # names this short (or shorter) are written in capitals
+# One label size for all: made so the widest of these fits (five letters / four capitals).
+FAVORITE_SIZE_TEXTS = ("Dodge", "LUMI", "NORM")
+FAVORITE_TEXT_COLOR = (0.80, 0.80, 0.80)   # light gray
+FIELD_MARKER_RADIUS = 9.0
+FIELD_EDGE_MARGIN = 0.5              # the marker's center keeps this much of its radius from the field's edges
+FIELD_PREVIEW_SCALE = 1.6            # corner preview discs (a quarter shows), relative to a quadrant icon
+FIELD_GUIDE_GRAY = (0.55, 0.55, 0.55)
+FIELD_GUIDE_ALPHA = 0.8
+FIELD_CROSS_ARM = 0.9                # the marker cross: arm length relative to FIELD_MARKER_RADIUS
+FIELD_CURVE_SAMPLES = 32             # points of the falloff curve drawn in the field
+FIELD_CURVE_FILL = (0.30, 0.30, 0.30)   # between the curve and the field's inner edge (field: theme surface)
+# Corner buttons: between the dial's circle and its enclosing square (angles as above).
+CORNER_INNER = OUTER_RING[1] + CORNER_GAP
+CORNER_CHAMFER = 30.0                # the square's corners are cut: room for the lock / X / resize triangle
+# Top left: the gradient slider (tertiary color) along the circle; then secondary's
+# Picker | secondary | Swap + tertiary bubble | primary | primary's Picker (the colors
+# toward the corner; all with round corners). Swap sits by the circle, the tertiary
+# bubble behind it toward the square's corner (not cut: the menu's lock is bottom left).
+COLORS_ARC = (90.0, 180.0)
+HISTORY_BAND_ARC = SLIDER_ARC        # top right: the color history, outside S / A / M
+GRADIENT_MARKER = 3.0                # the gradient slider's marker: half width, unscaled px
+COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
+SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix bubble sits past it
+COLOR_ROUND = 6.0                    # corner radius of the color section's buttons
+MIX_BUBBLE_MARGIN = 1.5              # the tertiary bubble keeps this far from its slot's edges
+COLOR_WHEEL_ARC = (270.0, 350.0)     # bottom right: the palette (2 bands along the circle)
+# Palettes: a capsule in the gap right of the circle, centered on the right (as deep
+# as the palette bands; Color / Library: the Windows ring).
+PALETTE_BUTTON_ARC = (350.0, 370.0)
+COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
+BRUSH_MODE_RING = (COLOR_CORNER_INNER, COLOR_CORNER_INNER + 26.0)
+# Bottom left, a capsule along the circle: Windows, Save, Grid, Blend (Blend ends at the
+# bottom, where the palette band starts; the band stays inside the square there).
+BOTTOM_LEFT_INNER = CORNER_INNER
+BOTTOM_LEFT_RING = (BOTTOM_LEFT_INNER, SQUARE_HALF - 2.0)
+BOTTOM_LEFT_ARC = (192.0, 270.0)
+_BL_SHARE = (BOTTOM_LEFT_ARC[1] - BOTTOM_LEFT_ARC[0]) / 4.0
+WINDOWS_ARC = (BOTTOM_LEFT_ARC[0], BOTTOM_LEFT_ARC[0] + _BL_SHARE)   # Windows' share
+# The Windows popup: a ring over the dial's inner ring (around the Size knob, hiding the
+# inner ring while open). Entries counter-clockwise from WINDOW_RING_START, each the same
+# angle; their order roughly follows where the old corner buttons sat.
+WINDOW_RING = INNER_RING
+WINDOW_RING_COVER = OUTER_RING[1]    # the backdrop reaches this far: hides both rings (the tools too)
+WINDOW_RING_START = 165.0            # Settings at the bottom left, by the Windows button
+WINDOW_RING_BACKDROP = (0.16, 0.16, 0.16, 0.97)
+TINT_WINDOWS = (0.62, 0.70, 0.95)
+GRID_DRAG_PX = 120.0                 # unscaled px of vertical drag for 0 -> 100 % grid opacity
+TINT_GRID = (0.55, 0.78, 0.95)
+TINT_SAVE = (0.45, 0.80, 0.45)
+TINT_MASK = (0.78, 0.52, 1.00)
+TINT_VIEW = (0.40, 0.85, 0.95)
+MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
+DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
+CURVE_EDITOR_SIZE = (220.0, 150.0)
+BLEND_ENTRY_SIZE = (84.0, 26.0)      # Blend flyout: a mode ...
+BLEND_STAR_SIZE = (24.0, 26.0)       # ... and its favorite star on the right
+BLEND_STAR_GAP = 2.0
+STAR_COLOR = (1.00, 0.80, 0.25)      # a favorite's star (gold)
+CURVE_MODES = (('MOVE', "Move"), ('ADD', "Add"), ('DRAW', "Draw"))
+FALLOFF_PREVIEW_SIZE = 56.0          # the falloff disc beside the readout while the field is dragged
+CURVE_PRESET_SIZE = (52.0, 40.0)     # the curve flyout's preset buttons (icon + label)
+CURVE_PRESET_COLUMNS = 4
+CURVE_HINTS = {'MOVE': "Drag anchors; drag out of the box: remove",
+               'ADD': "Tap to add an anchor (keep the pen down to place it)",
+               'DRAW': "Draw the falloff: center left, edge right"}
+
+_CORNER_RADIUS = 6.0     # lock / X in the elements' top corners (drawn); taps hit a larger area
+_CORNER_HIT = 9.0
+_CORNER_INSET = 4.0
+_PANEL_PADDING = 4.0
+SHAPE_PAD = 5.0          # shaped window backgrounds reach this far past the parts, unscaled px
+_CORNER_CAP = 0.6       # a window's rounded corners: at most this share of the resize triangle's legs
+# The menu's default spot keeps this far from the editor edge (unscaled px; the panel padding is inside it).
+EDGE_GAP = 0.3 * 2.0 * 19.0
+
+
+def clamp_scale(name, scale):
+    lo, hi = SCALE_LIMITS[name]
+    return max(lo, min(hi, scale))
+
+
+class _StarButton(PenButton):
+    """Favorite toggle beside a flyout entry: a star, filled (gold) while ``marked()``."""
+
+    def __init__(self, *, marked, **kwargs):
+        super().__init__("", layout='icon', **kwargs)
+        self.marked = marked
+
+    def draw_self(self, dc):
+        super().draw_self(dc)
+        r = self._visual
+        if r is None:
+            return
+        theme = dc.theme
+        alpha = dc.alpha * (1.0 if self.is_enabled else theme.disabled_alpha)
+        on = bool(_resolve(self.marked, False))
+        outer = min(r.width, r.height) * 0.34
+        inner = outer * 0.45
+        pts = [(r.cx + math.cos(math.radians(90.0 + 36.0 * k)) * (outer if k % 2 == 0 else inner),
+                r.cy + math.sin(math.radians(90.0 + 36.0 * k)) * (outer if k % 2 == 0 else inner))
+               for k in range(10)]
+        if on:
+            draw.star_polygon(r.cx, r.cy, pts, (*STAR_COLOR, alpha), rim=theme.edge_for(STAR_COLOR, alpha))
+        else:
+            draw.polyline(pts, with_alpha(theme.text_muted, 0.8 * alpha), max(1.0, theme.px(1.0)), closed=True)
+
+
+class _ColorDrag:
+    """Drag & drop for pen menu widgets (mixin, before the widget class).
+
+    A drag carries a payload: ``('color', rgb, origin)`` or ``('palette', palette,
+    origin)``; ``origin`` names where it came from (``('palette_color', i)``,
+    ``('project', i)``, ``('library', i)`` or None). ``drag_payload()`` gives it
+    (default: ``drag_color()`` as a color); None: nothing to drag. A press that
+    moves less than ``DRAG_THRESHOLD`` is a tap (``activate``); a longer move
+    carries the payload, shown under the pen, and the release drops it
+    (:meth:`PenBar.drop`). Targets define ``accepts(payload)`` and
+    ``accept_drop(payload, source)``. Off with the *Drag Colors* setting."""
+
+    bar = None
+
+    def drag_color(self):
+        return None
+
+    def drag_payload(self):
+        rgb = self.drag_color()
+        return None if rgb is None else ('color', tuple(rgb), None)
+
+    @property
+    def draggable(self):
+        try:
+            return self.bar.actions.color_drag_enabled() and self.drag_payload() is not None
+        except Exception:
+            return False
+
+    def accepts(self, payload):
+        return False
+
+    def drag_begin(self, x, y):
+        self._press = (x, y)
+        self._carry = self.drag_payload()
+        self._moved = False
+
+    def drag_update(self, x, y):
+        if not self._moved:
+            reach = self.bar.overlay.theme.px(DRAG_THRESHOLD)
+            self._moved = math.hypot(x - self._press[0], y - self._press[1]) >= reach
+        if self._moved:
+            self.bar.drag_preview = (self._carry, x, y, self)
+
+    def drag_end(self, x, y, cancelled=False):
+        self.bar.drag_preview = None
+        if cancelled:
+            return
+        if self._moved:
+            self.bar.drop(self._carry, x, y, self)
+        else:
+            self.activate()
+
+
+class _ColorCorner(_ColorDrag, CornerSegment):
+    """The primary or secondary color (``which``) as a corner segment; the active one
+    (the color the pen paints) is ringed, with a dotted ring while the tertiary color is
+    selected and the color selector edits this one. Drag source and drop target."""
+
+    def __init__(self, bar, which, rgb, role, **kwargs):
+        super().__init__(**kwargs)
+        self.bar = bar
+        self.which = which      # 'PRIMARY' / 'SECONDARY'
+        self.rgb = rgb          # () -> (r, g, b)
+        self.role = role        # () -> 'ACTIVE' / 'TARGET' / None
+
+    def drag_color(self):
+        return _resolve(self.rgb, None)
+
+    def accepts(self, payload):
+        return payload[0] == 'color'
+
+    def accept_drop(self, payload, source):
+        self.bar.actions.set_color(self.which, payload[1])
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        inner, outer = self.points()
+        if not inner:
+            return
+        rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
+        draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        role = _resolve(self.role, None)
+        if role == 'ACTIVE':
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
+        elif role == 'TARGET':
+            draw.ring_segment_dashed_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha),
+                                             width=theme.px(2.0), dash=theme.px(3.0), gap=theme.px(3.0))
+        elif self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _TertiaryBubble(_ColorDrag, CornerSegment):
+    """The tertiary color (picked on the gradient slider) as a bubble: the largest
+    circle that fits its corner slot (on the slot's middle ray), ringed while selected.
+    Tap: select it / back to the color before; drag source, not a drop target (it
+    follows the two colors)."""
+
+    def __init__(self, bar, rgb, active, **kwargs):
+        super().__init__(**kwargs)
+        self.bar = bar
+        self.rgb = rgb          # () -> (r, g, b)
+        self.active = active    # () -> bool: the tertiary color is selected
+        self._bubble = (0.0, 0.0, 0.0)   # screen cx, cy, radius
+        self._hit = 0.0
+
+    def place_on(self, cx, cy, theme, gap):
+        super().place_on(cx, cy, theme, gap)
+        (x, y), room = best_circle(self.pr0, self.pr1, *self.angles, *self.insets, theme.px(self.chamfer))
+        self._bubble = (cx + x, cy + y, max(0.0, room - theme.px(MIX_BUBBLE_MARGIN)))
+        self._hit = room
+        self._center = (cx + x, cy + y)
+
+    def contains(self, x, y):
+        bx, by, _r = self._bubble
+        return self._hit > 0.0 and math.hypot(x - bx, y - by) <= self._hit
+
+    def drag_color(self):
+        return _resolve(self.rgb, None)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        x, y, r = self._bubble
+        if r <= 1.0:
+            return
+        rgb = _resolve(self.rgb, (0.0, 0.0, 0.0))
+        draw.circle(x, y, r, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if _resolve(self.active, False):
+            draw.circle_outline(x, y, r, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.5))
+        elif self.hover_t > 0.5:
+            draw.circle_outline(x, y, r, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _GradientSlider(RingSegment):
+    """The gradient from the primary color (at ``a1``, the left end) to the secondary
+    one (at ``a0``, the top) along the circle; a marker shows the tertiary color's spot.
+    A press sets it from the pointer's angle (and selects the tertiary color), dragging
+    keeps setting it: ``on_value(t)`` with t = 0 at the primary, 1 at the secondary end."""
+
+    draggable = True
+    _STEPS = 24
+
+    def __init__(self, label="", *, colors, value, active, on_value, **kwargs):
+        super().__init__(label, **kwargs)
+        self.colors = colors        # () -> (primary rgb, secondary rgb)
+        self.value = value          # () -> t
+        self.active = active        # () -> bool: the tertiary color is selected
+        self.on_value = on_value
+        self.dragging = False
+
+    def _span(self):
+        """Screen angles (radians) of the drawn ends: (secondary end, primary end)."""
+        a0, a1 = self.angles
+        r = max(1.0, (self.pr0 + self.pr1) * 0.5)
+        return (a0 + math.asin(min(1.0, self.insets[0] / r)),
+                a1 - math.asin(min(1.0, self.insets[1] / r)))
+
+    def value_at(self, x, y):
+        s0, s1 = self._span()
+        angle = math.atan2(y - self.cy, x - self.cx) % math.tau
+        mid = (s0 + s1) * 0.5    # unwrap around the slider's middle
+        angle = mid + (angle - mid + math.pi) % math.tau - math.pi
+        return max(0.0, min(1.0, (s1 - angle) / (s1 - s0)))
+
+    def drag_begin(self, x, y):
+        self.dragging = True
+        self.drag_update(x, y)
+
+    def drag_update(self, x, y):
+        if self.dragging and self.on_value is not None:
+            self.on_value(self.value_at(x, y))
+
+    def drag_end(self, x, y, cancelled=False):
+        self.dragging = False
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        alpha = self._alpha(dc)
+        primary, secondary = _resolve(self.colors, ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)))
+        if primary is None or secondary is None:
+            return
+        s0, s1 = self._span()
+        if s1 <= s0:
+            return
+        # Gradient: thin slices from the secondary end to the primary end.
+        steps = self._STEPS
+        inner, outer = [], []
+        for i in range(steps + 1):
+            a = s0 + (s1 - s0) * i / steps
+            ux, uy = math.cos(a), math.sin(a)
+            inner.append((self.cx + ux * self.pr0, self.cy + uy * self.pr0))
+            outer.append((self.cx + ux * self.pr1, self.cy + uy * self.pr1))
+        colors = []
+        for i in range(steps + 1):
+            t = 1.0 - i / steps
+            c = [p + (q - p) * t for p, q in zip(primary[:3], secondary[:3])]
+            colors.append((c[0], c[1], c[2], alpha))
+        draw.gradient_ring_segment(inner, outer, colors)
+        on = _resolve(self.active, False)
+        edge = with_alpha(theme.accent_light, alpha) if on else theme.edge_for((0.5, 0.5, 0.5), alpha)
+        draw.ring_segment_outline(inner, outer, edge, width=theme.px(1.5) if on else 1.0)
+        # Marker at the tertiary color's spot: a dark bar with a light core, past both edges.
+        t = max(0.0, min(1.0, float(_resolve(self.value, 0.5) or 0.0)))
+        a = s1 - (s1 - s0) * t
+        ux, uy = math.cos(a), math.sin(a)
+        reach = theme.px(2.0)
+        p0 = (self.cx + ux * (self.pr0 - reach), self.cy + uy * (self.pr0 - reach))
+        p1 = (self.cx + ux * (self.pr1 + reach), self.cy + uy * (self.pr1 + reach))
+        half = theme.px(GRADIENT_MARKER)
+        draw.polyline([p0, p1], (0.05, 0.05, 0.05, 0.9 * alpha), half * 2.0)
+        draw.polyline([p0, p1], (1.0, 1.0, 1.0, alpha) if on else (0.8, 0.8, 0.8, 0.85 * alpha), half * 0.8)
+
+
+class _BubbleDrag(_ColorDrag, ColorBubble):
+    """The color selector's old / new bubble: tap accepts, dragging carries the new color."""
+
+    def __init__(self, bar, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bar = bar
+
+    def drag_color(self):
+        try:
+            return tuple(self.bar.actions.preview_colors()[1])
+        except Exception:
+            return None
+
+
+def _paint_swap(dc, x, y, size, alpha):
+    """Double arrow between the primary and the secondary color (along the top-left diagonal)."""
+    theme = dc.theme
+    r = min(size * 0.5, theme.px(12.0))
+    color = with_alpha(theme.text, 0.9 * alpha)
+    ux, uy = math.cos(math.radians(45.0)), math.sin(math.radians(45.0))
+    length, head = r * 0.8, r * 0.4
+    a = (x - ux * length, y - uy * length)
+    b = (x + ux * length, y + uy * length)
+    draw.polyline([a, b], color, max(1.0, theme.px(1.5)))
+    for (tx, ty), d in ((a, -1.0), (b, 1.0)):
+        bx, by = tx - ux * head * d, ty - uy * head * d
+        draw.triangle((tx, ty), (bx - uy * head * 0.6, by + ux * head * 0.6),
+                      (bx + uy * head * 0.6, by - ux * head * 0.6), color)
+
+
+def _thick_line(a, b, width, color):
+    draw.gradient_line(a, b, color, color, width)
+
+
+def _paint_eyedropper(dc, x, y, size, alpha, color=None):
+    """Picker icon: an eyedropper, bulb top right, tip bottom left."""
+    theme = dc.theme
+    s = min(size * 0.62, theme.px(24.0))
+    color = with_alpha(theme.text, 0.92 * alpha) if color is None else color
+    ux = uy = math.sqrt(0.5)
+    tip = (x - ux * s * 0.5, y - uy * s * 0.5)
+    neck = (x + ux * s * 0.12, y + uy * s * 0.12)
+    _thick_line(tip, neck, s * 0.16, color)
+    _thick_line((neck[0] + uy * s * 0.2, neck[1] - ux * s * 0.2),
+                (neck[0] - uy * s * 0.2, neck[1] + ux * s * 0.2), s * 0.12, color)
+    draw.circle(x + ux * s * 0.3, y + uy * s * 0.3, s * 0.17, color, segments=16)
+
+
+def _paint_target_picker(rgb, active):
+    """Picker for one color (``rgb()``): bright while that color is the active one
+    (``active()``), grey otherwise; a dot of the color at its tip."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        on = _resolve(active, False)
+        ink = (1.0, 1.0, 1.0, alpha) if on else with_alpha(theme.text_muted, 0.55 * alpha)
+        _paint_eyedropper(dc, x, y, size, alpha, color=ink)
+        c = _resolve(rgb, None)
+        if c is not None:
+            s = min(size * 0.62, theme.px(24.0))
+            dx = dy = -math.sqrt(0.5) * s * 0.5     # the eyedropper's tip
+            dx, dy = x + dx, y + dy
+            dot = (c[0], c[1], c[2], alpha if on else 0.6 * alpha)
+            draw.circle(dx, dy, max(2.0, s * 0.16), dot, rim=theme.edge_for(c, dot[3]), segments=16)
+    return paint
+
+
+def _paint_color_wheel(rgb):
+    """Color icon: a hue ring around the color the pen paints."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        r = min(size * 0.36, theme.px(13.0))
+        steps = 24
+        for i in range(steps):
+            c = colorsys.hsv_to_rgb(i / steps, 0.85, 1.0)
+            draw.sector(x, y, r, math.tau * i / steps, math.tau * (i + 1) / steps, (*c, alpha), segments=2)
+        draw.circle(x, y, r * 0.6, with_alpha(theme.surface_dark, alpha), segments=24)
+        cur = _resolve(rgb, (1.0, 1.0, 1.0))
+        draw.circle(x, y, r * 0.42, (cur[0], cur[1], cur[2], alpha), segments=24)
+    return paint
+
+
+def _paint_sliders(dc, x, y, size, alpha):
+    """Channel sliders icon: three bars with knobs."""
+    theme = dc.theme
+    w = size * 0.34
+    color = with_alpha(theme.text, 0.9 * alpha)
+    for row, knob in ((1, 0.35), (0, -0.4), (-1, 0.1)):
+        cy = y + row * size * 0.2
+        draw.polyline([(x - w, cy), (x + w, cy)], color, max(1.0, size * 0.06))
+        draw.circle(x + knob * w, cy, size * 0.08, color, segments=12)
+
+
+def _paint_gear(dc, x, y, size, alpha):
+    """Settings icon: a gear."""
+    theme = dc.theme
+    r = min(size * 0.34, theme.px(12.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    for k in range(8):
+        a = k * math.pi / 4.0
+        _thick_line((x + math.cos(a) * r * 0.55, y + math.sin(a) * r * 0.55),
+                    (x + math.cos(a) * r, y + math.sin(a) * r), r * 0.34, color)
+    draw.circle(x, y, r * 0.74, color, segments=24)
+    draw.circle(x, y, r * 0.32, with_alpha(theme.surface_dark, alpha), segments=16)
+
+
+def _paint_windows(dc, x, y, size, alpha):
+    """Windows icon: two overlapping windows (title bars), the front one filled."""
+    theme = dc.theme
+    s = min(size * 0.3, theme.px(11.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    width = max(1.0, theme.px(1.2))
+    back = Rect.from_center(x - s * 0.35, y + s * 0.35, s * 1.5, s * 1.15)
+    draw.rect_outline(back, color, width=width)
+    draw.rect(Rect(back.x0, back.y1 - s * 0.25, back.x1, back.y1), color)
+    front = Rect.from_center(x + s * 0.35, y - s * 0.35, s * 1.5, s * 1.15)
+    draw.rect(front, with_alpha(theme.surface_dark, alpha))
+    draw.rect_outline(front, color, width=width)
+    draw.rect(Rect(front.x0, front.y1 - s * 0.25, front.x1, front.y1), color)
+
+
+def _captioned(painter, text):
+    """``painter`` moved up and shrunk a bit, ``text`` under it (Windows popup entries)."""
+    def paint(dc, x, y, size, alpha):
+        painter(dc, x, y + size * 0.12, size * 0.8, alpha)
+        _caption(dc, x, y - size * 0.36, text, alpha)
+    return paint
+
+
+def _paint_save(unsaved, caption=True):
+    """Save icon: a floppy disk; a dot in the accent color while ``unsaved()``."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        s = min(size * 0.5, theme.px(20.0 if caption else 14.0))
+        color = with_alpha(theme.text, 0.92 * alpha)
+        body = Rect.from_center(x, y, s, s)
+        draw.rect(body, color)
+        hole = with_alpha(theme.surface_dark, alpha)
+        draw.rect(Rect(body.x0 + s * 0.22, body.y1 - s * 0.34, body.x1 - s * 0.22, body.y1 - s * 0.06), hole)
+        draw.rect(Rect(body.x0 + s * 0.16, body.y0 + s * 0.1, body.x1 - s * 0.16, body.y0 + s * 0.48), hole)
+        if _resolve(unsaved, False):
+            dot = (*TINT_SAVE, alpha)
+            draw.circle(body.x1, body.y1, max(2.5, s * 0.2), dot, rim=theme.edge_for(TINT_SAVE, alpha), segments=16)
+        if caption:
+            draw.text_centered("Save", x, body.y0 - theme.px(7.0), theme.px(8.0),
+                               with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
+
+
+def _caption(dc, x, y, text, alpha):
+    theme = dc.theme
+    draw.text_centered(text, x, y, theme.px(7.5), with_alpha(theme.text_muted, alpha), theme.font_id)
+
+
+def _paint_mask(dc, x, y, size, alpha, caption=True):
+    """Mask on / off: a square, half texture (light) and half protected (dark)."""
+    theme = dc.theme
+    s = min(size * (0.42 if caption else 0.55), theme.px(16.0))
+    box = Rect.from_center(x, y + (s * 0.2 if caption else 0.0), s, s)
+    draw.rect(Rect(box.x0, box.y0, box.cx, box.y1), (0.85, 0.85, 0.85, alpha))
+    draw.rect(Rect(box.cx, box.y0, box.x1, box.y1), (0.12, 0.12, 0.12, alpha))
+    draw.rect_outline(box, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, box.y0 - theme.px(6.0), "Mask", alpha)
+
+
+def _paint_mask_menu(enabled):
+    """Mask window button: the mask icon; a dot in the mask's tint while the mask is on."""
+    def paint(dc, x, y, size, alpha):
+        _paint_mask(dc, x, y, size, alpha)
+        if _resolve(enabled, False):
+            theme = dc.theme
+            s = min(size * 0.42, theme.px(16.0))
+            draw.circle(x + s * 0.5, y + s * 0.7, max(2.5, s * 0.2), (*TINT_MASK, alpha),
+                        rim=theme.edge_for(TINT_MASK, alpha), segments=16)
+    return paint
+
+
+def _paint_view(dc, x, y, size, alpha):
+    """View window button: a camera (body, lens, viewfinder) with a caption."""
+    theme = dc.theme
+    s = min(size * 0.42, theme.px(16.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    cy = y + s * 0.2
+    body = Rect.from_center(x, cy, s * 1.3, s * 0.85)
+    draw.rect(body, color)
+    draw.rect(Rect(body.x0 + s * 0.15, body.y1, body.x0 + s * 0.55, body.y1 + s * 0.18), color)
+    draw.circle(x, cy, s * 0.3, with_alpha(theme.surface_dark, alpha), segments=16)
+    draw.circle(x, cy, s * 0.15, color, segments=12)
+    if size > theme.px(30.0):
+        _caption(dc, x, body.y0 - theme.px(6.0), "View", alpha)
+
+
+def _paint_mask_source(source, caption=True):
+    """UV Islands / Mesh Parts: the source in big letters."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        uv = _resolve(source, 'UV_ISLAND') != 'MESH_PART'
+        draw.text_centered("UV" if uv else "Mesh", x, y + (size * 0.1 if caption else 0.0),
+                           theme.px(11.0 if uv else 9.0), with_alpha(theme.text, alpha), theme.font_id)
+        if caption:
+            _caption(dc, x, y - size * 0.25, "Islands" if uv else "Parts", alpha)
+    return paint
+
+
+def _paint_mask_invert(dc, x, y, size, alpha, caption=True):
+    """Invert: a disc, half light and half dark."""
+    theme = dc.theme
+    r = min(size * (0.22 if caption else 0.3), theme.px(9.0))
+    cy = y + (r * 0.45 if caption else 0.0)
+    draw.sector(x, cy, r, math.pi * 0.5, math.pi * 1.5, (0.85, 0.85, 0.85, alpha), segments=12)
+    draw.sector(x, cy, r, -math.pi * 0.5, math.pi * 0.5, (0.12, 0.12, 0.12, alpha), segments=12)
+    draw.circle_outline(x, cy, r, with_alpha(theme.text, 0.9 * alpha), width=max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, cy - r - theme.px(6.0), "Invert", alpha)
+
+
+def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
+    """Edit (the mask): a target (tap islands)."""
+    theme = dc.theme
+    s = min(size * (0.4 if caption else 0.55), theme.px(15.0))
+    color = with_alpha(theme.text, 0.92 * alpha)
+    cy = y + (s * 0.25 if caption else 0.0)
+    draw.circle_outline(x, cy, s * 0.5, color, width=max(1.0, theme.px(1.0)))
+    draw.circle(x, cy, s * 0.16, color, segments=12)
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        draw.polyline([(x + dx * s * 0.55, cy + dy * s * 0.55), (x + dx * s * 0.8, cy + dy * s * 0.8)],
+                      color, max(1.0, theme.px(1.0)))
+    if caption:
+        _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Edit", alpha)
+
+
+class _GridCorner(RingSegment):
+    """Pixel grid overlay: shows the opacity in percent (dimmed while hidden). A tap
+    toggles the grid (``on_click``); dragging up / down sets the opacity
+    (``on_value(v)``, 0..1; ESC restores it)."""
+
+    draggable = True
+
+    def __init__(self, label="", *, shown, value, on_value, **kwargs):
+        super().__init__(label, selected=shown, **kwargs)
+        self.shown = shown
+        self.value = value
+        self.on_value = on_value
+        self.dragging = False
+        self._press = None
+        self._start = 0.0
+        self._moved = False
+        self._theme = None
+
+    def drag_begin(self, x, y):
+        self._press = (x, y)
+        self._start = float(_resolve(self.value, 0.0) or 0.0)
+        self._moved = False
+        self.dragging = True
+
+    def drag_update(self, x, y):
+        if self._press is None or self._theme is None:
+            return
+        dx, dy = x - self._press[0], y - self._press[1]
+        if not self._moved:
+            self._moved = math.hypot(dx, dy) >= self._theme.px(DRAG_THRESHOLD)
+        if self._moved:
+            self.on_value(max(0.0, min(1.0, self._start + dy / self._theme.px(GRID_DRAG_PX))))
+
+    def drag_end(self, x, y, cancelled=False):
+        self.dragging = False
+        moved, self._press = self._moved, None
+        if cancelled:
+            if moved:
+                self.on_value(self._start)
+        elif not moved:
+            self.activate()
+
+    def draw_self(self, dc):
+        self._theme = dc.theme
+        alpha = self.draw_frame(dc, active=1.0 if self.dragging else None)
+        size = self.content_size()
+        if size <= 2.0:
+            return
+        theme = dc.theme
+        x, y = self.middle()
+        on = bool(_resolve(self.shown, False))
+        value = float(_resolve(self.value, 0.0) or 0.0)
+        color = theme.text if on else theme.text_muted
+        draw.text_centered(f"{int(round(value * 100.0))}%", x, y, min(theme.px(10.0), size * 0.42),
+                           with_alpha(color, (1.0 if on else 0.7) * alpha), theme.font_id)
+
+
+class _BlendFavorite(RingSegment):
+    """A favorite blend mode in the bottom middle: its name across the segment (along the
+    circle, upright), centered; names of several words on two lines. The text shrinks to
+    fit the segment's depth and width."""
+
+    def label_lines(self):
+        words = self.label.split()
+        if len(words) < 2:
+            return [self.label]
+        # Split at the space nearest the middle of the name.
+        best = min(range(1, len(words)),
+                   key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
+        return [" ".join(words[:best]), " ".join(words[best:])]
+
+    def draw_content(self, dc, alpha):
+        theme = dc.theme
+        lines = self.label_lines()
+        pad = theme.px(FAVORITE_TEXT_PAD)
+        depth = self.pr1 - self.pr0
+        r = self.pr0 + depth * 0.35                      # the narrow (inner) part decides the width
+        width = 2.0 * r * math.sin(math.radians(self.a1 - self.a0) * 0.5) - sum(self.insets) - 2.0 * pad
+        line_gap = 1.1
+        size = min(theme.px(self.font_size), depth * 0.62 / (len(lines) * line_gap))
+        if size < 3.0 or width <= 4.0:
+            return
+        if max(len(line) for line in lines) <= FAVORITE_CAPS_LETTERS:
+            lines = [line.upper() for line in lines]     # short names in capitals
+        # One size for every name of a row: as large as a name of about five letters
+        # (FAVORITE_SIZE_TEXTS) allows across the button.
+        reference = max(draw.text_size(text, size, theme.font_id)[0] for text in FAVORITE_SIZE_TEXTS)
+        if reference > width:
+            size *= width / reference
+        longest = max(draw.text_size(line, size, theme.font_id)[0] for line in lines)
+        if longest > width:       # longer names than the reference still fit
+            size *= width / longest
+        # Direction: along the circle at the segment's (drawn) middle, kept upright.
+        mx, my = self.middle()
+        angle = math.atan2(my - self.cy, mx - self.cx) + math.pi * 0.5
+        if math.cos(angle) < -1e-6:
+            angle += math.pi
+        ux, uy = math.cos(angle), math.sin(angle)
+        up = (-uy, ux)                                   # "up" on screen for the reading direction
+        color = (*FAVORITE_TEXT_COLOR, alpha)
+        step = size * line_gap
+        for i, line in enumerate(lines):
+            off = ((len(lines) - 1) * 0.5 - i) * step   # first line on top
+            w = draw.text_size(line, size, theme.font_id)[0]
+            x = mx + up[0] * off - ux * w * 0.5
+            y = my + up[1] * off - uy * w * 0.5
+            draw.text_along(line, x, y, size, color, angle, theme.font_id)
+
+
+class _BlendFavorites(Widget):
+    """The favorite blend modes in ``rows`` rings stacked from ``r0`` out to ``r1``, each a
+    band across ``arc``, equally deep and split as evenly as possible (the outer, longer
+    rows take the extra ones; fewer favorites than rows: one per row). Rows read from
+    ``a0`` (left at the bottom). Owns one segment per blend mode (only the favorites are
+    shown) and re-places them when the favorites change. Added to the dial's
+    ``corners`` so the dial places it."""
+
+    def __init__(self, dial, entries, r0, r1, arc, favorites, rows=FAVORITE_ROWS, **kwargs):
+        super().__init__(**kwargs)
+        self.dial = dial
+        self.entries = dict(entries)        # blend id -> _BlendFavorite
+        self.r0, self.r1 = r0, r1           # the dial's measure reads r1
+        self.row_count = max(1, int(rows))
+        self.arc = arc
+        self.favorites = favorites          # () -> set of blend ids
+        self._shown = None
+        self._place = None
+        for segment in self.entries.values():
+            segment.visible = False
+            self.add(segment)
+        dial.add(self)
+        dial.corners.append(self)
+
+    def shown_ids(self):
+        try:
+            favorites = set(self.favorites())
+        except Exception:
+            favorites = set()
+        return tuple(b for b in self.entries if b in favorites)
+
+    def rows(self, count):
+        """``[((r0, r1), buttons)]`` for ``count`` favorites, inner row first."""
+        if count <= 0:
+            return []
+        n = min(self.row_count, count)
+        depth = (self.r1 - self.r0 - (n - 1) * DIAL_GAP) / n
+        bands = [(self.r0 + i * (depth + DIAL_GAP), self.r0 + i * (depth + DIAL_GAP) + depth) for i in range(n)]
+        base, extra = divmod(count, n)
+        counts = [base + (1 if i >= n - extra else 0) for i in range(n)]
+        return list(zip(bands, counts))
+
+    def _assign(self, ids):
+        self._shown = ids
+        for segment in self.entries.values():
+            segment.visible = False
+        start = 0
+        for (r0, r1), count in self.rows(len(ids)):
+            segments = [self.entries[b] for b in ids[start:start + count]]   # listed from a0 (left)
+            start += count
+            extra, spans = self.dial._split(len(segments), r0, r1, *self.arc)
+            for i, (segment, (b0, b1)) in enumerate(zip(segments, spans)):
+                segment.r0, segment.r1, segment.a0, segment.a1 = r0, r1, b0, b1
+                segment.edge_extra = (extra if i == 0 else 0.0, extra if i == len(segments) - 1 else 0.0)
+                segment.visible = True
+
+    def place_on(self, cx, cy, theme, gap):
+        self._place = (cx, cy, theme, gap)
+        self.rect = Rect.from_center(cx, cy, 0.0, 0.0)
+        self._assign(self.shown_ids())
+        for segment in self.entries.values():
+            if segment.visible:
+                segment.place_on(cx, cy, theme, gap)
+
+    def contains(self, x, y):
+        return False
+
+    def draw_self(self, dc):
+        if self._place is not None and self.shown_ids() != self._shown:
+            self.place_on(*self._place)
+
+
+class FalloffField(RingSegment):
+    """The Shape falloff as a 2D field (a pie segment), swiped like the color selector.
+
+    Radially (relative to the menu's center) it runs from hard (inner edge: full strength
+    out to the brush edge) to soft (outer edge); along the circle from linear (top) to
+    sharp (bottom). ``value()`` / ``on_value(hardness, sharpness)`` read / set the two
+    values (setting them selects the Shape falloff); ``active()``: Shape is in use.
+
+    A drag moves the marker by the pointer's motion (``gain``), not under the pen; a tap
+    jumps to the tapped spot; ESC / RMB restore the values from before the drag. While
+    pressed the OS cursor is hidden (``on_drag_state(True / False)``) and, once swiping,
+    kept on the marker (``warp(x, y)``, region px), so the marker is the pointer. Each
+    corner shows a quarter of a preview disc (``previews``: ``((hardness, sharpness),
+    icon key)`` listed hard-linear, soft-linear, hard-sharp, soft-sharp); the marker is a
+    cross, and the current falloff curve runs through the field (:meth:`curve_points`).
+    The field is plain gray; only the accent band along its outer edge shows that the
+    Shape falloff is selected. (``marker_icon`` is accepted but no longer drawn.)"""
+
+    draggable = True
+
+    def __init__(self, label="", *, value, on_value, active, previews=(), marker_icon=None,
+                 gain=0.5, on_drag_state=None, warp=None, **kwargs):
+        super().__init__(label, selected=active, **kwargs)
+        self.value = value
+        self.on_value = on_value
+        self.active = active
+        self.previews = tuple(previews)
+        self.marker_icon = marker_icon
+        self.gain = gain
+        self.on_drag_state = on_drag_state
+        self.warp = warp
+        self.dragging = False
+        self._drag = None
+        self._theme = None
+
+    # ---- field coordinates ---------------------------------------------------------
+
+    def _track(self):
+        """Screen radii of the hard (0) and soft (1) ends; angles (degrees) of the sharp
+        (bottom) and linear (top) ends -- the drawn area minus a margin (part of the
+        marker may reach over the edge: ``FIELD_EDGE_MARGIN``)."""
+        edge = self._marker_radius() * FIELD_EDGE_MARGIN
+        margin = edge + min(self.insets)
+        r0, r1 = self.pr0 + margin, max(self.pr0 + margin + 1.0, self.pr1 - margin)
+        mid = max(1.0, (self.pr0 + self.pr1) * 0.5)
+        pad = [math.degrees(min(1.0, (inset + edge) / mid)) for inset in self.insets]
+        a0, a1 = self.a0 + pad[0], self.a1 - pad[1]
+        if a1 <= a0:
+            a0 = a1 = (self.a0 + self.a1) * 0.5
+        return r0, r1, a0, a1
+
+    def _marker_radius(self):
+        theme = self._theme
+        return theme.px(FIELD_MARKER_RADIUS) if theme is not None else FIELD_MARKER_RADIUS
+
+    def _tap_travel(self):
+        return self._theme.px(DRAG_THRESHOLD) if self._theme is not None else DRAG_THRESHOLD
+
+    def _polar(self, x, y):
+        """``(radius, angle in degrees)`` of a screen point, the angle unwrapped around the field."""
+        r = math.hypot(x - self.cx, y - self.cy)
+        a = math.degrees(math.atan2(y - self.cy, x - self.cx))
+        mid = (self.a0 + self.a1) * 0.5
+        a = mid + (a - mid + 180.0) % 360.0 - 180.0
+        return r, a
+
+    def field_at(self, x, y):
+        """``(hardness, sharpness)`` of a screen point, unclamped."""
+        r0, r1, a0, a1 = self._track()
+        r, a = self._polar(x, y)
+        hardness = 1.0 - (r - r0) / max(1e-6, r1 - r0)
+        sharpness = (a1 - a) / max(1e-6, a1 - a0)
+        return hardness, sharpness
+
+    def point_at(self, hardness, sharpness):
+        """Screen point of field values."""
+        r0, r1, a0, a1 = self._track()
+        r = r0 + (1.0 - hardness) * (r1 - r0)
+        a = math.radians(a1 - sharpness * (a1 - a0))
+        return self.cx + math.cos(a) * r, self.cy + math.sin(a) * r
+
+    def motion_delta(self, dx, dy):
+        """``(d hardness, d sharpness)`` of a pointer motion ``(dx, dy)`` (unscaled by
+        ``gain``). Two fixed straight axes, a cross through the field's middle: along its
+        middle ray = hardness (outward: softer), across it = sharpness -- the same wherever
+        the marker is, so a straight swipe changes one value without following the arc."""
+        r0, r1, a0, a1 = self._track()
+        am = math.radians((a0 + a1) * 0.5)
+        ux, uy = math.cos(am), math.sin(am)             # outward along the middle ray
+        along = dx * ux + dy * uy
+        across = -dx * uy + dy * ux                     # toward the higher angle (linear end)
+        rm = max(1.0, (r0 + r1) * 0.5)
+        span = max(1e-6, math.radians(a1 - a0) * rm)    # the arc's length at the middle radius
+        return -along / max(1e-6, r1 - r0), -across / span
+
+    def _current(self):
+        value = _resolve(self.value, None) or (0.0, 0.0)
+        return float(value[0]), float(value[1])
+
+    # ---- drag ----------------------------------------------------------------------
+
+    def drag_begin(self, x, y):
+        start = self._current()
+        self._drag = {'start': start, 'value': start, 'press': (x, y), 'last': (x, y), 'travel': 0.0,
+                      'was_active': bool(_resolve(self.active, False))}
+        self.dragging = True
+        if self.on_drag_state is not None:
+            self.on_drag_state(True)
+
+    def drag_update(self, x, y):
+        drag = self._drag
+        if drag is None:
+            return
+        lx, ly = drag['last']
+        drag['last'] = (x, y)
+        drag['travel'] += math.hypot(x - lx, y - ly)
+        if drag['travel'] < self._tap_travel():
+            return    # might still be a tap
+        dh, ds = self.motion_delta(x - lx, y - ly)
+        h, s = drag['value']
+        drag['value'] = (max(0.0, min(1.0, h + dh * self.gain)),
+                         max(0.0, min(1.0, s + ds * self.gain)))
+        self.on_value(*drag['value'])
+        if self.warp is not None:
+            # The cursor stays on the marker: the next motion is measured from there.
+            drag['last'] = self.point_at(*drag['value'])
+            self.warp(*drag['last'])
+
+    def drag_end(self, x, y, cancelled=False):
+        drag, self._drag = self._drag, None
+        self.dragging = False
+        if self.on_drag_state is not None:
+            self.on_drag_state(False)
+        if drag is None:
+            return
+        if cancelled:
+            if drag['travel'] >= self._tap_travel():
+                self.on_value(*drag['start'])
+        elif drag['travel'] < self._tap_travel():
+            if not drag['was_active']:
+                # Another falloff was in use: the first tap only switches back to Shape,
+                # keeping its values (the marker stays where it was).
+                self.on_value(*drag['start'])
+                return
+            h, s = self.field_at(*drag['press'])
+            self.on_value(max(0.0, min(1.0, h)), max(0.0, min(1.0, s)))
+
+    # ---- drawing -------------------------------------------------------------------
+
+    def corners(self):
+        """``(corner, unit vector into the field radially, unit vector into it along the
+        circle)`` of the drawn shape, ordered hard-linear, soft-linear, hard-sharp, soft-sharp."""
+        inner, outer = self.points()
+        if not inner:
+            return []
+        out = []
+        for index, side in ((-1, -1.0), (0, 1.0)):      # top (a1) side first, then bottom (a0)
+            p_in, p_out = inner[index], outer[index]
+            dx, dy = p_out[0] - p_in[0], p_out[1] - p_in[1]
+            d = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / d, dy / d                       # outward
+            tx, ty = -uy * side, ux * side                # toward the other side edge
+            out.append((p_in, (ux, uy), (tx, ty)))
+            out.append((p_out, (-ux, -uy), (tx, ty)))
+        return out
+
+    def preview_radius(self):
+        r0, r1, a0, a1 = self._track()
+        rm = (r0 + r1) * 0.5
+        cell = min((r1 - r0) * 0.5, rm * math.radians(a1 - a0) * 0.5)
+        return cell * 0.62 * FIELD_PREVIEW_SCALE * 0.5
+
+    def _draw_previews(self, alpha):
+        """A quarter of each preview disc in its corner (the disc's center on the corner)."""
+        radius = self.preview_radius()
+        for ((_hs, key), (c, e1, e2)) in zip(self.previews, self.corners()):
+            quad = [c, (c[0] + e1[0] * radius, c[1] + e1[1] * radius),
+                    (c[0] + (e1[0] + e2[0]) * radius, c[1] + (e1[1] + e2[1]) * radius),
+                    (c[0] + e2[0] * radius, c[1] + e2[1] * radius)]
+            self.icons.draw_quad(key, quad, ((0.5, 0.5), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0)), 0.45 * alpha)
+
+    def _fill(self, dc, active=None):
+        """Plain gray (no category tint, no accent while selected: only the outer band
+        marks the selection), lighter while hovered / pressed."""
+        theme = dc.theme
+        t = anim.ease_in_out(self.hover_t) if active is None else active
+        pressed = dc.pressed is self and dc.hot is self
+        base = self.fill or theme.surface
+        return mix(base, theme.surface_pressed if pressed else theme.surface_hover, t * 0.8), t
+
+    def curve_points(self, samples=FIELD_CURVE_SAMPLES):
+        """The current Shape falloff drawn in the field: distance from the brush center
+        along the circle (center at the linear / top end), the weight radially -- 1 on
+        the outer line, 0 at the inner side."""
+        r0, r1, a0, a1 = self._track()
+        h, s = self._current()
+        pts = []
+        for i in range(samples + 1):
+            t = i / samples
+            weight = max(0.0, min(1.0, shape_falloff(t, h, s)))
+            r = r0 + weight * (r1 - r0)
+            a = math.radians(a1 - t * (a1 - a0))
+            pts.append((self.cx + math.cos(a) * r, self.cy + math.sin(a) * r))
+        return pts
+
+    def draw_self(self, dc):
+        self._theme = theme = dc.theme
+        alpha = self.draw_frame(dc, active=1.0 if self.dragging else None)
+        inner, _outer = self.points()
+        if not inner:
+            return
+        # The inner side of the falloff curve (between it and the inner edge): a lighter gray.
+        curve = self.curve_points()
+        base = []
+        for x, y in curve:   # the same angle, on the inner edge
+            k = self.pr0 / max(1e-6, math.hypot(x - self.cx, y - self.cy))
+            base.append((self.cx + (x - self.cx) * k, self.cy + (y - self.cy) * k))
+        draw.ring_segment(base, curve, (*FIELD_CURVE_FILL, alpha))
+        if self.icons is not None:
+            self._draw_previews(alpha)
+        r0, r1, a0, a1 = self._track()
+        guide = (*FIELD_GUIDE_GRAY, FIELD_GUIDE_ALPHA * alpha)
+        width = max(1.0, theme.px(1.0))
+        # 2 x 2: the middle along the circle and across it.
+        rm, am = (r0 + r1) * 0.5, math.radians((a0 + a1) * 0.5)
+        draw.arc(self.cx, self.cy, rm, math.radians(a0), math.radians(a1), guide, width=width)
+        draw.polyline([(self.cx + math.cos(am) * r0, self.cy + math.sin(am) * r0),
+                       (self.cx + math.cos(am) * r1, self.cy + math.sin(am) * r1)], guide, width)
+        on = bool(_resolve(self.active, False))
+        # The falloff curve: from the outer line (full strength) in toward the inner side.
+        draw.polyline(curve, with_alpha(theme.text, (0.8 if on else 0.45) * alpha),
+                      max(1.0, theme.px(1.5)))
+        # Marker: a cross (dimmed while another falloff is in use); black under white,
+        # readable on the field, the curve and the previews.
+        mx, my = self.point_at(*self._current())
+        arm = self._marker_radius() * FIELD_CROSS_ARM
+        marker_alpha = alpha if on else 0.55 * alpha
+        lines = ([(mx - arm, my), (mx + arm, my)], [(mx, my - arm), (mx, my + arm)])
+        for w, color in ((3.0, (0.0, 0.0, 0.0, 0.8)),
+                         (1.5, theme.accent_light if on else theme.text)):
+            for line in lines:
+                draw.polyline(line, with_alpha(color, marker_alpha), max(1.0, theme.px(w)))
+
+
+def _paint_curve(dc, x, y, size, alpha):
+    """Curve button icon: a falloff curve with anchors."""
+    theme = dc.theme
+    s = min(size * 0.6, theme.px(24.0))
+    color = with_alpha((*TINT_CUSTOM, 1.0), alpha)
+    x0, y0 = x - s * 0.5, y - s * 0.4
+    pts = []
+    for i in range(17):
+        t = i / 16.0
+        pts.append((x0 + s * t, y0 + s * 0.8 * (1.0 - t * t * (3.0 - 2.0 * t))))
+    draw.polyline([(x0, y0), (x0 + s, y0)], with_alpha(theme.text_muted, alpha), 1.0)
+    draw.polyline(pts, color, max(1.0, theme.px(2.0)))
+    for i in (0, 8, 16):
+        draw.circle(pts[i][0], pts[i][1], max(1.5, s * 0.08), with_alpha(theme.text, alpha), segments=12)
+
+
+class _Swatch(_ColorDrag, RingSegment):
+    """A history color along the circle (``color()``: RGB or None). Tap: ``use(rgb)``; drag source."""
+
+    def __init__(self, bar, color, use, **kwargs):
+        super().__init__(on_click=self._tap, **kwargs)
+        self.bar = bar
+        self.color = color
+        self.use = use
+
+    def drag_color(self):
+        return _resolve(self.color, None)
+
+    def _tap(self):
+        rgb = _resolve(self.color, None)
+        if rgb is not None:
+            self.use(rgb)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        inner, outer = self.points()
+        if not inner:
+            return
+        rgb = _resolve(self.color, None)
+        if rgb is None:
+            draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
+        else:
+            draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+
+class _PaletteSlot(_ColorDrag, RingSegment):
+    """Slot ``index`` of the palette band. Color view: the active palette's color
+    ``index`` (tap: paint with it; empty: store the current color). Palette view
+    (``actions.palette_view()``): the project's palette ``index`` as a little grid of
+    its first colors, the active one outlined (tap: make it active, back to the color
+    view; empty: a new palette). Drag source and drop target in both views."""
+
+    def __init__(self, bar, index, **kwargs):
+        super().__init__(on_click=self._tap, **kwargs)
+        self.bar = bar
+        self.index = index
+
+    @property
+    def view(self):
+        try:
+            return self.bar.actions.palette_view()
+        except Exception:
+            return False
+
+    def color(self):
+        colors = self.bar.actions.palette() or []
+        return colors[self.index] if self.index < len(colors) else None
+
+    def palette(self):
+        return self.bar.actions.project_palette(self.index)
+
+    def drag_payload(self):
+        if self.view:
+            pal = self.palette()
+            return None if pal is None else ('palette', pal, ('project', self.index))
+        rgb = self.color()
+        return None if rgb is None else ('color', tuple(rgb), ('palette_color', self.index))
+
+    def accepts(self, payload):
+        return payload[0] == ('palette' if self.view else 'color')
+
+    def accept_drop(self, payload, source):
+        self.bar.drop_on_slot(self.index, payload)
+
+    def _tap(self):
+        a = self.bar.actions
+        if self.view:
+            a.select_palette(self.index)
+            a.set_palette_view(False)
+            return
+        rgb = self.color()
+        if rgb is not None:
+            a.use_history_color(rgb)
+        else:
+            a.set_palette_slot(self.index, a.pen_rgb())
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        inner, outer = self.points()
+        if not inner:
+            return
+        if self.view:
+            self._draw_palette(dc, inner, outer)
+        else:
+            rgb = self.color()
+            if rgb is None:
+                draw.ring_segment(inner, outer, with_alpha(theme.surface, 0.5 * dc.alpha))
+                draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
+            else:
+                draw.ring_segment(inner, outer, (rgb[0], rgb[1], rgb[2], dc.alpha), rim=theme.edge_for(rgb, dc.alpha))
+        if self.hover_t > 0.5:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, dc.alpha), width=theme.px(1.0))
+
+    def _draw_palette(self, dc, inner, outer):
+        """2 x 3 grid of the palette's first colors inside the slot."""
+        theme = dc.theme
+        pal = self.palette()
+        draw.ring_segment(inner, outer, with_alpha(theme.surface_dark if pal else theme.surface, 0.9 * dc.alpha))
+        colors = [c for c in (pal or {}).get("colors", []) if c][:6]
+        if colors:
+            r0, r1 = self.pr0 + 1.0, self.pr1 - 1.0
+            rm = (r0 + r1) * 0.5
+            a0, a1 = self.angles
+            b0 = a0 + (self.insets[0] + 1.0) / max(rm, 1.0)
+            b1 = a1 - (self.insets[1] + 1.0) / max(rm, 1.0)
+            for k, c in enumerate(colors):
+                row, col = divmod(k, 3)
+                ra, rb = (r0, rm - 0.5) if row == 0 else (rm + 0.5, r1)
+                aa = b0 + (b1 - b0) * col / 3.0
+                ab = b0 + (b1 - b0) * (col + 1) / 3.0
+                draw.ring_segment(*ring_segment_points(self.cx, self.cy, ra, rb, aa, ab), (c[0], c[1], c[2], dc.alpha))
+        if pal is not None and self.index == self.bar.actions.active_palette_index():
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent_light, dc.alpha), width=theme.px(2.0))
+        elif pal is None:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.border, 0.8 * dc.alpha), width=1.0)
+        else:
+            draw.ring_segment_outline(inner, outer, theme.edge_for((0.5, 0.5, 0.5), dc.alpha), width=1.0)
+
+
+class _HintLabel(Label):
+    """Label whose text comes from ``text_fn()``."""
+
+    def __init__(self, text_fn, **kwargs):
+        super().__init__("", **kwargs)
+        self.text_fn = text_fn
+
+    def measure(self, theme):
+        self.text = str(_resolve(self.text_fn, ""))
+        return super().measure(theme)
+
+
+class _CornerButton(Widget):
+    """Small round button in an element's corner: ``glyph`` 'CLOSE' (X), 'HELP' (?) or 'LOCK'
+    (padlock, closed while ``selected``). Its tap area is larger than the drawing (pens)."""
+
+    interactive = True
+
+    def __init__(self, glyph, *, radius=_CORNER_RADIUS, hit=_CORNER_HIT, **kwargs):
+        super().__init__(**kwargs)
+        self.glyph = glyph
+        self.radius = radius
+        self.hit = hit
+        self._hit_px = 0.0
+
+    def measure(self, theme):
+        self._hit_px = theme.px(self.hit)
+        d = theme.px(self.radius) * 2.0
+        return d, d
+
+    def contains(self, x, y):
+        reach = self.rect.width * 0.5 + self._hit_px
+        return math.hypot(x - self.rect.cx, y - self.rect.cy) <= reach
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        cx, cy, r = self.rect.cx, self.rect.cy, self.rect.width * 0.5
+        hot = self.hover_t > 0.5
+        on = self.is_selected
+        fill = theme.accent if on else (theme.surface_pressed if hot else theme.surface)
+        draw.circle(cx, cy, r, with_alpha(fill, dc.alpha))
+        draw.circle_outline(cx, cy, r, with_alpha(theme.accent if hot else theme.border, dc.alpha),
+                            width=theme.px(1.0))
+        color = with_alpha(theme.text, 0.9 * dc.alpha)
+        width = max(1.0, theme.px(1.2))
+        if self.glyph == 'HELP':
+            draw.text_centered("?", cx, cy, r * 1.35, color, theme.font_id)
+            return
+        if self.glyph == 'CLOSE':
+            arm = r * 0.5
+            draw.polyline([(cx - arm, cy - arm), (cx + arm, cy + arm)], color, width)
+            draw.polyline([(cx - arm, cy + arm), (cx + arm, cy - arm)], color, width)
+            return
+        # Padlock; the shackle opens (lifts, one leg free) while unlocked.
+        bw, bh = r * 0.95, r * 0.7
+        body = Rect.from_size(cx - bw * 0.5, cy - r * 0.6, bw, bh)
+        draw.rect(body, color)
+        lift = 0.0 if on else r * 0.25
+        sr = bw * 0.32
+        sx = cx if on else cx + sr * 0.5
+        draw.arc(sx, body.y1 + lift + sr * 0.2, sr, 0.0, math.pi, color, width=width, segments=12)
+        draw.polyline([(sx - sr, body.y1 + lift + sr * 0.2), (sx - sr, body.y1 + (lift if not on else 0.0))],
+                      color, width)
+        draw.polyline([(sx + sr, body.y1 + lift + sr * 0.2), (sx + sr, body.y1)], color, width)
+
+
+class _ResizeHandle(Widget):
+    """Triangle in an element's bottom-right corner; press and drag to resize.
+
+    ``on_drag(dx, dy)`` gets the pointer offset from the press point.
+    """
+
+    interactive = True
+    draggable = True
+
+    def __init__(self, on_drag_begin, on_drag, on_drag_end, **kwargs):
+        super().__init__(**kwargs)
+        self.on_drag_begin = on_drag_begin
+        self.on_drag = on_drag
+        self.on_drag_end = on_drag_end
+        self.drag_origin = None
+        self.corner = 0.0               # screen px: the panel's corner radius (the triangle follows it)
+
+    def drag_begin(self, x, y):
+        self.drag_origin = (x, y)
+        self.on_drag_begin()
+
+    def drag_update(self, x, y):
+        if self.drag_origin is not None:
+            self.on_drag(x - self.drag_origin[0], y - self.drag_origin[1])
+
+    def drag_end(self, x, y, cancelled=False):
+        self.drag_origin = None
+        self.on_drag_end(cancelled)
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        r = self.rect
+        active = self.drag_origin is not None or self.hover_t > 0.5
+        fill = with_alpha(theme.accent if active else theme.border, dc.alpha)
+        rad = min(self.corner, r.width * 0.8, r.height * 0.8)
+        if rad < 0.5:
+            draw.triangle((r.x1, r.y0), (r.x0, r.y0), (r.x1, r.y1), fill)
+            return
+        # The triangle with its right angle rounded like the panel's corner.
+        cx, cy = r.x1 - rad, r.y0 + rad
+        arc = [(cx + math.cos(math.radians(a)) * rad, cy + math.sin(math.radians(a)) * rad)
+               for a in range(-90, 1, 10)]
+        draw._fill([(r.x0, r.y0)] + arc + [(r.x1, r.y1)], fill)
+
+
+class _MovePanel(Panel):
+    """Panel whose empty background moves its element when dragged (unless ``locked``).
+
+    ``shape(panel, theme)`` (optional) returns the background as shapes fitted to the
+    content (``ui/window_shapes.py``) instead of one rectangle; presses outside them
+    fall through."""
+
+    interactive = True
+
+    def __init__(self, content, *, locked, on_move_begin, on_move, on_move_end, shape=None, **kwargs):
+        super().__init__(content, **kwargs)
+        self.locked = locked
+        self.on_move_begin = on_move_begin
+        self.on_move = on_move
+        self.on_move_end = on_move_end
+        self.drag_origin = None
+        self.shape = shape
+        self._theme = None
+
+    def arrange(self, rect, theme):
+        super().arrange(rect, theme)
+        self._theme = theme
+
+    def shapes(self):
+        if self.shape is None or self._theme is None:
+            return None
+        return self.shape(self, self._theme)
+
+    def contains(self, x, y):
+        if not self.rect.contains(x, y):
+            return False
+        shapes = self.shapes()
+        return shapes is None or any(s.contains(x, y) for s in shapes)
+
+    def draw_self(self, dc):
+        shapes = self.shapes()
+        if shapes is None:
+            super().draw_self(dc)
+            return
+        from .shapes import draw_shapes   # late import: it imports the kit only
+        draw_shapes(shapes, with_alpha(dc.theme.panel_background, dc.alpha))
+
+    @property
+    def draggable(self):
+        return not _resolve(self.locked, False)
+
+    def drag_begin(self, x, y):
+        self.drag_origin = (x, y)
+        self.on_move_begin()
+
+    def drag_update(self, x, y):
+        if self.drag_origin is not None:
+            self.on_move(x - self.drag_origin[0], y - self.drag_origin[1])
+
+    def drag_end(self, x, y, cancelled=False):
+        self.drag_origin = None
+        self.on_move_end(cancelled)
+
+
+class _Window(Widget):
+    """A floating element: a movable panel with a lock (top left, or bottom left with
+    ``lock_bottom``), an optional X (top right) and a resize triangle (bottom right,
+    hidden while locked). ``tab`` (optional) replaces it while ``collapsed``. Placed
+    by its top-left corner."""
+
+    def __init__(self, panel, lock, grip, *, locked, close=None, tab=None, lock_bottom=False, help=None):
+        super().__init__()
+        self.lock_bottom = lock_bottom
+        self.panel = self.add(panel)
+        self.tab = self.add(tab) if tab is not None else None
+        self.lock = self.add(lock)
+        self.close = self.add(close) if close is not None else None
+        self.help = self.add(help) if help is not None else None    # '?' left of the X
+        self.grip = self.add(grip)      # last: picked before the panel under it
+        self.locked = locked
+        self.collapsed = False
+        self.grip_size = 0.0            # screen px, set by the PenBar
+
+    @property
+    def grip_size(self):
+        return self._grip_size
+
+    @grip_size.setter
+    def grip_size(self, value):
+        """The resize triangle's legs (screen px); the panel's rounded corners stay
+        smaller, so the triangle keeps a visible body in the bottom-right corner."""
+        self._grip_size = value
+        self.panel.corner_cap = value * _CORNER_CAP if value > 0.0 else None
+
+    @property
+    def shown(self):
+        return self.tab if (self.collapsed and self.tab is not None) else self.panel
+
+    def measure(self, theme):
+        return self.shown.measure(theme)
+
+    def place(self, origin, theme):
+        """``origin`` = (x0, y1): the top-left corner."""
+        x0, y1 = origin
+        shown = self.shown
+        w, h = shown.measure(theme)
+        shown.arrange(Rect.from_size(x0, y1 - h, w, h), theme)
+        self.rect = shown.rect
+        expanded = shown is self.panel
+        self.panel.visible = expanded
+        if self.tab is not None:
+            self.tab.visible = not expanded
+        for corner in (self.lock, self.close, self.help):
+            if corner is not None:
+                corner.visible = expanded
+        self.grip.visible = expanded and not _resolve(self.locked, False)
+        if not expanded:
+            return
+        plate = getattr(self.panel.content, 'plate', None)
+        if plate is not None:
+            self._place_on_plate(plate, theme)
+            return
+        r = self.panel.rect
+        inset = theme.px(_CORNER_INSET)
+        lw, lh = self.lock.measure(theme)
+        ly = r.y0 + inset if self.lock_bottom else r.y1 - inset - lh
+        self.lock.arrange(Rect.from_size(r.x0 + inset, ly, lw, lh), theme)
+        right = r.x1 - inset
+        for corner in (self.close, self.help):
+            if corner is not None:
+                cw, ch = corner.measure(theme)
+                corner.arrange(Rect.from_size(right - cw, r.y1 - inset - ch, cw, ch), theme)
+                right -= cw + inset * 1.5
+        g = self.grip_size
+        self.grip.corner = self.panel.corner_px(theme)
+        self.grip.arrange(Rect.from_size(r.x1 - g, r.y0, g, g), theme)
+
+    def _place_on_plate(self, plate, theme):
+        """The title plate on top (``content.plate``, see ``ui/pen_windows.py``): the lock
+        at its left end, the resize triangle in its bottom-right corner, X and '?' left of it."""
+        inset = theme.px(_CORNER_INSET)
+        lw, lh = self.lock.measure(theme)
+        self.lock.arrange(Rect.from_size(plate.x0 + inset * 1.5, plate.cy - lh * 0.5, lw, lh), theme)
+        g = min(self.grip_size, plate.height)
+        self.grip.corner = getattr(self.panel.content, 'plate_round_px', 0.0)
+        self.grip.arrange(Rect.from_size(plate.x1 - g, plate.y0, g, g), theme)
+        right = plate.x1 - g - inset
+        for corner in (self.close, self.help):
+            if corner is not None:
+                cw, ch = corner.measure(theme)
+                corner.arrange(Rect.from_size(right - cw, plate.cy - ch * 0.5, cw, ch), theme)
+                right -= cw + inset * 1.5
+
+
+class _MenuLayer(Widget):
+    """Root of the pen menu's layer: the menu window and its flyouts (beside it, toward the canvas)."""
+
+    def __init__(self, window, flyouts, dialog=None):
+        super().__init__()
+        self.window = self.add(window)
+        self.flyouts = [self.add(flyout) for flyout in flyouts]
+        self.dialog = self.add(dialog) if dialog is not None else None   # last: drawn / picked on top
+        self.openers = {}          # flyout -> the widget that opened it
+        self.region = (0.0, 0.0)
+
+    def measure(self, theme):
+        return self.window.measure(theme)
+
+    def place(self, origin, theme):
+        self.window.place(origin, theme)
+        self.rect = win = self.window.rect
+        gap = theme.px(FLYOUT_GAP)
+        margin = theme.px(theme.region_margin)
+        width, height = self.region
+        for flyout in self.flyouts:
+            if not flyout.visible:
+                continue
+            fw, fh = flyout.measure(theme)
+            opener = self.openers.get(flyout)
+            if opener is not None and getattr(flyout, 'below_opener', False):
+                # A popup of another window (the color selector's shapes): under its button.
+                o = opener.rect
+                fy0 = o.y0 - gap - fh
+                if fy0 < margin:
+                    fy0 = o.y1 + gap
+                fx, y0 = clamp_box(o.cx - fw * 0.5, fy0, fw, fh, (margin, margin, width - margin, height - margin))
+                flyout.arrange(Rect.from_size(fx, y0, fw, fh), theme)
+                continue
+            fy = opener.rect.cy if opener is not None else win.cy
+            right = win.cx < width * 0.5
+            fx = win.x1 + gap if right else win.x0 - gap - fw
+            anchor = getattr(flyout, 'anchor_bottom', None)   # bottom-anchored: height changes grow upward
+            fy0 = fy - theme.px(anchor) if anchor is not None else fy - fh * 0.5
+            fx, y0 = clamp_box(fx, fy0, fw, fh, (margin, margin, width - margin, height - margin))
+            flyout.arrange(Rect.from_size(fx, y0, fw, fh), theme)
+        if self.dialog is not None and self.dialog.visible:   # centered over the menu
+            dw, dh = self.dialog.measure(theme)
+            dx, dy = clamp_box(win.cx - dw * 0.5, win.cy - dh * 0.5, dw, dh,
+                               (margin, margin, width - margin, height - margin))
+            self.dialog.arrange(Rect.from_size(dx, dy, dw, dh), theme)
+
+
+class _WindowRing(Widget):
+    """The Windows popup: entries in a full ring over the dial's inner ring (``r0 .. r1``).
+
+    The dial's last child, so it draws on top and is picked first. An opaque backdrop
+    from ``r0`` out to ``cover`` hides the rings under it (inner and outer: the tools
+    too) and blocks the pointer there: a press in a gap or on the backdrop does not reach
+    the buttons under it. Entries confirm on release (``drag_release``): press Windows,
+    drag onto an entry, lift.
+    """
+
+    blocks_pointer = True
+
+    def __init__(self, r0, r1, cover=None, **kwargs):
+        super().__init__(visible=False, **kwargs)
+        self.r0, self.r1 = r0, r1
+        self.cover = r1 if cover is None else max(r1, cover)
+        self.cx = self.cy = 0.0
+        self.pr0 = self.pr1 = self.pcover = 0.0
+        self.gap = 0.0
+
+    def add_entries(self, dial, entries, start):
+        """Split the full circle from ``start`` (degrees, counter-clockwise) between ``entries``;
+        the dial places them (its ``corners``), this ring owns them (drawing / picking)."""
+        step = 360.0 / max(1, len(entries))
+        for i, entry in enumerate(entries):
+            entry.r0, entry.r1 = self.r0, self.r1
+            entry.a0, entry.a1 = start + i * step, start + (i + 1) * step
+            entry.drag_release = True
+            self.add(entry)
+            dial.corners.append(entry)
+        dial.corners.append(self)
+
+    def place_on(self, cx, cy, theme, gap):
+        self.cx, self.cy = cx, cy
+        self.pr0, self.pr1, self.pcover = theme.px(self.r0), theme.px(self.r1), theme.px(self.cover)
+        self.gap = theme.px(gap)
+        self.rect = Rect.from_center(cx, cy, self.pcover * 2.0, self.pcover * 2.0)
+
+    def contains(self, x, y):
+        return self.pr0 <= math.hypot(x - self.cx, y - self.cy) <= self.pcover + self.gap * 0.5
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        # Out past the covered rings' rims (half the gap on each side), so nothing shows through.
+        r0, r1 = max(0.0, self.pr0 - self.gap * 0.5), self.pcover + self.gap * 0.5
+        inner, outer = ring_segment_points(self.cx, self.cy, r0, r1, 0.0, math.tau)
+        draw.ring_segment(inner, outer, with_alpha(WINDOW_RING_BACKDROP, dc.alpha))
+        accent = with_alpha(theme.accent, 0.8 * dc.alpha)
+        draw.circle_outline(self.cx, self.cy, r1, accent, width=max(1.0, theme.px(1.5)), segments=96)
+        if self.pcover > self.pr1 + self.gap:   # a fainter line around the entries
+            draw.circle_outline(self.cx, self.cy, self.pr1 + self.gap * 0.5,
+                                with_alpha(theme.accent, 0.35 * dc.alpha), width=max(1.0, theme.px(1.0)), segments=96)
+
+
+def _add_capsule(dial, segments, r0, r1, a0, a1, **kwargs):
+    """``segments`` as one capsule: a band ``r0 .. r1`` along ``a0 .. a1`` (split like
+    :meth:`Dial.add_band`) whose two outer ends are half circles."""
+    segments = dial.add_band(segments, r0, r1, a0, a1, **kwargs)
+    for i, segment in enumerate(segments):
+        segment.round = (r1 - r0) * 0.5
+        segment.round_ends = (i == 0, i == len(segments) - 1)
+        if len(segments) == 1:
+            segment.edge_extra = (0.0, 0.0)   # its round ends set it apart; keep the room
+    return segments
+
+
+def _is_inside(widget, ancestor):
+    while widget is not None:
+        if widget is ancestor:
+            return True
+        widget = widget.parent
+    return False
+
+
+# ---- dial segment content: painter(dc, x, y, size, alpha) --------------------------------
+
+def _paint_arrow(direction, caption):
+    """Undo / Redo: a horizontal arrow with a caption under it."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        s = min(size * 0.55, theme.px(22.0))
+        color = with_alpha(theme.text, 0.92 * alpha)
+        d = 1.0 if direction == 'RIGHT' else -1.0
+        ay = y + s * 0.15
+        tip, tail = x + d * s * 0.5, x - d * s * 0.5
+        base = tip - d * s * 0.45
+        shaft = s * 0.13
+        draw.rect(Rect(min(tail, base), ay - shaft, max(tail, base), ay + shaft), color)
+        draw.triangle((tip, ay), (base, ay + s * 0.36), (base, ay - s * 0.36), color)
+        draw.text_centered(caption, x, ay - s * 0.75, theme.px(8.0),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
+
+
+def _paint_alpha_lock(dc, x, y, size, alpha):
+    """Checkerboard (transparency) with a padlock on it."""
+    theme = dc.theme
+    s = size * 0.62
+    half = s * 0.5
+    light, dark = (0.78, 0.78, 0.78, alpha), (0.48, 0.48, 0.48, alpha)
+    for i in range(2):
+        for j in range(2):
+            draw.rect(Rect.from_size(x - half + i * half, y - half + j * half, half, half),
+                      light if (i + j) % 2 else dark)
+    lock = (0.07, 0.07, 0.07, alpha)
+    bw, bh = s * 0.5, s * 0.36
+    body = Rect.from_size(x - bw * 0.5, y - s * 0.32, bw, bh)
+    draw.rect(body, lock)
+    draw.arc(x, body.y1, bw * 0.3, 0.0, math.pi, lock, width=max(1.0, theme.px(2.0)), segments=16)
+
+
+def _paint_spacing(mode):
+    """Pixel / Free: the initial with a small square (solid for Pixel, fading for Free)."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        pixel = _resolve(mode, 'FREE') == 'PIXEL'
+        letter = theme.px(15.0)
+        draw.text_centered("P" if pixel else "F", x - letter * 0.12, y + size * 0.12, letter,
+                           with_alpha(theme.text, alpha), theme.font_id)
+        sq = letter * 0.32
+        box = Rect.from_size(x + letter * 0.22, y + size * 0.12 - letter * 0.42, sq, sq)
+        if pixel:
+            draw.rect(box, (1.0, 1.0, 1.0, alpha))
+        else:
+            draw.gradient_quad(box, (1.0, 1.0, 1.0, alpha), (1.0, 1.0, 1.0, 0.1 * alpha),
+                               (1.0, 1.0, 1.0, 0.1 * alpha), (1.0, 1.0, 1.0, alpha))
+        draw.text_centered("Pixel" if pixel else "Free", x, y - size * 0.3, theme.px(7.5),
+                           with_alpha(theme.text_muted, alpha), theme.font_id)
+    return paint
+
+
+class _BlendButton(RingSegment):
+    """Blend (opens the flyout): filled with a gradient from dark to
+    light gray along the circle (``BLEND_GRADIENT``), the active blend mode's name
+    (``mode()``) on it."""
+
+    def __init__(self, label="", *, mode, **kwargs):
+        super().__init__(label, **kwargs)
+        self.mode = mode
+
+    def draw_self(self, dc):
+        theme = dc.theme
+        alpha = self._alpha(dc)
+        inner, outer = self.points()
+        if not inner:
+            return
+        lo, hi = BLEND_GRADIENT
+        pressed = dc.pressed is self and dc.hot is self
+        shade = 0.8 if pressed else 1.0
+        last = max(1, len(inner) - 1)
+        colors = []
+        for i in range(len(inner)):
+            t = i / last
+            colors.append(tuple((lo[k] + (hi[k] - lo[k]) * t) * shade for k in range(3)) + (alpha,))
+        draw.gradient_ring_segment(inner, outer, colors)
+        draw.ring_segment_outline(inner, outer, theme.edge_for((0.45, 0.45, 0.45), alpha), width=1.0)
+        if self.is_selected:
+            self.draw_selection(dc, alpha)
+        if self.hover_t > 0.01:
+            draw.ring_segment_outline(inner, outer, with_alpha(theme.accent, self.hover_t * alpha),
+                                      width=theme.px(1.5))
+        text = str(_resolve(self.mode, ""))
+        room = self.content_size()
+        if room <= 4.0 or not text:
+            return
+        x, y = self.middle()
+        font = min(theme.px(12.0), room * 0.45)
+        width, _h = draw.text_size(text, font, theme.font_id)
+        if width > room * 1.1:
+            font *= room * 1.1 / width
+        shadow = max(1.0, theme.px(1.0))
+        draw.text_centered(text, x + shadow, y - shadow, font, (0.0, 0.0, 0.0, 0.85 * alpha), theme.font_id)
+        draw.text_centered(text, x, y, font, (1.0, 1.0, 1.0, alpha), theme.font_id)
+
+
+
+class PenBar:
+    """Widget layers of the pen menu and the color selector.
+    ``actions`` is the :class:`tools.pen_bar.PenBarTool`."""
+
+    def __init__(self, actions):
+        from ..icons.tool_icons import ICONS  # late import: ui.icons imports the tool catalog
+        self.actions = actions
+        self.icons = ICONS
+        self.flyout = None          # open flyout panel
+        self.flyout_opener = None
+        self._drag = None           # (channel, value at drag start) while a knob / slider is dragged
+        self._move = None           # (element, stored pos, top-left, size) while an element is moved
+        self._resize = None         # (element, scale, width, height, top-left, stored pos) while resized
+        self._args = None           # the last layout() arguments
+        self.drag_preview = None    # (rgb, x, y, source) while a color is dragged
+        self.bounds = (0.0, 0.0, 0.0, 0.0)
+        self.knobs = {}
+        self.arm_buttons = {}
+
+        # Pen menu.
+        self.blend_flyout = self._build_blend_flyout()
+        self.blend_flyout.visible = False
+        self.curve_mode = 'MOVE'
+        self.curve_flyout = self._build_curve_flyout()
+        self.curve_flyout.visible = False
+        self.shape_flyout = self._build_shape_flyout()
+        self.shape_flyout.visible = False
+        from .settings import SettingsMenu  # late import: it imports this module
+        self.settings_menu = SettingsMenu(self)
+        from .palettes import ConfirmDialog, PaletteLibrary  # late import: they import this module
+        self.library_menu = PaletteLibrary(self)
+        self.confirm_dialog = ConfirmDialog(self)
+        tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
+        from .shapes import dial_star   # late import: it imports the kit only
+        self.menu = self._window('bar', self._build_dial(),
+                                 _CornerButton('CLOSE', key='HIDE', on_click=lambda: self.set_collapsed(True)),
+                                 tab=tab, lock_bottom=True,   # top left: the tertiary bubble
+                                 shape=lambda panel, theme: [dial_star(panel.content, theme.px(SHAPE_PAD))])
+        self.root = _MenuLayer(self.menu, [self.blend_flyout, self.curve_flyout, self.shape_flyout],
+                               self.confirm_dialog.panel)
+        self.overlay = Overlay(self.root, modal=False, animate=False)
+
+        # Color selector.
+        a = actions
+        self.color_pad = ColorSelector(a.pen_hsv, a.set_pen_hsv, original=a.original_hsv,
+                                       live=a.color_preview, layout=a.color_layout, model=a.color_model,
+                                       sliders=lambda: a.color_sliders() if a.color_sliders_open() else (),
+                                       fields=True, key='COLOR_PAD')
+        self.color_bubble = _BubbleDrag(self, a.preview_colors, True, a.has_color_change, radius=12.0,
+                                        on_click=a.accept_color_change, key='COLOR_BUBBLE')
+        self.color_extras = self._build_color_extras()
+        content = Column([self._build_color_header(), self.color_pad, self.color_extras,
+                          Spacer(0.0, 2.0)], gap=6.0)
+        from .tool_windows import body_shapes, build_body_window   # late import: it imports this module
+        self.color_window = self._window('color', build_body_window("Color", content, _paint_color_wheel(None)),
+                                         _CornerButton('CLOSE', key='COLOR_CLOSE', on_click=a.toggle_color_panel),
+                                         shape=body_shapes)
+        self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
+
+        # Mask / View / Settings / Palettes windows (opened from the Windows ring).
+        # late import: they import this module
+        from .tool_windows import body_shapes, build_body_window, build_mask_window, build_view_window, window_shapes
+        from .palettes import paint_library
+        builders = {
+            'mask': (build_mask_window, window_shapes, True),
+            'view': (build_view_window, window_shapes, True),
+            'settings': (lambda bar: build_body_window("Settings", self.settings_menu.content, _paint_gear),
+                         body_shapes, False),
+            'library': (lambda bar: build_body_window("Palettes", self.library_menu.content, paint_library),
+                        body_shapes, False),
+        }
+        self.tool_windows = {}
+        for name in TOOL_WINDOWS:
+            build, shape, has_help = builders[name]
+            close = _CornerButton('CLOSE', key=f'{name.upper()}_CLOSE', on_click=lambda n=name: self.toggle_window(n))
+            help_button = None
+            if has_help:
+                help_button = _CornerButton('HELP', key=f'{name.upper()}_HELP',
+                                            selected=lambda n=name: self.help_shown(n),
+                                            on_click=lambda n=name: self.toggle_help(n))
+            window = self._window(name, build(self), close, help=help_button, shape=shape)
+            window.visible = False
+            self.tool_windows[name] = (window, Overlay(window, modal=False, animate=False))
+        self.windows = {'bar': (self.menu, self.overlay), 'color': (self.color_window, self.color_overlay),
+                        **self.tool_windows}
+
+    # ---- building ------------------------------------------------------------------
+
+    def _build_color_header(self):
+        """The color selector's top row: the old / new bubble, the Shape button (opens the
+        shape popup; shows the current shape) and the button that folds the channel
+        sliders out."""
+        from .settings import _icon_layout   # late import: it imports this module
+        a = self.actions
+        labels = dict(COLOR_SHAPES)
+        shape = PenButton(lambda: labels.get(a.color_layout(), "Shape"), layout='row', size=(92.0, 26.0),
+                          painter=lambda dc, x, y, size, alpha: _icon_layout(a.color_layout())(dc, x, y, size, alpha),
+                          key='COLOR_SHAPE', selected=lambda: self.flyout is self.shape_flyout,
+                          on_click=lambda: self.toggle_flyout(self.shape_flyout, shape))
+        fold = PenButton("Sliders", painter=_paint_sliders, layout='icon', size=(26.0, 26.0),
+                         key='COLOR_SLIDERS', selected=a.color_sliders_open, on_click=self._toggle_color_sliders)
+        return Row([self.color_bubble, Spacer(6.0), shape, fold], gap=4.0)
+
+    def _build_shape_flyout(self):
+        """The color selector's shape popup (under its Shape button): Sheet, Square,
+        Triangle, Wheel."""
+        from .settings import _icon_layout   # late import: it imports this module
+        a = self.actions
+
+        def choose(kind):
+            a.wm_set('color_selector_layout', kind)
+            self.close_flyout()
+            self._relayout()
+
+        entries = [PenFlyoutButton(label, painter=_icon_layout(kind), layout='column', size=(58.0, 54.0),
+                                   key=f'COLOR_SHAPE_{kind}', selected=lambda k=kind: a.color_layout() == k,
+                                   on_click=lambda k=kind: choose(k))
+                   for kind, label in COLOR_SHAPES]
+        panel = PenPanel(Row(entries, gap=4.0), title="Shape", padding=8.0)
+        panel.below_opener = True
+        return panel
+
+    def _build_color_extras(self):
+        """Under the folded-out sliders: which sliders show, and the hex code (typed or
+        pasted; Copy / Paste use the system clipboard)."""
+        a = self.actions
+        spaces = Row([PenButton(space, layout='row', size=(46.0, 18.0), font_size=8.0,
+                                key=f'COLOR_SPACE_{space}',
+                                selected=lambda sp=space: a.wm_flag('color_selector_sliders', sp),
+                                on_click=lambda sp=space: self._toggle_color_space(sp))
+                      for space in ('RGB', 'HSV', 'HSL')], gap=3.0)
+        self.color_hex = TextField(lambda: to_hex(self.color_pad.rgb()), self._apply_color_text,
+                                   size=(80.0, 20.0), font_size=9.0, max_length=32, key='COLOR_HEX')
+        copy = PenButton("Copy", layout='row', size=(44.0, 20.0), font_size=8.0, key='COLOR_COPY',
+                         on_click=lambda: clipboard.set_text(to_hex(self.color_pad.rgb())))
+        paste = PenButton("Paste", layout='row', size=(44.0, 20.0), font_size=8.0, key='COLOR_PASTE',
+                          on_click=lambda: self._apply_color_text(clipboard.get_text()))
+        extras = Column([spaces, Row([self.color_hex, copy, paste], gap=3.0)], gap=4.0)
+        extras.visible = False
+        return extras
+
+    def _set_color_option(self, name, value):
+        self.actions.wm_set(name, value)
+        self._relayout()
+
+    def _toggle_color_space(self, space):
+        self.actions.wm_toggle_flag('color_selector_sliders', space)
+        self._relayout()
+
+    def _toggle_color_sliders(self):
+        a = self.actions
+        opened = not a.color_sliders_open()
+        a.wm_set('color_selector_sliders_open', opened)
+        if opened and not a.color_sliders():
+            a.wm_set('color_selector_sliders', {'HSV'})
+        self._relayout()
+
+    def _apply_color_text(self, text):
+        """A hex code / RGB triple (typed or pasted) becomes the edited color."""
+        rgb = parse_color(text)
+        if rgb is not None:
+            self.color_pad.set_rgb(rgb)
+
+    def _window(self, name, content, close, tab=None, lock_bottom=False, help=None, shape=None):
+        locked = lambda: self._locked(name)
+        panel = _MovePanel(content, padding=_PANEL_PADDING, key=f"{name.upper()}_PANEL", locked=locked,
+                           on_move_begin=lambda: self._begin_move(name), on_move=self._move_to,
+                           on_move_end=self._end_move, shape=shape)
+        lock = _CornerButton('LOCK', key=f"{name.upper()}_LOCK", selected=locked,
+                             on_click=lambda: self._toggle_lock(name))
+        grip = _ResizeHandle(lambda: self._begin_resize(name), self._resize_to, self._end_resize,
+                             key=f"{name.upper()}_RESIZE")
+        return _Window(panel, lock, grip, locked=locked, close=close, tab=tab, lock_bottom=lock_bottom, help=help)
+
+    def _knob(self, channel, label, radius, font_size, value_font_size):
+        if channel == 'size':
+            value_text = lambda: str(self._value('size'))
+            fraction = lambda: math.sqrt(max(0, self._value('size')) / MAX_SIZE)
+        else:
+            value_text = lambda: str(int(round(self._value(channel) * 100)))
+            fraction = lambda: self._value(channel)
+        knob = DragBubble(
+            label, radius=radius, font_size=font_size, value_font_size=value_font_size,
+            value_text=value_text, fraction=fraction, key=f"KNOB_{channel}",
+            on_drag_begin=lambda: self._begin_drag(channel),
+            on_drag=self._drag_to,
+            on_drag_end=self._end_drag,
+        )
+        self.knobs[channel] = knob
+        return knob
+
+    def _slider(self, channel, label, color):
+        slider = RingSlider(
+            label, key=f"SLIDER_{channel}", font_size=11.0, fill_color=color,
+            value=lambda: self._value(channel),
+            enabled=lambda: self.actions.uses_value(channel),   # grayed out: the tool ignores it
+            on_drag_begin=lambda: self._begin_drag(channel),
+            on_value=lambda v: self.actions.set_value(channel, v),
+            on_drag_end=self._end_drag,
+        )
+        self.knobs[channel] = slider   # the drag readout sits beside it
+        return slider
+
+    def _build_dial(self):
+        """Size knob in the center, everything else in pie segments around it (see the module docs)."""
+        a = self.actions
+        dial = Dial(self._knob('size', "Size", SIZE_RADIUS, 11.0, 20.0), gap=DIAL_GAP, group_gap=GROUP_GAP)
+
+        dial.add_arc([self._slider(*spec) for spec in SLIDERS], INNER_RING[0], OUTER_RING[1], *SLIDER_ARC)
+
+        # Tools: the first half in the outer ring, listed from the bottom up.
+        all_tools = a.tools()
+        half = (len(all_tools) + 1) // 2
+        tools = [
+            RingSegment(tool.label, key=f"TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
+                        icons=self.icons, font_size=8.0, fill=_INNER_FILL if i >= half else None,
+                        selected=lambda t=tool.tool_id: a.active_tool() == t,
+                        on_click=lambda t=tool.tool_id: a.select_tool(t))
+            for i, tool in enumerate(all_tools)
+        ]
+        dial.add_arc(reversed(tools[:half]), *OUTER_RING, *TOOL_ARC, tint=TINT_TOOLS)
+        dial.add_arc(reversed(tools[half:]), *INNER_RING, *TOOL_ARC, tint=TINT_TOOLS)
+
+        dial.add_arc([
+            RingSegment("Undo", key='UNDO', fill=_INNER_FILL, painter=_paint_arrow('LEFT', "Undo"), on_click=a.undo),
+            RingSegment("Redo", key='REDO', fill=_INNER_FILL, painter=_paint_arrow('RIGHT', "Redo"), on_click=a.redo),
+        ], *INNER_RING, *HISTORY_ARC, tint=TINT_HISTORY)
+        # Outside Undo / Redo: the favorite blend modes in rows (Blend: bottom-left corner).
+        favorites = {
+            b: _BlendFavorite(blend_modes.short_label(b), key=f"FAVORITE_{b}", font_size=FAVORITE_FONT,
+                              selected=lambda b=b: a.active_blend() == b,   # plain gray buttons
+                              on_click=lambda b=b: a.set_blend(b))
+            for b in blend_modes.ids()
+        }
+        self.favorites_ring = _BlendFavorites(dial, favorites, *OUTER_RING, FAVORITES_ARC,
+                                              a.blend_favorites)
+
+        # Bottom right, the falloff: the Shape field in the outer ring (reaching in through
+        # the inner ring's outer half: no gap to Custom / Curve), in its inner half Custom | Curve.
+        from ..icons.falloff_icons import SHAPE_PREVIEWS, shape_preview_key
+        self.falloff_field = FalloffField(
+            "Falloff", key='FALLOFF_FIELD', icons=self.icons, value=a.falloff_shape,
+            on_value=a.set_falloff_shape, active=lambda: a.active_falloff() == 'SHAPE',
+            previews=[(hs, shape_preview_key(*hs)) for hs in SHAPE_PREVIEWS],
+            marker_icon=falloff.get('SHAPE').icon_key,
+            on_drag_state=a.set_cursor_hidden, warp=a.warp_cursor)
+        dial.add_arc([self.falloff_field], FALLOFF_SPLIT, OUTER_RING[1], *FALLOFF_FIELD_ARC, tint=TINT_FALLOFF)
+        custom_preset = falloff.get('CUSTOM')
+        custom = RingSegment(custom_preset.label, key='FALLOFF_CUSTOM', icon=custom_preset.icon_key,
+                             icons=self.icons, font_size=8.0, fill=_INNER_FILL,
+                             tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
+                             selected=lambda: a.active_falloff() == 'CUSTOM',
+                             on_click=lambda: a.set_falloff('CUSTOM'))
+        curve = RingSegment("Curve", key='CURVE', painter=_paint_curve, fill=_INNER_FILL,
+                            tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
+                            selected=lambda: self.flyout is self.curve_flyout,
+                            on_click=lambda: self._open_curve(curve))
+        dial.add_arc([custom, curve], INNER_RING[0], FALLOFF_SPLIT, *FALLOFF_FIELD_ARC)
+        self._add_corners(dial)
+        return dial
+
+    def _add_corners(self, dial):
+        """Top left the color section: the gradient slider (tertiary color), secondary's
+        Picker / secondary / Swap + tertiary bubble / primary / primary's Picker; top right
+        the color history band and past it the Pixel / Free + Alphalock capsule; bottom right
+        the palette, right of the circle its button; bottom left the Windows / Save / Grid /
+        Blend capsule."""
+        a = self.actions
+
+        # Top right, outside S / A / M: the color history, newest at the top end.
+        swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
+                    for i in range(color_history.HISTORY_SIZE)]
+        dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
+        # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock, one capsule.
+        _add_capsule(dial, [
+            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing), on_click=a.toggle_spacing),
+            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
+                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
+        ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
+        # Top left along the circle: the gradient primary (left) -> secondary (top).
+        self.gradient_slider = _GradientSlider("Tertiary", key='GRADIENT', colors=a.colors, value=a.tertiary_t,
+                                               active=a.tertiary_active, on_value=a.set_tertiary_t)
+        dial.add_band([self.gradient_slider], CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *COLORS_ARC)
+        primary = _ColorCorner(self, 'PRIMARY', lambda: a.colors()[0], lambda: a.color_role('PRIMARY'),
+                               key='PRIMARY', round=COLOR_ROUND, on_click=lambda: a.select_color('PRIMARY'))
+        secondary = _ColorCorner(self, 'SECONDARY', lambda: a.colors()[1], lambda: a.color_role('SECONDARY'),
+                                 key='SECONDARY', round=COLOR_ROUND, on_click=lambda: a.select_color('SECONDARY'))
+
+        def picker(which, rgb, active):
+            kind = f'EYEDROPPER_{which}'
+            return CornerSegment(f"Pick {which.title()}", key=f'PICKER_{which}',
+                                 painter=_paint_target_picker(rgb, active), round=COLOR_ROUND,
+                                 selected=lambda: a.armed() == kind, on_click=lambda: a.toggle_arm(kind))
+        pick_primary = picker('PRIMARY', lambda: a.colors()[0], lambda: a.color_target() == 'PRIMARY')
+        pick_secondary = picker('SECONDARY', lambda: a.colors()[1], lambda: a.color_target() == 'SECONDARY')
+        self.arm_buttons = {'EYEDROPPER_PRIMARY': pick_primary, 'EYEDROPPER_SECONDARY': pick_secondary}
+        mix = _TertiaryBubble(self, a.tertiary_color, a.tertiary_active, key='TERTIARY', on_click=a.toggle_tertiary)
+        dial.add_corner([pick_secondary, secondary, mix, primary, pick_primary], COLOR_CORNER_INNER, SQUARE_HALF,
+                        *COLORS_ARC, weights=COLORS_WEIGHTS, chamfer=0.0)
+        # Swap by the circle in the middle; the tertiary bubble behind it, toward the corner.
+        swap_outer = COLOR_CORNER_INNER + SWAP_DEPTH
+        swap = RingSegment("Swap", key='SWAP', painter=_paint_swap, round=COLOR_ROUND, on_click=a.swap_colors)
+        dial.add_band([swap], COLOR_CORNER_INNER, swap_outer, mix.a0, mix.a1)
+        swap.edge_extra = (0.0, 0.0)      # side edges in line with the Mix slot's
+        mix.r0 = swap_outer + DIAL_GAP
+
+        from .palettes import paint_library, paint_palettes
+        palettes = RingSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
+                               on_click=lambda: a.set_palette_view(not a.palette_view()))
+        _add_capsule(dial, [palettes], CORNER_INNER, CORNER_INNER + PALETTE_DEPTH, *PALETTE_BUTTON_ARC)
+
+        # Palette band left of it: the active palette's colors, or (palette view) the
+        # project's palettes. Slot 0 at the left.
+        palette = [_PaletteSlot(self, i, key=f"PALETTE_{i}") for i in range(color_palette.PALETTE_SIZE)]
+        per_row = (len(palette) + PALETTE_ROWS - 1) // PALETTE_ROWS
+        for row in range(PALETTE_ROWS):
+            r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
+            dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
+
+        # Bottom left, a capsule along the circle: Windows (opens the popup ring on
+        # the press -- keep the pen down, drag onto an entry, lift), Save, Grid (tap: on /
+        # off, drag: opacity), Blend (opens the flyout on the press; shows the mode).
+        blend = _BlendButton("Blend", key='BLEND', mode=lambda: blend_modes.short_label(a.active_blend()),
+                             on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
+                             selected=lambda: self.flyout is self.blend_flyout)
+        blend.activate_on_press = True
+        save = RingSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
+                           tint=TINT_SAVE, on_click=a.save_image)
+        grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
+                           on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
+        windows = RingSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
+                              selected=lambda: self.flyout is self.window_ring,
+                              on_click=lambda: self.toggle_flyout(self.window_ring, windows))
+        windows.activate_on_press = True
+        _add_capsule(dial, [windows, save, grid, blend], *BOTTOM_LEFT_RING, *BOTTOM_LEFT_ARC)
+        self.windows_button = windows
+
+        # The Windows popup ring (added last: over everything else of the dial).
+        self.window_ring = dial.add(_WindowRing(*WINDOW_RING, cover=WINDOW_RING_COVER, key='WINDOW_RING'))
+        self.window_ring.add_entries(dial, [
+            RingSegment("Settings", key='RING_SETTINGS', painter=_captioned(_paint_gear, "Settings"),
+                        tint=TINT_WINDOWS, selected=lambda: a.panel_open('settings'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('settings'))),
+            RingSegment("Mask", key='RING_MASK', painter=_paint_mask_menu(a.mask_enabled), tint=TINT_MASK,
+                        selected=lambda: a.panel_open('mask'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('mask'))),
+            RingSegment("View", key='RING_VIEW', painter=_paint_view, tint=TINT_VIEW,
+                        selected=lambda: a.panel_open('view'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('view'))),
+            RingSegment("Color", key='RING_COLOR', painter=_captioned(_paint_color_wheel(a.pen_rgb), "Color"),
+                        tint=TINT_WINDOWS, selected=a.color_panel_open,
+                        on_click=self._flyout_action(a.toggle_color_panel)),
+            RingSegment("Palettes", key='RING_PALETTES', painter=_captioned(paint_library, "Palettes"),
+                        tint=TINT_WINDOWS, selected=lambda: a.panel_open('library'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('library'))),
+        ], WINDOW_RING_START)
+
+
+    def confirm(self, lines, action, label="Delete"):
+        """Ask before ``action`` (deleting / replacing a palette): dialog over the menu."""
+        self.confirm_dialog.open(lines, action, label)
+        self.overlay.layout()
+
+    def drop_on_slot(self, index, payload):
+        """A payload dropped on palette slot ``index``."""
+        a = self.actions
+        kind, value, origin = payload
+        origin = origin or ('', None)
+        if kind == 'color':
+            if origin[0] == 'palette_color':
+                a.swap_palette_slots(origin[1], index)
+            else:
+                a.set_palette_slot(index, value)
+            return
+        if origin[0] == 'project':
+            if origin[1] != index:
+                a.swap_project_palettes(origin[1], index)
+            return
+        current = a.project_palette(index)          # from the library: load a copy
+        if current is None or color_palette.is_empty(current):
+            a.set_project_palette(index, value)
+        else:
+            self.confirm([f"Replace “{current['name']}”", f"with “{value['name']}”?"],
+                         lambda: a.set_project_palette(index, value), "Replace")
+
+    def drop(self, payload, x, y, source):
+        """End of a drag at ``(x, y)``: the widget there (or an ancestor) takes it. Off the
+        menu: a palette color is removed, a project palette deleted after a confirmation."""
+        target = self._drop_target(x, y, source, payload)
+        if target is not None:
+            target.accept_drop(payload, source)
+            return
+        if not self._removes(x, y, payload):
+            return
+        kind, value, (place, index) = payload
+        if place == 'palette_color':
+            self.actions.set_palette_slot(index, None)
+        else:
+            self.confirm([f"Delete the palette “{value['name']}”", "from this project?"],
+                         lambda: self.actions.set_project_palette(index, None), "Delete")
+
+    def _removes(self, x, y, payload):
+        """Released off the menu, the color selector and the windows: removes palette colors /
+        project palettes."""
+        origin = payload[2] or ('', None)
+        return origin[0] in ('palette_color', 'project') and self._pick_any(x, y) is None
+
+    def _pick_any(self, x, y):
+        """The top-most widget under ``(x, y)`` in any element (windows, menu, color selector)."""
+        for overlay in self._stack():
+            if overlay.root.visible:
+                hit = overlay.root.pick(x, y)
+                if hit is not None:
+                    return hit
+        return None
+
+    def _drop_target(self, x, y, source, payload):
+        """The widget under ``(x, y)`` -- or its nearest ancestor -- that accepts ``payload``
+        (in the menu or a window, e.g. the Palettes window's library)."""
+        widget = self._pick_any(x, y)
+        while widget is not None:
+            if widget is not source and hasattr(widget, 'accept_drop') and widget.accepts(payload):
+                return widget
+            widget = widget.parent
+        return None
+
+    def _history(self, index):
+        colors = self.actions.color_history()
+        return colors[index] if index < len(colors) else None
+
+    def _open_curve(self, opener):
+        if self.flyout is not self.curve_flyout:
+            self.actions.use_custom_falloff()
+        self.toggle_flyout(self.curve_flyout, opener)
+
+    def _build_curve_flyout(self):
+        """Custom falloff curve: the editor, Move / Add / Draw modes and Reset."""
+        a = self.actions
+        self.curve_editor = CurveEditor(a.custom_curve_points, a.set_custom_curve_points,
+                                        sample=a.custom_curve_sampler, mode=lambda: self.curve_mode,
+                                        size=CURVE_EDITOR_SIZE, curve_color=(*TINT_CUSTOM, 1.0),
+                                        key='CURVE_EDITOR')
+
+        def mode_button(mode, label):
+            return PenButton(label, key=f"CURVE_{mode}", size=(52.0, 26.0),
+                             selected=lambda: self.curve_mode == mode,
+                             on_click=lambda: setattr(self, 'curve_mode', mode))
+
+        buttons = [mode_button(mode, label) for mode, label in CURVE_MODES]
+        buttons.append(PenButton("Reset", key='CURVE_RESET', size=(52.0, 26.0), on_click=a.reset_custom_curve))
+        hint = _HintLabel(lambda: CURVE_HINTS.get(self.curve_mode, ""), size=9.0)
+        # Presets: the falloffs the Shape field does not cover, loaded into the curve.
+        presets = [PenButton(label, key=f"CURVE_PRESET_{pid}", icon=falloff.get(pid).icon_key, icons=self.icons,
+                             layout='column', size=CURVE_PRESET_SIZE, on_click=lambda p=pid: a.load_curve_preset(p))
+                   for pid, label, _points in falloff.CURVE_PRESETS]
+        return PenPanel(Column([self.curve_editor, Row(buttons, gap=4.0), hint,
+                                Label("Load a preset", size=9.0),
+                                Grid(presets, columns=CURVE_PRESET_COLUMNS, gap=4.0)], gap=6.0),
+                        title="Custom Falloff", padding=8.0)
+
+    def _flyout_action(self, fn):
+        def _run():
+            fn()
+            self.close_flyout()
+        return _run
+
+    def _build_blend_flyout(self):
+        """Same groups as the Shift+W blend pie, as four columns: Common, Contrast, Math,
+        HSL/HSV. Each mode has a star on its right: tap it to make the mode a favorite
+        (shown beside Redo in the dial) or not; a tap on the mode chooses it."""
+        a = self.actions
+
+        def choose(blend_id):
+            a.set_blend(blend_id)
+            self.close_flyout()
+
+        def entry(blend_id):
+            mode = PenFlyoutButton(
+                blend_modes.label(blend_id), key=f"BLEND_{blend_id}", size=BLEND_ENTRY_SIZE,
+                selected=lambda b=blend_id: a.active_blend() == b,
+                on_click=lambda b=blend_id: choose(b))
+            star = _StarButton(key=f"BLEND_STAR_{blend_id}", size=BLEND_STAR_SIZE,
+                               marked=lambda b=blend_id: b in a.blend_favorites(),
+                               on_click=lambda b=blend_id: a.wm_toggle_flag('blend_favorites', b))
+            return Row([mode, star], gap=BLEND_STAR_GAP)
+
+        columns = []
+        for title, group in (("Common", 'COMMON'),) + BLEND_GROUPS:
+            columns.append(Column([Label(title, size=10.0)] + [entry(b) for b in blend_modes.ids(group)], gap=3.0))
+        hint = _HintLabel(lambda: "Star: favorite (shown beside Redo in the pen menu)", size=9.0)
+        return PenPanel(Column([Row(columns, gap=10.0, align='top'), hint], gap=6.0),
+                        title="Blend Mode", padding=8.0)
+
+    # ---- state -----------------------------------------------------------------------
+
+    def _value(self, channel):
+        try:
+            return self.actions.get_value(channel)
+        except Exception:
+            return 0
+
+    def _get(self, key, default=None):
+        try:
+            value = self.actions.get_state(key)
+        except Exception:
+            return default
+        return default if value is None else value
+
+    def _locked(self, name):
+        return bool(self._get(f'pen_{name}_locked', False))
+
+    def _toggle_lock(self, name):
+        self.actions.set_state(f'pen_{name}_locked', not self._locked(name))
+        self._relayout()   # shows / hides the resize triangle
+
+    def _scale(self, name):
+        try:
+            return clamp_scale(name, float(self._get(f'pen_{name}_scale', 1.0)))
+        except (TypeError, ValueError):
+            return 1.0
+
+    def _theme(self, name):
+        """The element's theme; shrunk (not stored) while the editor is too small for it."""
+        base = self._args[-1]
+        theme = base.scaled(base.scale * BAR_SCALE * self._scale(name))
+        if name == 'color':
+            self.color_extras.visible = bool(self.actions.color_sliders_open())
+            self.color_pad.fit_width = theme.px(COLOR_WIDTH)
+        w, h = self.windows[name][0].measure(theme)
+        bx0, by0, bx1, by1 = self.bounds
+        fit = min(1.0, (bx1 - bx0) / max(1.0, w), (by1 - by0) / max(1.0, h))
+        if fit < 1.0:
+            theme = theme.scaled(theme.scale * fit)
+            if name == 'color':
+                self.color_pad.fit_width = theme.px(COLOR_WIDTH)
+        return theme
+
+    def toggle_flyout(self, flyout, opener):
+        if self.flyout is flyout:
+            self.close_flyout()
+            return
+        self.close_flyout(relayout=False)
+        flyout.visible = True
+        self.flyout = flyout
+        self.flyout_opener = opener
+        self.root.openers[flyout] = opener
+        self.overlay.layout()
+
+    def close_flyout(self, relayout=True):
+        for flyout in self.root.flyouts:
+            flyout.visible = False
+        self.window_ring.visible = False
+        self.flyout = None
+        self.flyout_opener = None
+        if relayout:
+            self.overlay.layout()
+
+    def help_shown(self, name):
+        """The window's help text is shown (its '?' corner button)."""
+        return bool(self._get(f'pen_{name}_help', False))
+
+    def toggle_help(self, name):
+        self.actions.set_state(f'pen_{name}_help', not self.help_shown(name))
+        self._relayout()
+
+    def toggle_window(self, name):
+        """Show / hide a window (Mask, View, Settings, Palettes). Opening the Palettes
+        window reloads the library and switches the palette band to its palette view
+        (the drag targets)."""
+        opening = not self.actions.panel_open(name)
+        self.actions.toggle_panel(name)
+        if opening and name == 'library':
+            self.library_menu.opened()
+            self.actions.set_palette_view(True)
+        self._relayout()
+
+    def set_collapsed(self, collapsed):
+        self.actions.set_collapsed(collapsed)
+        self.close_flyout(relayout=False)
+        self._relayout()
+
+    def _sync_visibility(self):
+        collapsed = bool(self.actions.collapsed())
+        self.menu.collapsed = collapsed
+        self.color_window.visible = bool(self.actions.color_panel_open()) and not collapsed
+        for name, (window, _overlay) in self.tool_windows.items():
+            window.visible = bool(self.actions.panel_open(name)) and not collapsed
+        if collapsed and self.flyout is not None:
+            self.close_flyout(relayout=False)
+
+    def busy(self):
+        """A flyout or the confirmation is open, or something is dragged."""
+        return (self.flyout is not None or self.confirm_dialog.is_open
+                or any(ov.dragging is not None for _w, ov in self.windows.values()))
+
+    def reset(self):
+        """End drags, close flyouts, forget hover (session end / bar hidden)."""
+        self.end_drag()
+        self.confirm_dialog.close()
+        self.close_flyout()
+        for _window, overlay in self.windows.values():
+            overlay.hot = None
+            overlay.pressed = None
+            overlay.pointer_widget = None
+
+    def dragging(self):
+        """Something is being dragged (an element moved / resized, a value or a color)."""
+        return any(ov.dragging is not None for _w, ov in self.windows.values())
+
+    def end_drag(self):
+        """The host lost the pointer: keep the dragged value (a carried color is dropped nowhere)."""
+        self.drag_preview = None
+        for _window, overlay in self.windows.values():
+            if overlay.dragging is not None:
+                overlay.end_drag()
+
+    # ---- knob / slider drags -----------------------------------------------------------
+
+    def _begin_drag(self, channel):
+        self._drag = (channel, self._value(channel))
+
+    def _drag_to(self, dx, dy):
+        if self._drag is None:
+            return
+        channel, start = self._drag
+        value = start + int(round(dy / self.overlay.theme.px(SIZE_STEP_PX)))
+        self.actions.set_value(channel, value)
+
+    def _end_drag(self, cancelled):
+        if cancelled and self._drag is not None:
+            self.actions.set_value(*self._drag)  # restore the value from before the drag
+        self._drag = None
+
+    # ---- moving / resizing elements ------------------------------------------------------
+
+    def _clamp(self, x0, y1, width, height):
+        """Top-left of an element kept inside the editor (see ``bounds``)."""
+        x0, y0 = clamp_box(x0, y1 - height, width, height, self.bounds)
+        return x0, y0 + height
+
+    def _begin_move(self, name):
+        r = self.windows[name][0].rect
+        self._move = (name, self._get(f'pen_{name}_pos'), (r.x0, r.y1), (r.width, r.height))
+
+    def _move_to(self, dx, dy):
+        if self._move is None:
+            return
+        name, _stored, (x0, y1), (w, h) = self._move
+        self.actions.set_state(f'pen_{name}_pos', self._clamp(x0 + dx, y1 + dy, w, h))
+        self._relayout()
+
+    def _end_move(self, cancelled):
+        if cancelled and self._move is not None:
+            name, stored = self._move[0], self._move[1]
+            self.actions.set_state(f'pen_{name}_pos', stored)
+        self._move = None
+        self._relayout()
+
+    def _begin_resize(self, name):
+        r = self.windows[name][0].panel.rect
+        self._resize = (name, self._scale(name), r.width, r.height, (r.x0, r.y1), self._get(f'pen_{name}_pos'))
+
+    def _resize_to(self, dx, dy):
+        """Scale so the bottom-right corner follows the pen; the top-left corner stays.
+        Limited to the element's size range and to the room left in the editor."""
+        if self._resize is None:
+            return
+        name, scale, w, h, (x0, y1), _stored = self._resize
+        factor = 1.0 + (dx * w - dy * h) / max(1.0, w * w + h * h)
+        bx0, by0, bx1, by1 = self.bounds
+        factor = min(factor, (bx1 - x0) / max(1.0, w), (y1 - by0) / max(1.0, h))
+        self.actions.set_state(f'pen_{name}_scale', clamp_scale(name, scale * factor))
+        self.actions.set_state(f'pen_{name}_pos', (x0, y1))
+        self._relayout()
+
+    def _end_resize(self, cancelled):
+        if cancelled and self._resize is not None:
+            name, scale, _w, _h, _tl, stored = self._resize
+            self.actions.set_state(f'pen_{name}_scale', scale)
+            self.actions.set_state(f'pen_{name}_pos', stored)
+        self._resize = None
+        self._relayout()
+
+    # ---- layout / events -----------------------------------------------------------------
+
+    def _relayout(self):
+        if self._args is not None:
+            self.layout(*self._args)
+
+    def layout(self, region_width, region_height, side, inset_left, inset_right, theme):
+        """Place the elements: where they were left (clipped to the editor), else the
+        menu in the bottom corner at the ``side`` edge ('LEFT' / 'RIGHT') and the color
+        selector beside it. ``inset_left`` / ``inset_right``: width of overlapping
+        regions to keep clear of (the sidebar; the toolbar is ignored)."""
+        self._args = (region_width, region_height, side, inset_left, inset_right, theme)
+        margin = theme.px(WINDOW_MARGIN)
+        self.bounds = (inset_left + margin, margin, region_width - inset_right - margin, region_height - margin)
+        self._sync_visibility()
+        self.root.region = (region_width, region_height)
+
+        menu_theme = self._theme('bar')
+        self.overlay.theme = menu_theme
+        self.menu.grip_size = theme.px(_HANDLE_SIZE)
+        w, h = self.menu.measure(menu_theme)
+        pos = self._get('pen_bar_pos')
+        if pos is None:
+            gap = menu_theme.px(max(0.0, EDGE_GAP - _PANEL_PADDING))
+            x0 = inset_left + gap if side == 'LEFT' else region_width - inset_right - gap - w
+            pos = (x0, gap + h)
+        self.overlay.origin = self._clamp(pos[0], pos[1], w, h)
+        self.overlay.layout()
+
+        menu = self.menu.rect
+        gap = theme.px(FLYOUT_GAP)
+        toward_right = menu.cx < region_width * 0.5
+        outer = [menu]        # placed elements; default spots go beside the outermost one
+        if self.color_window.visible:
+            color_theme = self._theme('color')
+            self.color_overlay.theme = color_theme
+            self.color_window.grip_size = theme.px(_HANDLE_SIZE)
+            cw, ch = self.color_window.measure(color_theme)
+            pos = self._get('pen_color_pos')
+            if pos is None:   # beside the menu, toward the canvas, bottoms level
+                x0 = menu.x1 + gap if toward_right else menu.x0 - gap - cw
+                pos = (x0, menu.y0 + ch)
+            self.color_overlay.origin = self._clamp(pos[0], pos[1], cw, ch)
+            self.color_overlay.layout()
+            outer.append(self.color_window.rect)
+
+        for name, (window, overlay) in self.tool_windows.items():
+            if not window.visible:
+                continue
+            win_theme = self._theme(name)
+            overlay.theme = win_theme
+            window.grip_size = theme.px(_HANDLE_SIZE)
+            ww, wh = window.measure(win_theme)
+            pos = self._get(f'pen_{name}_pos')
+            if pos is None:   # beside the menu / the windows placed so far, tops level with the menu
+                if toward_right:
+                    x0 = max(r.x1 for r in outer) + gap
+                else:
+                    x0 = min(r.x0 for r in outer) - gap - ww
+                pos = (x0, menu.y1)
+            overlay.origin = self._clamp(pos[0], pos[1], ww, wh)
+            overlay.layout()
+            if self._get(f'pen_{name}_pos') is None:
+                outer.append(window.rect)
+
+    def _stack(self):
+        """Overlays, top-most first: the menu while its flyout is open, else the Mask / View
+        windows, the color selector, the menu."""
+        windows = [overlay for _window, overlay in self.tool_windows.values()]
+        if self.flyout is not None or self.confirm_dialog.is_open:
+            return [self.overlay, *windows, self.color_overlay]
+        return [*windows, self.color_overlay, self.overlay]
+
+    def handle(self, event):
+        """Forward a :class:`~.kit.UIEvent` (region coords); True when an element used it."""
+        stack = [ov for ov in self._stack() if ov.root.visible]
+        for overlay in stack:
+            if overlay.dragging is not None:
+                return overlay.handle(event) == RUNNING
+        if event.type == 'LEFTMOUSE' and event.value == PRESS:
+            for overlay in stack:   # a press off an input field commits it
+                overlay.blur_unless_over(event.x, event.y)
+        elif event.type not in _POINTER_TYPES:
+            for overlay in stack:   # typing goes to the input field being edited
+                if overlay.focus is not None:
+                    if overlay.handle(event) == RUNNING:
+                        return True
+                    break
+        if self.confirm_dialog.is_open:
+            # Modal: only the dialog reacts; a press elsewhere, ESC or right click cancel.
+            if event.value == PRESS and event.type in {'ESC', 'RIGHTMOUSE'}:
+                self.confirm_dialog.close()
+                self.overlay.layout()
+                return True
+            if event.value == PRESS and event.type == 'LEFTMOUSE':
+                hit = self.root.pick(event.x, event.y)
+                if not _is_inside(hit, self.confirm_dialog.panel):
+                    self.confirm_dialog.close()
+                    self.overlay.layout()
+                    return True
+            self.overlay.handle(event)
+            return event.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'ESC', 'MOUSEMOVE'}
+        if self.flyout is not None and event.value == PRESS:
+            if event.type in {'ESC', 'RIGHTMOUSE'}:
+                self.close_flyout()
+                return True
+            if event.type == 'LEFTMOUSE':
+                hit = self.root.pick(event.x, event.y)
+                if hit is None:
+                    self.close_flyout()
+                    return True  # a tap outside only closes the flyout
+                if not _is_inside(hit, self.flyout) and hit is not self.flyout_opener:
+                    self.close_flyout()
+        for overlay in stack:
+            if overlay.handle(event) == RUNNING:
+                return True
+        return False
+
+    # ---- drawing -----------------------------------------------------------------------
+
+    def draw(self):
+        for overlay in reversed(self._stack()):
+            if overlay.root.visible:
+                overlay.draw()
+        with draw.blend_mode('ALPHA'):
+            self._draw_drag_readout()
+            self._draw_arm_hint()
+            self._draw_color_drag()
+
+    def _beside(self, rect, width):
+        """x0 of a box ``width`` wide beside ``rect``, toward the middle of the editor."""
+        gap = self.overlay.theme.px(FLYOUT_GAP)
+        region_width = self._args[0] if self._args else 0.0
+        return rect.x1 + gap if rect.cx < region_width * 0.5 else rect.x0 - gap - width
+
+    def _pill(self, text, rect, cy, font_size, border):
+        """Readout box beside ``rect`` (toward the editor's middle), centered at ``cy``."""
+        theme = self.overlay.theme
+        size = theme.px(font_size)
+        tw, _th = draw.text_size(text, size, theme.font_id)
+        pad = theme.px(8.0)
+        w, h = tw + pad * 2.0, size + pad * 2.0
+        box = Rect.from_size(self._beside(rect, w), cy - h * 0.5, w, h)
+        draw.rect(box, theme.surface_dark)
+        draw.rect_outline(box, border, width=theme.px(1.0))
+        draw.text_centered(text, box.cx, box.cy, size, theme.text, theme.font_id)
+        return box
+
+    def _draw_drag_readout(self):
+        theme = self.overlay.theme
+        if self._resize is not None:
+            name = self._resize[0]
+            window = self.windows[name][0]
+            self._pill(f"Scale  {self._scale(name) * 100:.0f}%", window.rect, window.grip.rect.cy, 14.0,
+                       theme.accent)
+            return
+        field = getattr(self, 'falloff_field', None)
+        if field is not None and field.dragging:
+            self._draw_falloff_readout(field)
+            return
+        if self._drag is None:
+            return
+        channel = self._drag[0]
+        knob = self.knobs.get(channel)
+        if knob is None:
+            return
+        value = self._value(channel)
+        if channel == 'size':
+            text = f"{CHANNEL_LABELS[channel]}  {value}"
+        else:
+            text = f"{CHANNEL_LABELS[channel]}  {value * 100:.0f}%"
+        box = self._pill(text, self.menu.rect, knob.rect.cy, 16.0, theme.accent)
+        if channel == 'size':
+            self._draw_size_preview(box, value)
+
+    def _draw_falloff_readout(self, field):
+        """Hardness / sharpness beside the menu, and the falloff as a large disc beyond it."""
+        theme = self.overlay.theme
+        hardness, sharpness = field._current()
+        box = self._pill(f"Hard {hardness * 100:.0f}%   Sharp {sharpness * 100:.0f}%", self.menu.rect,
+                         field.rect.cy, 14.0, theme.accent)
+        size = theme.px(FALLOFF_PREVIEW_SIZE)
+        gap = theme.px(FLYOUT_GAP)
+        cx = box.x1 + gap + size * 0.5 if box.cx > self.menu.rect.cx else box.x0 - gap - size * 0.5
+        draw.circle(cx, box.cy, size * 0.5 + theme.px(3.0), theme.surface_dark)
+        self.icons.draw(falloff.get('SHAPE').icon_key, cx, box.cy, size, 1.0)
+
+    def _draw_size_preview(self, box, radius):
+        """The brush footprint at the current zoom, next to the readout (away from the menu)."""
+        theme = self.overlay.theme
+        texel = self.actions.texel_screen_px()
+        if not texel:
+            return
+        half = min((2 * radius + 1) * texel * 0.5, 600.0)
+        gap = theme.px(FLYOUT_GAP)
+        cx = box.x1 + gap + half if box.cx > self.menu.rect.cx else box.x0 - gap - half
+        cy = box.cy
+        if self.actions.brush_shape() == 'SQUARE':
+            rect = Rect.from_center(cx, cy, half * 2.0, half * 2.0)
+            draw.rect_outline(rect, (0.0, 0.0, 0.0, 0.8), width=theme.px(3.0))
+            draw.rect_outline(rect, (1.0, 1.0, 1.0, 0.95), width=theme.px(1.5))
+        else:
+            draw.circle_outline(cx, cy, half, (0.0, 0.0, 0.0, 0.8), width=theme.px(3.0))
+            draw.circle_outline(cx, cy, half, (1.0, 1.0, 1.0, 0.95), width=theme.px(1.5))
+
+    def _draw_color_drag(self):
+        """The carried color / palette under the pen; the target it would land in is
+        outlined; something about to be removed (off the menu) is crossed out."""
+        if self.drag_preview is None:
+            return
+        payload, x, y, source = self.drag_preview
+        theme = self.overlay.theme
+        target = self._drop_target(x, y, source, payload)
+        if target is not None:
+            inner, outer = target.points() if hasattr(target, 'points') else ([], [])
+            if inner:
+                draw.ring_segment_outline(inner, outer, theme.accent_light, width=theme.px(2.5))
+            else:
+                draw.rect_outline(target.rect, theme.accent_light, width=theme.px(2.5))
+        if payload[0] == 'palette':
+            w, h = theme.px(96.0), theme.px(18.0)
+            box = Rect.from_center(x, y + h * 1.6, w, h)
+            from .palettes import draw_palette_cells
+            draw_palette_cells(box, payload[1], 1.0, theme)
+            draw.rect_outline(box, theme.text, width=theme.px(1.5))
+            cx, cy, r = box.cx, box.cy, h * 0.5
+        else:
+            rgb = payload[1]
+            r = theme.px(13.0)
+            cx, cy = x, y + r * 1.6      # above the pen tip, so it stays visible
+            draw.circle(cx, cy, r, (rgb[0], rgb[1], rgb[2], 1.0), rim=theme.edge_for(rgb))
+            draw.circle_outline(cx, cy, r + theme.px(1.0), theme.text, width=theme.px(1.5))
+        if target is None and self._removes(x, y, payload):
+            arm = r * 0.55
+            red = (0.95, 0.25, 0.25, 1.0)
+            draw.polyline([(cx - arm, cy - arm), (cx + arm, cy + arm)], red, theme.px(2.5))
+            draw.polyline([(cx - arm, cy + arm), (cx + arm, cy - arm)], red, theme.px(2.5))
+
+    def _draw_arm_hint(self):
+        if self.actions.mask_picking() and not self.menu.collapsed:
+            self._pill(MASK_PICK_HINT, self.menu.rect, self.windows_button.rect.cy, 12.0, (*TINT_MASK, 1.0))
+            return
+        kind = self.actions.armed()
+        button = self.arm_buttons.get(kind)
+        if button is None or self.menu.collapsed:
+            return
+        self._pill(ARM_HINTS[kind], self.menu.rect, button.rect.cy, 12.0, self.overlay.theme.accent_light)

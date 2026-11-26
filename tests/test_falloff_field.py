@@ -16,9 +16,9 @@ _PACKAGE = os.path.basename(_ADDON_DIR)
 sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-falloff = importlib.import_module(f'{_PACKAGE}.tools.falloff')
+falloff = importlib.import_module(f'{_PACKAGE}.model.falloff')
 math_utils = importlib.import_module(f'{_PACKAGE}.utils.math_utils')
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen_bar')
+pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen.bar')
 theme_mod = importlib.import_module(f'{_PACKAGE}.ui.kit.theme')
 
 

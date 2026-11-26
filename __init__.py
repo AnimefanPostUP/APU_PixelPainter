@@ -19,6 +19,7 @@
 # Addon Recoded and Drastically Expanded by AnimefanPostUP
 
 import importlib
+import sys
 
 import bpy
 
@@ -34,111 +35,18 @@ bl_info = {
 }
 
 
-# Submodules in dependency order (leaves first). On every register() they are
-# reloaded in this order so "Reload Scripts" picks up code changes.
-_MODULES = (
-    # utilities
-    'utils.math_utils',
-    'utils.native',
-    'utils.pixel_io',
-    'utils.blender_utils',
-    'utils.persistence_settings',
-    'utils.settings_service',
-    # generic UI kit (no addon knowledge)
-    'ui.kit.geometry',
-    'ui.kit.anim',
-    'ui.kit.theme',
-    'ui.kit.events',
-    'ui.kit.aa',
-    'ui.kit.draw',
-    'ui.kit.widget',
-    'ui.kit.widgets',
-    'ui.kit.color_models',
-    'ui.kit.color_selector',
-    'ui.kit.color_pad',
-    'ui.kit.radial',
-    'ui.kit.form',
-    'ui.kit.curve',
-    'ui.kit.ring',
-    'ui.kit.overlay',
-    'ui.kit.icons',
-    'ui.kit.modal',
-    'ui.kit',
-    # pixel drawing + overlays
-    'tools.draw_blending',
-    'tools.draw_functions',
-    'tools.draw_gridoverlay',
-    'tools.draw_tool_smooth',
-    'tools.overlays',
-    'tools.overlays_selectmode',
-    # core framework + shared runtime state (no tool imports)
-    'core.framework',
-    'core.state',
-    'core.view3d',
-    'tools.overlays_view3d',
-    'core.context',
-    'core.history',
-    'core.variables',
-    # tools
-    'tools.falloff',
-    'tools.blend_modes',
-    'tools.base',
-    'tools.registry',
-    'tools.subtools.helpers',
-    'tools.subtools.color_pick',
-    'tools.subtools.strength',
-    'tools.subtools.eyedropper',
-    'tools.subtools.tool_switch',
-    'tools.subtools.pen',
-    'tools.pen_pressure',
-    'tools.color_history',
-    'tools.color_palette',
-    'utils.palette_library',
-    'utils.palette_image',
-    'tools.mask_geometry',
-    'tools.mask',
-    'tools.mask_guard',
-    'tools.view_nav',
-    'tools.native_paint',
-    'tools.stroke',
-    'tools.brushes',
-    'tools.filters',
-    'ui.selection_actions',
-    'ui.pen_style',
-    'ui.pen_settings',
-    'ui.pen_bar',
-    'ui.window_shapes',
-    'ui.pen_windows',
-    'ui.viewport_frame',
-    'tools.pen_layout',
-    'tools.pen_bar',
-    'tools.selection_ops',
-    'tools.selection',
-    'tools.catalog',
-    # core operator (builds the tool manager from the catalog)
-    'core.core',
-    'ui.tool_settings_ui',
-    'ui.palette_ops',
-    'ui.image_save_ops',
-    'ui.mask_ops',
-    'ui.settings_menu',
-    'properties',
-    # addon UI
-    'ui.icons',
-    'ui.native_menus',
-    'ui.pie_menu',
-    'ui.user_interface',
-    'ui.paint_selected_faces_uv',
-)
-
-
 def _module(name):
     return importlib.import_module(f"{__package__}.{name}")
 
 
 def _reload_modules():
-    for name in _MODULES:
-        importlib.reload(_module(name))
+    """Forget every loaded submodule, so the imports below load fresh code
+    ("Reload Scripts", re-enabling). The import order follows the imports themselves:
+    no module list to keep in sync. Run after :func:`_cleanup_runtime`, which still
+    needs the previous load's modules."""
+    prefix = __package__ + "."
+    for name in [n for n in sys.modules if n.startswith(prefix)]:
+        del sys.modules[name]
 
 
 def _cleanup_runtime():
@@ -153,8 +61,8 @@ def _cleanup_runtime():
     except Exception:
         pass
     try:
-        core = _module('core.core')
-        _module('tools.draw_functions').remove_draw_handler(core._state)
+        core = _module('core.operator')
+        _module('paint.pixels').remove_draw_handler(core._state)
         core._undo_clear()
         _module('utils.pixel_io').invalidate()
         _module('core.history').unregister()
@@ -167,34 +75,34 @@ def _cleanup_runtime():
 
 def _classes():
     return (
-        *_module('core.core').classes,
+        *_module('core.operator').classes,
         *_module('tools.selection').classes,
-        *_module('ui.native_menus').classes,
-        *_module('ui.pie_menu').classes,
-        *_module('ui.tool_settings_ui').classes,
-        *_module('ui.settings_menu').classes,
-        *_module('ui.palette_ops').classes,
-        *_module('ui.image_save_ops').classes,
-        *_module('ui.mask_ops').classes,
+        *_module('ui.menus.native_menus').classes,
+        *_module('ui.menus.pie_menu').classes,
+        *_module('ui.panels.tool_settings').classes,
+        *_module('ui.panels.settings_popup').classes,
+        *_module('ui.operators.palette').classes,
+        *_module('ui.operators.image_save').classes,
+        *_module('ui.operators.mask').classes,
     )
 
 
 def register():
     _cleanup_runtime()
     _reload_modules()
-    _module('core.core').new_generation()   # sessions from before this load shut down
+    _module('core.operator').new_generation()   # sessions from before this load shut down
 
     import bmesh
-    faces_uv = _module('ui.paint_selected_faces_uv')
+    faces_uv = _module('ui.operators.paint_selected_faces_uv')
     faces_uv.set_bmesh_module(bmesh)
     faces_uv.register()
 
     _module('properties').register()
     _module('core.history').register()
-    _module('ui.icons').register()
+    _module('ui.icons.tool_icons').register()
     for cls in _classes():
         bpy.utils.register_class(cls)
-    for tool in _module('ui.user_interface').TOOLS:
+    for tool in _module('ui.workspace_tool').TOOLS:
         bpy.utils.register_tool(tool)
 
     persistence = _module('utils.persistence_settings')
@@ -213,7 +121,7 @@ def register():
         try:
             svc = _module('utils.settings_service').PixelPainterSettingsService()
             svc.set_brush_strength(bpy.context, getattr(wm, 'pixel_painter_global_strength', 1.0))
-            _module('core.core').apply_active_tool_settings(bpy.context)
+            _module('core.operator').apply_active_tool_settings(bpy.context)
         except Exception:
             pass
 
@@ -230,7 +138,7 @@ def unregister():
         pass
 
     _cleanup_runtime()
-    for tool in reversed(_module('ui.user_interface').TOOLS):
+    for tool in reversed(_module('ui.workspace_tool').TOOLS):
         try:
             bpy.utils.unregister_tool(tool)
         except Exception:
@@ -240,10 +148,10 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
-    _module('ui.icons').unregister()
+    _module('ui.icons.tool_icons').unregister()
     _module('properties').unregister()
     _module('core.history').unregister()
-    _module('ui.paint_selected_faces_uv').unregister()
+    _module('ui.operators.paint_selected_faces_uv').unregister()
 
 
 if __name__ == "__main__":

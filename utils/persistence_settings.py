@@ -7,6 +7,8 @@ import shutil
 import bpy
 from bpy.app.handlers import persistent
 
+from ..paths import SETTINGS_FILE
+
 
 _LOADING = False
 _STARTUP_LOAD_ATTEMPTS = 0
@@ -26,15 +28,7 @@ def _settings_file_path():
 
     Stored directly in the add-on folder as requested.
     """
-    try:
-        addon_root = os.path.dirname(os.path.dirname(__file__))
-    except Exception:
-        addon_root = None
-    if not addon_root:
-        _dbg("Addon root path unavailable")
-        return None
-    path = os.path.join(addon_root, 'settings.json')
-    return path
+    return SETTINGS_FILE
 
 
 def _legacy_settings_file_path():
@@ -229,7 +223,7 @@ def _startup_load_timer():
     ensure_settings_file_exists(wm)
     load_window_manager_settings(wm)
     try:
-        from ..core import core as core_module
+        from ..core import operator as core_module
         core_module.apply_active_tool_settings(bpy.context)
         _dbg("Reapplied active tool settings after load")
     except Exception:

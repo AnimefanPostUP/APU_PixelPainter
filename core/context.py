@@ -86,7 +86,7 @@ class ToolContext:
         return is_shift_smooth_global(self.context)
 
     def apply_tool_settings(self):
-        from . import core  # late import: core imports the tools
+        from . import operator as core  # late import: core imports the tools
         core.apply_active_tool_settings(self.context)
 
     # ---- cursor ------------------------------------------------------------------

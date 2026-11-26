@@ -75,9 +75,9 @@ _stub('bpy', app=sys.modules['bpy.app'])
 _stub('bpy.app', handlers=sys.modules['bpy.app.handlers'])
 
 _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
-    'utils.native', 'utils.pixel_io', 'utils.math_utils', 'tools.draw_blending', 'tools.draw_functions',
-    'tools.draw_tool_smooth', 'tools.native_paint', 'tools.mask', 'tools.mask_guard', 'tools.mask_geometry',
-    'tools.selection_ops', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
+    'utils.native', 'utils.pixel_io', 'utils.math_utils', 'paint.blending', 'paint.pixels',
+    'paint.smooth', 'paint.native_paths', 'tools.mask.data', 'tools.mask.guard', 'tools.mask.geometry',
+    'tools.selection.geometry', 'tools.base', 'tools.brushes', 'tools.filters', 'core.view3d')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -169,8 +169,8 @@ class NativeTestCase(unittest.TestCase):
 
 class KernelParityTest(NativeTestCase):
     def setUp(self):
-        self.draw_functions = _mod('tools.draw_functions')
-        self.smooth_mod = _mod('tools.draw_tool_smooth')
+        self.draw_functions = _mod('paint.pixels')
+        self.smooth_mod = _mod('paint.smooth')
 
     def test_write_pixels_every_blend_mode(self):
         w, h = 23, 17
@@ -291,7 +291,7 @@ class KernelParityTest(NativeTestCase):
 
 class FootprintTest(NativeTestCase):
     def setUp(self):
-        self.np_paint = _mod('tools.native_paint')
+        self.np_paint = _mod('paint.native_paths')
 
     @staticmethod
     def python_merge(centers, radius, falloff):
@@ -358,7 +358,7 @@ class FootprintTest(NativeTestCase):
 
 class RegionMaskRasterTest(NativeTestCase):
     def test_restore_blocked(self):
-        guard = _mod('tools.mask_guard')
+        guard = _mod('tools.mask.guard')
         w, h = 25, 20
         before = random_image(w, h, 12)
         after = before.copy()
@@ -378,7 +378,7 @@ class RegionMaskRasterTest(NativeTestCase):
         np.testing.assert_array_equal(r4[allowed], a4[allowed])
 
     def test_blend_region_every_mode(self):
-        blending = _mod('tools.draw_blending')
+        blending = _mod('paint.blending')
         dst = random_image(9, 7, 14).reshape(7, 9, 4)
         src = random_image(9, 7, 15).reshape(7, 9, 4)
         for blend in BLENDS:
@@ -390,7 +390,7 @@ class RegionMaskRasterTest(NativeTestCase):
                 self.assertClose(py, cs, msg=f"{blend} {opacity}")
 
     def test_blit_region(self):
-        selection_ops = _mod('tools.selection_ops')
+        selection_ops = _mod('tools.selection.geometry')
         w, h = 30, 26
         base = random_image(w, h, 16)
         region = random_image(7, 5, 17).reshape(5, 7, 4)
@@ -405,7 +405,7 @@ class RegionMaskRasterTest(NativeTestCase):
             self.assertClose(py, cs, msg=str(case))
 
     def test_raster_triangles(self):
-        geo = _mod('tools.mask_geometry')
+        geo = _mod('tools.mask.geometry')
         rng = np.random.default_rng(18)
         tris = rng.random((40, 3, 2))
         for (w, h, grow) in ((64, 48, 0.0), (33, 70, 1.5), (128, 128, 0.0)):
@@ -493,7 +493,7 @@ class ToolParityTest(NativeTestCase):
                 self.assertFalse(np.allclose(cs, base), "tool painted nothing")
 
     def test_native_path_is_taken(self):
-        np_paint = _mod('tools.native_paint')
+        np_paint = _mod('paint.native_paths')
         calls = []
         original = np_paint.paint_weighted
         np_paint.paint_weighted = lambda *a, **k: calls.append(1) or original(*a, **k)

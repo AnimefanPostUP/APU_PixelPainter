@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-_PATH = os.path.join(os.path.dirname(__file__), '..', 'tools', 'view_nav.py')
+_PATH = os.path.join(os.path.dirname(__file__), '..', 'tools', 'pen', 'view_nav.py')
 _spec = importlib.util.spec_from_file_location('view_nav', _PATH)
 nav = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(nav)

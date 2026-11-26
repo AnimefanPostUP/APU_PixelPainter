@@ -127,7 +127,7 @@ class StrengthTool(ToolFrame):
         ctx.redraw()
 
     def draw_overlay(self, ctx):
-        from .. import draw_functions
+        from ...paint import pixels as draw_functions
         draw_functions.draw_sub_mode_overlay(ctx.context, ctx.state)
 
     # ---- actions -------------------------------------------------------------------

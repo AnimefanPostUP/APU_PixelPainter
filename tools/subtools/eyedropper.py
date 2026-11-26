@@ -43,7 +43,7 @@ class EyedropperTool(HoldTool):
         self.deactivate(ctx)  # e.g. cursor left the image
 
     def draw_overlay(self, ctx):
-        from .. import draw_functions
+        from ...paint import pixels as draw_functions
         draw_functions.draw_ctrl_pick_overlay(ctx.context, ctx.state)
 
     def _update_hover(self, ctx, event):

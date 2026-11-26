@@ -8,11 +8,11 @@ Shift+1..8 shortcut order. To add a tool, implement it (see
 matter which tool is selected (they run before the selected tool).
 """
 
-from . import falloff
+from ..model import falloff
 from .brushes import CircleBrushTool, EraserTool, LineBrushTool, SprayBrushTool, SquareBrushTool
 from .filters import SmearTool, SmoothTool
-from .mask import MaskTool
-from .pen_bar import PenBarTool
+from .mask.tool import MaskTool
+from .pen.tool import PenBarTool
 from .registry import ToolRegistry
 from .selection import SelectionTool
 from .subtools.tool_switch import ToolSwitchShortcuts

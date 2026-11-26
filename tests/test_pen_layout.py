@@ -5,7 +5,7 @@ import json
 import os
 import unittest
 
-_PATH = os.path.join(os.path.dirname(__file__), '..', 'tools', 'pen_layout.py')
+_PATH = os.path.join(os.path.dirname(__file__), '..', 'tools', 'pen', 'layout.py')
 _spec = importlib.util.spec_from_file_location('pen_layout', _PATH)
 pen_layout = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pen_layout)

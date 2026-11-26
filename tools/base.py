@@ -22,7 +22,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from ..core.framework import ToolFrame
 from ..utils import math_utils, pixel_io
-from . import falloff as falloff_presets
+from ..model import falloff as falloff_presets
 
 
 @dataclass(frozen=True)

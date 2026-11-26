@@ -15,7 +15,7 @@ _PACKAGE = os.path.basename(_ADDON_DIR)
 sys.path.insert(0, os.path.dirname(_ADDON_DIR))
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen_bar')
+pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen.bar')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 events = importlib.import_module(f'{_PACKAGE}.ui.kit.events')
 

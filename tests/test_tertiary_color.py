@@ -56,8 +56,8 @@ for _name in ('bpy_extras', 'bpy_extras.view3d_utils', 'mathutils', 'mathutils.g
     sys.modules.setdefault(_name, _AnyModule(_name))
 _stub('bpy', types=_Anything(), props=_Anything(), utils=_Anything(), app=_Anything(), context=_Anything())
 
-pen_bar_tool = importlib.import_module(f'{_PACKAGE}.tools.pen_bar')
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen_bar')
+pen_bar_tool = importlib.import_module(f'{_PACKAGE}.tools.pen.tool')
+pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen.bar')
 kit = importlib.import_module(f'{_PACKAGE}.ui.kit')
 
 for _name in set(sys.modules) - _MODULES_BEFORE:

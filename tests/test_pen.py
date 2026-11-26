@@ -22,9 +22,9 @@ from ui.kit import Button, ColorPad, DragBubble, hsv_for_rgb, Overlay, Panel, Ro
 from ui.kit.events import PASS_THROUGH, RUNNING  # noqa: E402
 
 framework = importlib.import_module(f'{_PACKAGE}.core.framework')
-pen_pressure = importlib.import_module(f'{_PACKAGE}.tools.pen_pressure')
-color_history = importlib.import_module(f'{_PACKAGE}.tools.color_history')
-color_palette = importlib.import_module(f'{_PACKAGE}.tools.color_palette')
+pen_pressure = importlib.import_module(f'{_PACKAGE}.tools.pen.pressure')
+color_history = importlib.import_module(f'{_PACKAGE}.model.color_history')
+color_palette = importlib.import_module(f'{_PACKAGE}.model.color_palette')
 palette_image = importlib.import_module(f'{_PACKAGE}.utils.palette_image')
 
 
@@ -677,7 +677,7 @@ if __name__ == '__main__':
 # Tertiary color: gradient between primary and secondary, selected on the pen menu
 # ---------------------------------------------------------------------------
 
-tertiary_color = importlib.import_module(f'{_PACKAGE}.tools.tertiary_color')
+tertiary_color = importlib.import_module(f'{_PACKAGE}.model.tertiary_color')
 geometry = importlib.import_module('ui.kit.geometry')
 
 
