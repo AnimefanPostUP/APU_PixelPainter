@@ -200,7 +200,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
   the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
   S / A / M radial sliders top right, the tools top left (two rings), Blend /
-  Alphalock / Pixel-Free / RMB bottom left, Undo / Redo and the falloff
+  Alphalock / Pixel-Free bottom left, Undo / Redo and the falloff
   controls bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the

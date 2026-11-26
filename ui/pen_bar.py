@@ -23,8 +23,7 @@ everything here works with press, drag and release only.
     center, drag keeps setting it;
   - top left: the tools (half in each ring; tap selects);
   - bottom left: *Blend* (inner ring, opens the flyout; shows the mode),
-    *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing),
-    *RMB* (the pen tip paints like the right mouse button);
+    *Alphalock* (protect transparent pixels), *Pixel* / *Free* (spacing);
   - bottom right: *Undo* / *Redo* arrows (inner ring); outside them, through
     the outer ring and on into the corner, the falloff: beside Redo the
     *falloff field* (the Shape falloff, swiped like the color selector: toward
@@ -163,7 +162,7 @@ INNER_RING = (SIZE_RADIUS + DIAL_GAP, 72.5 * _RING_SCALE)
 OUTER_RING = (INNER_RING[1] + DIAL_GAP, DIAL_RADIUS)
 SLIDER_ARC = (15.0, 90.0)      # S / A / M, through both rings
 TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
-MODE_ARC = (210.0, 270.0)      # Blend | Alphalock, Pixel / Free, RMB
+MODE_ARC = (210.0, 270.0)      # Blend | Alphalock, Pixel / Free
 HISTORY_ARC = (270.0, 375.0)   # Undo / Redo | falloff presets
 _INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
 # Category tints (mixed lightly into the segment fills).
@@ -1483,7 +1482,6 @@ class PenBar:
                         selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
             RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing),
                         on_click=a.toggle_spacing),
-            RingSegment("RMB", key='RMB', font_size=9.0, selected=a.rmb_lock, on_click=a.toggle_rmb_lock),
         ], *OUTER_RING, *MODE_ARC, tint=TINT_MODES)
 
         dial.add_arc([
