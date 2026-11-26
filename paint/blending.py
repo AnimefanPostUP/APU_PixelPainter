@@ -1,10 +1,65 @@
 """Blend mode helpers for pixel arrays and RGBA regions."""
 
-import colorsys
-
 import numpy as np
 
 from ..utils import native
+
+
+# ---------------------------------------------------------------------------
+# HSV, vectorized: the same math as colorsys, per row of an (N, 3) array
+# ---------------------------------------------------------------------------
+
+def rgb_to_hsv(rgb):
+    """``(h, s, v)`` arrays of ``rgb`` (N, 3) -- ``colorsys.rgb_to_hsv`` per row."""
+    rgb = np.asarray(rgb, dtype=np.float64)
+    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    maxc = rgb.max(axis=1)
+    minc = rgb.min(axis=1)
+    rangec = maxc - minc
+    grey = minc == maxc
+    with np.errstate(divide='ignore', invalid='ignore'):
+        s = np.where(grey, 0.0, rangec / maxc)
+        safe = np.where(grey, 1.0, rangec)
+        rc = (maxc - r) / safe
+        gc = (maxc - g) / safe
+        bc = (maxc - b) / safe
+    h = np.where(r == maxc, bc - gc, np.where(g == maxc, 2.0 + rc - bc, 4.0 + gc - rc))
+    h = np.where(grey, 0.0, (h / 6.0) % 1.0)
+    return h, s, maxc.copy()
+
+
+def hsv_to_rgb(h, s, v):
+    """(N, 3) RGB of ``h``, ``s``, ``v`` (arrays or scalars, broadcast) --
+    ``colorsys.hsv_to_rgb`` per element."""
+    h, s, v = np.broadcast_arrays(*(np.asarray(x, dtype=np.float64) for x in (h, s, v)))
+    i = np.trunc(h * 6.0)
+    f = h * 6.0 - i
+    p = v * (1.0 - s)
+    q = v * (1.0 - s * f)
+    t = v * (1.0 - s * (1.0 - f))
+    i = i.astype(np.int64) % 6
+    r = np.choose(i, (v, q, p, p, t, v))
+    g = np.choose(i, (t, v, v, q, p, p))
+    b = np.choose(i, (p, p, t, v, v, q))
+    grey = s == 0.0
+    return np.stack((np.where(grey, v, r), np.where(grey, v, g), np.where(grey, v, b)), axis=1)
+
+
+def _hsv_blend(dst, src, blend):
+    """Target RGB of the HSV modes (COLOR, HUE, SATURATION, VALUE, LUMINOSITY) for
+    ``dst`` (N, 3) and ``src`` (N, 3), as float64 (N, 3)."""
+    dh, ds, dv = rgb_to_hsv(dst)
+    sh, ss, sv = rgb_to_hsv(src)
+    if blend == 'COLOR':
+        return hsv_to_rgb(sh, ss, dv)
+    if blend == 'HUE':
+        return hsv_to_rgb(sh, ds, dv)
+    if blend == 'SATURATION':
+        return hsv_to_rgb(dh, ss, dv)
+    return hsv_to_rgb(dh, ds, sv)   # VALUE, LUMINOSITY
+
+
+_HSV_MODES = frozenset({'COLOR', 'HUE', 'SATURATION', 'VALUE', 'LUMINOSITY'})
 
 
 def _apply_blend(dst, src, blend, opacity):
@@ -44,41 +99,9 @@ def _apply_blend(dst, src, blend, opacity):
     elif blend == 'COLORBURN':
         burn = np.where(src <= 0.0, 0.0, 1.0 - (1.0 - dst) / (src + 1e-6))
         out = dst + (burn - dst) * opacity
-    elif blend == 'COLOR':
-        sh, ss, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
-        color_rgb = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            _, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            color_rgb[i] = colorsys.hsv_to_rgb(sh, ss, dv)
-        out = dst + (color_rgb - dst) * opacity
-    elif blend == 'HUE':
-        sh, _, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
-        hue_rgb = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            _, ds, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            hue_rgb[i] = colorsys.hsv_to_rgb(sh, ds, dv)
-        out = dst + (hue_rgb - dst) * opacity
-    elif blend == 'SATURATION':
-        _, ss, _ = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
-        sat_rgb = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            dh, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            sat_rgb[i] = colorsys.hsv_to_rgb(dh, ss, dv)
-        out = dst + (sat_rgb - dst) * opacity
-    elif blend == 'VALUE':
-        _, _, sv = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
-        val_rgb = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            val_rgb[i] = colorsys.hsv_to_rgb(dh, ds, sv)
-        out = dst + (val_rgb - dst) * opacity
-    elif blend == 'LUMINOSITY':
-        _, _, sv = colorsys.rgb_to_hsv(float(src[0]), float(src[1]), float(src[2]))
-        lum_rgb = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            lum_rgb[i] = colorsys.hsv_to_rgb(dh, ds, sv)
-        out = dst + (lum_rgb - dst) * opacity
+    elif blend in _HSV_MODES:
+        target = _hsv_blend(dst, np.broadcast_to(np.asarray(src, dtype=np.float64)[:3], dst.shape), blend)
+        out = dst + (target.astype(dst.dtype) - dst) * opacity
     else:
         out = dst + (src - dst) * opacity
     return out
@@ -131,41 +154,9 @@ def blend_pixel_arrays(dst, src, blend, opacity):
     elif blend == 'COLORBURN':
         burn = np.where(src <= 0.0, 0.0, 1.0 - (1.0 - dst) / (src + 1e-6))
         out = dst + (burn - dst) * opacity_arr
-    elif blend == 'COLOR':
-        out = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            sh, ss, _ = colorsys.rgb_to_hsv(float(src[i, 0]), float(src[i, 1]), float(src[i, 2]))
-            _, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            color_rgb = np.array(colorsys.hsv_to_rgb(sh, ss, dv), dtype=np.float32)
-            out[i] = dst[i] + (color_rgb - dst[i]) * float(opacity_arr[i, 0])
-    elif blend == 'HUE':
-        out = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            sh, _, _ = colorsys.rgb_to_hsv(float(src[i, 0]), float(src[i, 1]), float(src[i, 2]))
-            _, ds, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            hue_rgb = np.array(colorsys.hsv_to_rgb(sh, ds, dv), dtype=np.float32)
-            out[i] = dst[i] + (hue_rgb - dst[i]) * float(opacity_arr[i, 0])
-    elif blend == 'SATURATION':
-        out = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            _, ss, _ = colorsys.rgb_to_hsv(float(src[i, 0]), float(src[i, 1]), float(src[i, 2]))
-            dh, _, dv = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            sat_rgb = np.array(colorsys.hsv_to_rgb(dh, ss, dv), dtype=np.float32)
-            out[i] = dst[i] + (sat_rgb - dst[i]) * float(opacity_arr[i, 0])
-    elif blend == 'VALUE':
-        out = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            _, _, sv = colorsys.rgb_to_hsv(float(src[i, 0]), float(src[i, 1]), float(src[i, 2]))
-            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            val_rgb = np.array(colorsys.hsv_to_rgb(dh, ds, sv), dtype=np.float32)
-            out[i] = dst[i] + (val_rgb - dst[i]) * float(opacity_arr[i, 0])
-    elif blend == 'LUMINOSITY':
-        out = np.empty_like(dst)
-        for i in range(dst.shape[0]):
-            _, _, sv = colorsys.rgb_to_hsv(float(src[i, 0]), float(src[i, 1]), float(src[i, 2]))
-            dh, ds, _ = colorsys.rgb_to_hsv(float(dst[i, 0]), float(dst[i, 1]), float(dst[i, 2]))
-            lum_rgb = np.array(colorsys.hsv_to_rgb(dh, ds, sv), dtype=np.float32)
-            out[i] = dst[i] + (lum_rgb - dst[i]) * float(opacity_arr[i, 0])
+    elif blend in _HSV_MODES:
+        target = _hsv_blend(dst, src, blend).astype(np.float32)
+        out = dst + (target - dst[:, :3]) * opacity_arr
     else:
         out = dst + (src - dst) * opacity_arr
     return out

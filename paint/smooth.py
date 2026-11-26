@@ -22,7 +22,7 @@ def smooth_buffer(arr, w, h, pixels, smooth_radius, opacity, pixel_weights=None,
         if native.smooth(arr, w, h, pixels, pixel_weights, smooth_radius, opacity, valid=valid) is not None:
             return
     arr_4ch = arr.reshape(h, w, 4)
-    result = arr_4ch.copy()
+    updates = {}   # (py, px) -> new RGB; written after the loop (every read sees the input)
     valid_2d = None if valid is None else np.asarray(valid, dtype=bool).reshape(h, w)
 
     if pixel_weights is None:
@@ -48,9 +48,16 @@ def smooth_buffer(arr, w, h, pixels, smooth_radius, opacity, pixel_weights=None,
         else:
             avg = kernel[:, :, :3].mean(axis=(0, 1))
         orig = arr_4ch[py, px, :3]
-        result[py, px, :3] = orig + (avg - orig) * (opacity * weight)
+        updates[(py, px)] = orig + (avg - orig) * (opacity * weight)
 
-    arr[:] = result.reshape(-1)
+    _write_updates(arr_4ch, updates)
+
+
+def _write_updates(arr_4ch, updates):
+    """Store the ``{(py, px): rgb}`` results (later entries of a pixel win, like the
+    full-copy version did)."""
+    for (py, px), rgb in updates.items():
+        arr_4ch[py, px, :3] = rgb
 
 
 def smear_buffer(arr, w, h, pixels, dx, dy, smear_reach, opacity, pixel_weights=None, valid=None):
@@ -65,7 +72,7 @@ def smear_buffer(arr, w, h, pixels, dx, dy, smear_reach, opacity, pixel_weights=
                         valid=valid) is not None:
             return
     arr_4ch = arr.reshape(h, w, 4)
-    result = arr_4ch.copy()
+    updates = {}   # (py, px) -> new RGB; written after the loop (every read sees the input)
     valid_2d = None if valid is None else np.asarray(valid, dtype=bool).reshape(h, w)
     if pixel_weights is None:
         pixel_weights = [1.0] * len(pixels)
@@ -82,9 +89,9 @@ def smear_buffer(arr, w, h, pixels, dx, dy, smear_reach, opacity, pixel_weights=
         src_y = max(0, min(h - 1, src_y))
         src_color = arr_4ch[src_y, src_x, :3]
         orig = arr_4ch[py, px, :3]
-        result[py, px, :3] = orig + (src_color - orig) * (opacity * weight)
+        updates[(py, px)] = orig + (src_color - orig) * (opacity * weight)
 
-    arr[:] = result.reshape(-1)
+    _write_updates(arr_4ch, updates)
 
 
 def smooth_pixels_in_image(img, pixels, smooth_radius, opacity, pixel_weights=None):

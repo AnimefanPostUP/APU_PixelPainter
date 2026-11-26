@@ -37,21 +37,14 @@ def write_pixels_to_image(img, pixels, color, base_buffer=None,
     w, h = img.size
     arr  = base_buffer.copy() if base_buffer is not None else pixel_io.read(img)
 
-    # Build parallel lists of flat RGBA base-indices and per-pixel weights
-    # for every coordinate that falls inside the image bounds.
-    pixels = list(pixels)  # ensure indexable for weight lookup
-    flat_indices  = []
-    weight_values = []
-    for i, (px, py) in enumerate(pixels):
-        if 0 <= px < w and 0 <= py < h:
-            flat_indices.append((py * w + px) * 4)
-            weight_values.append(pixel_weights[i] if pixel_weights is not None else 1.0)
-
-    if not flat_indices:
+    # Flat RGBA base indices and per-pixel weights of the coordinates inside the image.
+    xy = native.coords(pixels)
+    inside = (xy[:, 0] >= 0) & (xy[:, 0] < w) & (xy[:, 1] >= 0) & (xy[:, 1] < h)
+    if not inside.any():
         return
-
-    flat_idx = np.array(flat_indices, dtype=np.int32)
-    weights = np.array(weight_values, dtype=np.float32)
+    flat_idx = (xy[inside, 1].astype(np.int64) * w + xy[inside, 0]) * 4
+    weights = (np.ones(int(inside.sum()), dtype=np.float32) if pixel_weights is None
+               else native.weights_array(pixel_weights, len(xy))[inside])
 
     if protect_transparent:
         alpha_mask = arr[flat_idx + 3] > 1e-6
@@ -130,15 +123,28 @@ def set_pixels_alpha(img, pixels, alpha_opacity, opacity=1.0, protect_transparen
     alpha = float(max(0.0, min(1.0, alpha_opacity)))
     mix = float(max(0.0, min(1.0, opacity)))
 
-    if pixel_weights is None:
-        pixel_weights = [1.0] * len(pixels)
-
-    for (px, py), weight in zip(pixels, pixel_weights):
-        if 0 <= px < w and 0 <= py < h:
-            idx = (py * w + px) * 4
-            if protect_transparent and arr[idx + 3] <= 1e-6:
-                continue
-            curr = arr[idx + 3]
-            arr[idx + 3] = curr + (alpha - curr) * mix * weight
-
+    _blend_alpha(arr, w, h, pixels, pixel_weights, alpha, mix, protect_transparent)
     pixel_io.write(img, arr)
+
+
+def _blend_alpha(arr, w, h, pixels, pixel_weights, alpha, mix, protect):
+    """``alpha += (target - alpha) * mix * weight`` per pixel, in order (a pixel listed
+    twice is blended twice, the second time from the first result)."""
+    xy = native.coords(pixels)
+    weights = (np.ones(len(xy), dtype=np.float64) if pixel_weights is None
+               else native.weights_array(pixel_weights, len(xy)).astype(np.float64))
+    inside = (xy[:, 0] >= 0) & (xy[:, 0] < w) & (xy[:, 1] >= 0) & (xy[:, 1] < h)
+    idx = (xy[inside, 1].astype(np.int64) * w + xy[inside, 0]) * 4 + 3
+    weights = weights[inside]
+    if len(idx) == 0:
+        return
+    if len(np.unique(idx)) == len(idx):
+        curr = arr[idx]
+        keep = curr > 1e-6 if protect else np.ones(len(idx), dtype=bool)
+        arr[idx[keep]] = curr[keep] + (alpha - curr[keep]) * mix * weights[keep]
+        return
+    for i, weight in zip(idx.tolist(), weights.tolist()):   # repeated pixels: sequential
+        curr = arr[i]
+        if protect and curr <= 1e-6:
+            continue
+        arr[i] = curr + (alpha - curr) * mix * weight
