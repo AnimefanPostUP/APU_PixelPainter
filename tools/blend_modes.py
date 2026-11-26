@@ -31,9 +31,21 @@ DEFAULT_FAVORITES = frozenset(b for b, _label, group in BLEND_MODES if group == 
 
 _LABELS = {b: label for b, label, _group in BLEND_MODES}
 
+# Short names for the pen menu's small buttons (the full label where none is set).
+SHORT_LABELS = {
+    'MIX': "Norm", 'MUL': "Mul", 'DARKEN': "Dark", 'LIGHTEN': "Light", 'COLOR': "Col",
+    'SCREEN': "Scre", 'OVERLAY': "Over", 'SOFTLIGHT': "Soft", 'HARDLIGHT': "Hard",
+    'SUB': "Sub", 'DIFFERENCE': "Diff", 'EXCLUSION': "Excl", 'COLORDODGE': "Dodge",
+    'COLORBURN': "Burn", 'SATURATION': "Sat", 'VALUE': "Val", 'LUMINOSITY': "Lumi",
+}
+
 
 def label(blend):
     return _LABELS.get(blend, blend)
+
+
+def short_label(blend):
+    return SHORT_LABELS.get(blend) or label(blend)
 
 
 def enum_items():

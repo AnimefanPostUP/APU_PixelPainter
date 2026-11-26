@@ -143,7 +143,7 @@ def _draw_blending(layout, context):
         row.prop(brush, "blend", text="")
         layout.separator()
 
-    layout.label(text="Favorites (Shift+W pie, pen bar Blend flyout)")
+    layout.label(text="Favorites (Shift+W pie, pen menu beside Redo)")
     split = layout.box().split(factor=0.5, align=True)
     columns = (
         (split.column(align=True), (("Common", 'COMMON'), ("Contrast", 'CONTRAST'))),

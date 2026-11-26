@@ -709,10 +709,12 @@ class PenBarTool(ToolFrame):
         setattr(ctx.wm, self._falloff_property(ctx), preset_id)
 
     def blend_favorites(self):
-        """Blend ids marked as favorites in the settings (the pie's defaults when none)."""
+        """Blend ids marked as favorites (settings / the Blend flyout's Edit Favorites);
+        may be empty. The defaults only while the property is missing."""
         raw = getattr(self._c().wm, 'pixel_painter_blend_favorites', None)
-        selected = set(raw) if isinstance(raw, (set, list, tuple, frozenset)) else set()
-        return selected or set(blend_modes.DEFAULT_FAVORITES)
+        if isinstance(raw, (set, list, tuple, frozenset)):
+            return set(raw)
+        return set(blend_modes.DEFAULT_FAVORITES)
 
     def active_blend(self):
         return blender_utils.get_brush_blend_mode(self._c().context)

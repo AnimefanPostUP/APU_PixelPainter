@@ -199,9 +199,10 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   the editor (`kit.geometry.clamp_box`) and shrunk while it is too small.
   `image.pixel_painter_reset_pen_ui` (settings popup > Pen, N-panel) restores
   the defaults. The menu is the dial (`kit.Dial`): the Size knob in the center,
-  S / A / M radial sliders top right, the tools top left (two rings), Blend /
-  Grid bottom left, Undo / Redo with Alphalock / Pixel-Free outside Undo
-  (`BRUSH_MODE_ARC`) and the falloff controls bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
+  S / A / M radial sliders top right, the tools top left (two rings), the
+  falloff controls bottom left, Undo / Redo with Alphalock / Pixel-Free / Blend
+  outside Undo (`BRUSH_MODE_ARC`, `BRUSH_MODE_WEIGHTS`) and the favorite blend
+  modes outside Redo bottom right (the arcs and radii are the `*_ARC` / `*_RING` constants). The
   corners of its enclosing square hold `kit.CornerSegment` buttons
   (`Dial.add_corner`: inner edge on the circle, outer edges on the square, the
   extreme corners cut for the lock / X / resize triangle, except top left): top
@@ -214,7 +215,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   `PenBarTool.mix_color` / `use_mix_color`) behind it; these buttons have round
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
   bottom left the palette band (24 slots in `PALETTE_ROWS` bands) and Palettes;
-  bottom right Save and Windows.
+  bottom right Grid, Save and Windows (`BOTTOM_RIGHT_ARC`).
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
   the .blend); the band shows the active palette's colors or, in the palette view
@@ -231,11 +232,22 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   define `accepts(payload)` / `accept_drop(payload, source)` (an ancestor may
   take it, e.g. the library list); `PenBar.drop`. Deleting or replacing a
   palette goes through `PenBar.confirm` (`ConfirmDialog`, modal over the menu). The
-  falloff controls fill the outer ring and the corner band bottom right (out to
-  `FALLOFF_OUTER`): beside Redo the falloff field (`FalloffField`,
-  `FALLOFF_FIELD_ARC`), under it in line with Redo Custom (outer ring) and Curve
-  (band) (`FALLOFF_CUSTOM_ARC`); beside Undo it is empty; past them, around the
-  diagonal, Windows (`WINDOWS_ARC`, `activate_on_press`). It opens the Windows ring
+  falloff controls sit bottom left (`FALLOFF_FIELD_ARC`): the falloff field
+  (`FalloffField`; swipes map through `motion_delta`: two fixed straight axes along /
+  across the field's middle ray, so a straight swipe changes one value; the marker
+  may reach `FIELD_EDGE_MARGIN` of its radius over the edges) in the outer ring,
+  reaching in to the inner ring (no gap), and
+  Custom | Curve in the inner ring. Outside Redo (`FAVORITES_ARC`) the favorite
+  blend modes (`_BlendFavorites`: one `_BlendFavorite` per mode, the favorites
+  shown in two equally deep columns (`FAVORITE_COLUMNS`, from the outer ring's inner
+  edge out to `FALLOFF_OUTER`), each
+  split into its own rows; re-placed on draw when `pixel_painter_blend_favorites`
+  changes; labels run radially from just past the inner edge, `FAVORITE_TEXT_PAD`,
+  two-word names on two lines, via `draw.text_along`). `PenBarTool.blend_favorites` may be empty (the defaults only while the
+  property is missing). The Blend flyout: Common / Contrast / Math / HSL/HSV,
+  favorites check-marked, *Edit Favorites* (`PenBar.blend_fav_edit`) makes taps
+  toggle favorites (`wm_toggle_flag`). Past the favorites, around the diagonal,
+  Windows (`activate_on_press`). It opens the Windows ring
   (`_WindowRing`, `WINDOW_RING` = the inner ring's radii): Settings / Mask / View /
   Color / Palettes (library) as `drag_release` `RingSegment`s over the full circle
   from `WINDOW_RING_START`. The ring is the dial's last child (drawn on top, picked
@@ -279,14 +291,14 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   E = primary / secondary; it commits once, on release. It edits
   the color the pen paints. With *Preview* on (`pixel_painter_pen_color_preview`,
   settings popup > Color Selector) the pad is `live` (commits every step).
-  *Settings* opens the settings popup. *Save* (bottom-right corner, `SAVE_ARC`)
+  *Settings* opens the settings popup. *Save* (bottom-right corner, `BOTTOM_RIGHT_ARC`)
   runs `image.pixel_painter_save_image` (`ui/image_save_ops.py`) on the painted
   image; a dot shows while `image.is_dirty`. How it saves comes from settings >
   Pen > Save Image: `pixel_painter_save_image_method` (`AUTO`: repack packed,
   save to its file, else pack / `PACK` / `FILE`: write a file, images without
   one go to `pixel_painter_save_image_folder`/`<name>.png`) and
   `pixel_painter_save_image_blend` (save the .blend afterwards).
-  *Grid* (outer ring outside Blend, `MODE_ARC`, `_GridSegment`) shows `pixel_painter_grid_opacity` in percent:
+  *Grid* (bottom-right corner, first before Save and Windows, `_GridCorner`) shows `pixel_painter_grid_opacity` in percent:
   a tap toggles `pixel_painter_grid_show` (a grid at 0 % comes on at
   `GRID_DEFAULT_OPACITY`), a vertical drag sets the opacity (`GRID_DRAG_PX` for
   0 -> 100 %, ESC restores it). In the 3D Viewport `draw_pixel_grid_overlay_3d`

@@ -118,13 +118,21 @@ class FalloffFieldTest(unittest.TestCase):
             self.assertAlmostEqual(s, hs[1], places=6)
 
     def test_axes(self):
-        """Inner = hard, outer = soft; top (higher angle) = linear, bottom = sharp."""
+        """Inner = hard, outer = soft; higher angle = linear, lower = sharp."""
         field = self.make()
         def at(r, a):
             return field.field_at(math.cos(math.radians(a)) * r, math.sin(math.radians(a)) * r)
-        self.assertGreater(at(100.0, 350.0)[0], at(160.0, 350.0)[0])
-        self.assertLess(at(130.0, 370.0)[1], at(130.0, 330.0)[1])
-        # Across the 0 degree line (375 = 15 degrees) the angle stays continuous.
+        mid = sum(pen_bar_ui.FALLOFF_FIELD_ARC) * 0.5
+        self.assertGreater(at(100.0, mid)[0], at(160.0, mid)[0])
+        self.assertLess(at(130.0, mid + 20.0)[1], at(130.0, mid - 20.0)[1])
+
+    def test_angle_wraps(self):
+        """A field across the 0 degree line (e.g. 340 .. 375) stays continuous."""
+        field = self.make()
+        field.a0, field.a1 = 340.0, 375.0
+        field.place_on(0.0, 0.0, _Theme(), 2.5)
+        def at(r, a):
+            return field.field_at(math.cos(math.radians(a)) * r, math.sin(math.radians(a)) * r)
         self.assertLess(at(130.0, 10.0)[1], at(130.0, -10.0)[1])
 
     def test_tap_jumps(self):
@@ -147,6 +155,25 @@ class FalloffFieldTest(unittest.TestCase):
         h, s = self.values[-1]
         self.assertAlmostEqual(h, 0.25 + 0.4 * field.gain - 0.04 * field.gain, delta=0.03)  # first step is the tap travel
         self.assertAlmostEqual(s, 0.75, delta=0.01)
+
+    def test_swipe_axes_are_straight(self):
+        """A straight swipe across the field's middle ray changes only the sharpness, and
+        one along it only the hardness -- wherever the marker is (no arc to follow)."""
+        field = self.make()
+        am = math.radians(sum(pen_bar_ui.FALLOFF_FIELD_ARC) * 0.5)
+        ux, uy = math.cos(am), math.sin(am)
+        for start in ((0.1, 0.1), (0.9, 0.9), (0.5, 0.5)):
+            self.values.append(start)
+            x, y = field.point_at(*start)
+            field.drag_begin(x, y)
+            for i in range(1, 6):                       # across: perpendicular to the middle ray
+                field.drag_update(x - uy * 3.0 * i, y + ux * 3.0 * i)
+            field.drag_end(x - uy * 15.0, y + ux * 15.0)
+            self.assertAlmostEqual(self.values[-1][0], start[0], places=6)
+            self.assertNotAlmostEqual(self.values[-1][1], start[1], places=3)
+        dh, ds = field.motion_delta(ux * 10.0, uy * 10.0)   # along: outward = softer
+        self.assertLess(dh, 0.0)
+        self.assertAlmostEqual(ds, 0.0, places=9)
 
     def test_cancel_restores(self):
         field = self.make()

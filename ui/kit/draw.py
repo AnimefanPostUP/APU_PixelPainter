@@ -223,3 +223,23 @@ def text_centered(text, x, y, size, color, font_id=0):
     blf.position(font_id, x - w * 0.5, y - h * 0.5, 0)
     blf.color(font_id, *color)
     blf.draw(font_id, text)
+
+
+def text_along(text, x, y, size, color, angle, font_id=0):
+    """``text`` running in direction ``angle`` (radians, counter-clockwise from +x),
+    starting at ``(x, y)``, centered on that line (its height straddles the point)."""
+    if not text or size < 1.0 or color[3] <= 0.0:
+        return
+    blf.size(font_id, size)
+    _w, h = blf.dimensions(font_id, text)
+    # Baseline start: half the height "down" (perpendicular to the direction).
+    ox, oy = x + math.sin(angle) * h * 0.5, y - math.cos(angle) * h * 0.5
+    blf.enable(font_id, blf.ROTATION)
+    try:
+        blf.rotation(font_id, angle)
+        blf.position(font_id, ox, oy, 0)
+        blf.color(font_id, *color)
+        blf.draw(font_id, text)
+    finally:
+        blf.rotation(font_id, 0.0)
+        blf.disable(font_id, blf.ROTATION)
