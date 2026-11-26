@@ -2,8 +2,24 @@
 
 import gpu
 import gpu_extras.batch
+import numpy as np
 
 from ..utils import blender_utils
+
+
+def _grid_vertices(sx_min, px_width, w, x_step, left, right, sy_min, py_height, h, y_step, bot, top):
+    """(N, 2) float32 LINES vertices of the visible grid lines (vertical, then horizontal)."""
+    sx = sx_min + np.arange(0, w + 1, x_step, dtype=np.float64) * px_width
+    sx = sx[(sx >= left) & (sx <= right)]
+    sy = sy_min + np.arange(0, h + 1, y_step, dtype=np.float64) * py_height
+    sy = sy[(sy >= bot) & (sy <= top)]
+    vertical = np.empty((len(sx), 2, 2))
+    vertical[:, :, 0] = sx[:, None]
+    vertical[:, 0, 1], vertical[:, 1, 1] = bot, top
+    horizontal = np.empty((len(sy), 2, 2))
+    horizontal[:, :, 1] = sy[:, None]
+    horizontal[:, 0, 0], horizontal[:, 1, 0] = left, right
+    return np.concatenate((vertical, horizontal)).reshape(-1, 2).astype(np.float32)
 
 
 def draw_pixel_grid_overlay(context, grid_opacity):
@@ -57,19 +73,10 @@ def draw_pixel_grid_overlay(context, grid_opacity):
     gpu.state.depth_test_set('NONE')
     gpu.state.line_width_set(1.0)
 
-    vertices = []
-    for x in range(0, w + 1, x_step):
-        sx = sx_min + x * px_width
-        if screen_left <= sx <= screen_right:
-            vertices.append((sx, screen_bot))
-            vertices.append((sx, screen_top))
-    for y in range(0, h + 1, y_step):
-        sy = sy_min + y * py_height
-        if screen_bot <= sy <= screen_top:
-            vertices.append((screen_left, sy))
-            vertices.append((screen_right, sy))
+    vertices = _grid_vertices(sx_min, px_width, w, x_step, screen_left, screen_right,
+                              sy_min, py_height, h, y_step, screen_bot, screen_top)
 
-    if vertices:
+    if len(vertices):
         shader = gpu.shader.from_builtin('UNIFORM_COLOR')
         batch = gpu_extras.batch.batch_for_shader(shader, 'LINES', {"pos": vertices})
         shader.uniform_float("color", (1.0, 1.0, 1.0, grid_opacity * 0.6))
