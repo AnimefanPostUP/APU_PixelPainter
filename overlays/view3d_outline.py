@@ -1,7 +1,7 @@
 """3D Viewport brush outline, drawn on the mesh surface (POST_VIEW).
 
 The outline is the same pixel contour as in the Image Editor
-(``tool.outline_pixels`` -> ``get_outline_edges``), built in texture space and
+(``tool.outline_segments``), built in texture space and
 projected onto the mesh with :func:`core.view3d.project_uv_segments`. Because
 it is built from texels, its size always matches what a stamp paints, and it
 follows the surface over mesh edges and corners.
@@ -13,7 +13,7 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..core.view3d import frames, mesh as v3d_mesh, surface_path
-from ..utils import blender_utils, math_utils
+from ..utils import blender_utils
 
 
 VIEW_OFFSET = 0.002   # pull lines towards the viewer (fraction of view distance) against z-fighting
@@ -32,11 +32,11 @@ def _edge_line_outline(context, state, tool, img, radius):
     if result is None:
         return None
     frame, line = result
-    edges = math_utils.get_outline_edges(tool.tip_pixels(state, line, radius))
-    if not edges:
+    seg = tool.tip_segments(state, line, radius)
+    if len(seg) == 0:
         return np.empty((0, 2, 3), dtype=np.float64)
     w, h = img.size
-    seg = np.array(edges, dtype=np.float64) / np.array((w, h), dtype=np.float64)  # tile 0: frame space
+    seg = seg / np.array((w, h), dtype=np.float64)  # tile 0: frame space
     return frames.project_segments(frame, seg)
 
 
@@ -59,10 +59,9 @@ def _outline_local(context, state, tool, cache, img, cx, cy, radius, edge_mode):
             _cache_key, _cache_local = key, local
             return local
 
-    edges = math_utils.get_outline_edges(tool.outline_pixels(state, cx, cy, radius))
-    if edges:
-        seg = np.array(edges, dtype=np.float64)                 # (E, 2, 2) pixel corners
-        seg /= np.array((w, h), dtype=np.float64)
+    seg = tool.outline_segments(state, cx, cy, radius)         # (E, 2, 2) pixel corners
+    if len(seg):
+        seg = seg / np.array((w, h), dtype=np.float64)
         seg += np.array(tile, dtype=np.float64)
         if edge_mode:
             # Lay the mesh out around the hovered face so the outline

@@ -2,6 +2,8 @@
 import math
 import random
 
+import numpy as np
+
 
 def convert_uv_coord(u, v, w, h):
     """Convert UV [0-1] coordinates to integer image pixel coordinates."""
@@ -190,6 +192,99 @@ def get_spray_pixels(cx, cy, radius, spray_strength, falloff_type='CONSTANT', cu
         weights.append(get_falloff(dist / radius, falloff_type, curve_sampler=curve_sampler))
 
     return pixels, weights
+
+
+# ---------------------------------------------------------------------------
+# Outlines as NumPy masks (the cursor preview: drawn every frame)
+# ---------------------------------------------------------------------------
+
+def _row_half_widths(radius, shape):
+    """``(dy, half_width)`` per stamp row: a row ``dy`` covers ``dx`` in ``[-hw, hw]``
+    (same pixels as :func:`get_pixels_in_shape`)."""
+    r = max(0, int(radius))
+    dy = np.arange(-r, r + 1)
+    if shape == 'SQUARE' or r == 0:
+        hw = np.full(dy.shape, r)
+    else:
+        hw = np.floor(np.sqrt(np.maximum(0, r * r - dy * dy)) + 1e-9).astype(np.int64)
+    return dy, hw
+
+
+def stamp_mask(centers, radius, shape):
+    """Union of the ``shape`` stamps at every center as ``(x0, y0, mask)``:
+    ``mask[y - y0, x - x0]`` is True for a covered pixel. ``mask`` is None when
+    there are no centers. Built from one row interval per stamp row."""
+    pts = np.asarray(list(centers) if not isinstance(centers, np.ndarray) else centers,
+                     dtype=np.int64).reshape(-1, 2)
+    if len(pts) == 0:
+        return 0, 0, None
+    r = max(0, int(radius))
+    x0, y0 = int(pts[:, 0].min()) - r, int(pts[:, 1].min()) - r
+    w = int(pts[:, 0].max()) + r - x0 + 1
+    h = int(pts[:, 1].max()) + r - y0 + 1
+    dy, hw = _row_half_widths(r, shape)
+    rows = (pts[:, 1, None] - y0 + dy[None, :]).ravel()
+    cols = pts[:, 0, None] - x0
+    starts = (cols - hw[None, :]).ravel()
+    ends = (cols + hw[None, :] + 1).ravel()
+    diff = np.zeros((h, w + 1), dtype=np.int32)
+    np.add.at(diff, (rows, starts), 1)
+    np.add.at(diff, (rows, ends), -1)
+    return x0, y0, np.cumsum(diff[:, :w], axis=1) > 0
+
+
+def _runs(lines):
+    """``(line, start, end)`` of the runs of True along axis 1 of a 2D bool array."""
+    d = np.diff(lines.astype(np.int8), axis=1, prepend=0, append=0)
+    line, start = np.nonzero(d == 1)
+    _l, end = np.nonzero(d == -1)
+    return line, start, end
+
+
+def mask_outline_segments(x0, y0, mask):
+    """Contour of a pixel mask as ``(E, 2, 2)`` float segments between pixel corners
+    (image coordinates). Collinear unit edges are merged into one segment, so it
+    draws the same lines as :func:`get_outline_edges` with far fewer vertices."""
+    if mask is None or not mask.any():
+        return np.empty((0, 2, 2), dtype=np.float64)
+    padded = np.pad(mask, 1)
+    # Horizontal boundaries: corner row k (0..h) between pixel rows k - 1 and k.
+    hor = padded[1:, 1:-1] != padded[:-1, 1:-1]
+    k, s, e = _runs(hor)
+    h_seg = np.stack((np.stack((x0 + s, y0 + k), axis=1),
+                      np.stack((x0 + e, y0 + k), axis=1)), axis=1)
+    # Vertical boundaries: corner column k (0..w) between pixel columns k - 1 and k.
+    ver = (padded[1:-1, 1:] != padded[1:-1, :-1]).T
+    k, s, e = _runs(ver)
+    v_seg = np.stack((np.stack((x0 + k, y0 + s), axis=1),
+                      np.stack((x0 + k, y0 + e), axis=1)), axis=1)
+    return np.concatenate((h_seg, v_seg)).astype(np.float64)
+
+
+def pixels_outline_segments(pixels):
+    """:func:`mask_outline_segments` of an iterable of ``(x, y)`` pixels."""
+    pts = np.array(list(pixels), dtype=np.int64).reshape(-1, 2)
+    if len(pts) == 0:
+        return np.empty((0, 2, 2), dtype=np.float64)
+    x0, y0 = pts.min(axis=0)
+    w, h = pts.max(axis=0) - (x0, y0) + 1
+    mask = np.zeros((int(h), int(w)), dtype=bool)
+    mask[pts[:, 1] - y0, pts[:, 0] - x0] = True
+    return mask_outline_segments(int(x0), int(y0), mask)
+
+
+_shape_outline_cache = {}
+
+
+def shape_outline_segments(x, y, radius, shape):
+    """:func:`mask_outline_segments` of one stamp at ``(x, y)`` (memoized per size)."""
+    key = (max(0, int(radius)), shape)
+    base = _shape_outline_cache.get(key)
+    if base is None:
+        if len(_shape_outline_cache) > 256:
+            _shape_outline_cache.clear()
+        base = _shape_outline_cache[key] = mask_outline_segments(*stamp_mask([(0, 0)], *key))
+    return base + np.array((x, y), dtype=np.float64)
 
 
 def get_outline_edges(pixels):

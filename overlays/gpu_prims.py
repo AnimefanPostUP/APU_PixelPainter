@@ -6,6 +6,7 @@ import math
 import blf
 import gpu
 import gpu_extras.batch
+import numpy as np
 
 from ..utils import blender_utils
 
@@ -26,15 +27,22 @@ def draw_lines(vertices, color):
     gpu.state.depth_test_set('LESS_EQUAL')
 
 
-def edges_to_screen_verts(edges, v2d, w, h, offset_x=0.0, offset_y=0.0):
-    """Convert image-space edges to screen coordinates with optional sub-pixel offset."""
-    vertices = []
-    for (px0, py0), (px1, py1) in edges:
-        sx0, sy0 = v2d.view_to_region((px0 + offset_x) / w, (py0 + offset_y) / h)
-        sx1, sy1 = v2d.view_to_region((px1 + offset_x) / w, (py1 + offset_y) / h)
-        vertices.append((round(sx0), round(sy0)))
-        vertices.append((round(sx1), round(sy1)))
-    return vertices
+def view_to_region_affine(v2d):
+    """``(ox, oy, sx, sy)``: region = (ox + u * sx, oy + v * sy) for view ``(u, v)``.
+    ``View2D.view_to_region`` is affine, so two calls replace one per vertex."""
+    x0, y0 = v2d.view_to_region(0.0, 0.0, clip=False)
+    x1, y1 = v2d.view_to_region(1.0, 1.0, clip=False)
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def segments_to_screen_verts(segments, v2d, w, h, offset_x=0.0, offset_y=0.0):
+    """``(E, 2, 2)`` image-space segments -> ``(2E, 2)`` float32 region vertices (rounded)."""
+    ox, oy, sx, sy = view_to_region_affine(v2d)
+    pts = np.asarray(segments, dtype=np.float64).reshape(-1, 2)
+    out = np.empty_like(pts)
+    out[:, 0] = ox + (pts[:, 0] + offset_x) * (sx / w)
+    out[:, 1] = oy + (pts[:, 1] + offset_y) * (sy / h)
+    return np.round(out).astype(np.float32)
 
 
 def draw_precision_pixel_guide(context, px, py, color=(1.0, 1.0, 1.0, 0.85)):

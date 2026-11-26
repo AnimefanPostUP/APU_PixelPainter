@@ -147,6 +147,14 @@ class ToolBase(ToolFrame):
         """Image pixels outlined by the cursor preview at ``(x, y)``."""
         return math_utils.get_pixels_in_shape(x, y, radius, self.outline_shape)
 
+    def outline_segments(self, state, x, y, radius):
+        """Contour of the cursor preview at ``(x, y)``: ``(E, 2, 2)`` segments between
+        pixel corners (drawn every frame, so built with NumPy and memoized). Tools that
+        only override :meth:`outline_pixels` get that set's contour."""
+        if type(self).outline_pixels is not ToolBase.outline_pixels:
+            return math_utils.pixels_outline_segments(self.outline_pixels(state, x, y, radius))
+        return math_utils.shape_outline_segments(x, y, radius, self.outline_shape)
+
     def draw_settings(self, context, layout) -> None:
         """Draw tool-specific controls in the tool header / N-panel."""
 

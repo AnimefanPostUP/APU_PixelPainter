@@ -7,8 +7,7 @@ import time
 from ..core.state import declare as declare_state
 from ..ui.kit import anim
 from ..utils import blender_utils
-from ..utils import math_utils
-from .gpu_prims import draw_lines, draw_precision_pixel_guide, edges_to_screen_verts
+from .gpu_prims import draw_lines, draw_precision_pixel_guide, segments_to_screen_verts
 
 
 # Brush outline position tween.
@@ -21,6 +20,20 @@ declare_state({
     'outline_to_cy':      None,
     'outline_anim_start': 0.0,
 })
+
+
+_segments_key = None
+_segments = None
+
+
+def _outline_segments(tool, state, x, y, radius):
+    """``tool.outline_segments``, reused while nothing it depends on changed."""
+    global _segments_key, _segments
+    key = (tool.tool_id, x, y, radius, state.get('start_position'), state.get('last_shape'))
+    if key != _segments_key:
+        _segments = tool.outline_segments(state, x, y, radius)
+        _segments_key = key
+    return _segments
 
 
 def draw_brush_outline(context, state):
@@ -128,9 +141,6 @@ def draw_brush_outline(context, state):
 
     outline_color = tool.outline_color
 
-    def _outline_pixels_at(ix, iy):
-        return tool.outline_pixels(state, ix, iy, radius)
-
     if state.get('outline_immediate'):
         base_ix = round(cx)
         base_iy = round(cy)
@@ -142,12 +152,11 @@ def draw_brush_outline(context, state):
         frac_x = cx - base_ix
         frac_y = cy - base_iy
 
-    pixels = _outline_pixels_at(base_ix, base_iy)
-    edges = math_utils.get_outline_edges(pixels)
-    if not edges:
+    segments = _outline_segments(tool, state, base_ix, base_iy, radius)
+    if len(segments) == 0:
         return
 
-    vertices = edges_to_screen_verts(edges, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
+    vertices = segments_to_screen_verts(segments, v2d, w, h, offset_x=frac_x, offset_y=frac_y)
     draw_lines(vertices, outline_color)
 
     draw_precision_pixel_guide(context, state['current_cx'], state['current_cy'])

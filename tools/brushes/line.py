@@ -86,13 +86,16 @@ class LineBrushTool(BrushTool):
             return None
         return start, (tri, local)
 
-    def tip_pixels(self, state, line, radius):
-        """Union of the tip shape stamped at every ``line`` pixel (outline)."""
+    def tip_segments(self, state, line, radius):
+        """Contour of the tip shape stamped at every ``line`` pixel (see ``ToolBase.outline_segments``)."""
         shape = self.tip_tool(state).outline_shape
-        pixels = set()
-        for (lx, ly) in line:
-            pixels |= math_utils.get_pixels_in_shape(lx, ly, radius, shape)
-        return pixels
+        return math_utils.mask_outline_segments(*math_utils.stamp_mask(line, radius, shape))
+
+    def outline_segments(self, state, x, y, radius):
+        start = state.get('start_position')
+        if start is None:
+            return math_utils.shape_outline_segments(x, y, radius, self.tip_tool(state).outline_shape)
+        return self.tip_segments(state, math_utils.get_line_pixels(start[0], start[1], x, y), radius)
 
     def outline_pixels(self, state, x, y, radius):
         shape = self.tip_tool(state).outline_shape
