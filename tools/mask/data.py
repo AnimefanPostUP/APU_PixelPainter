@@ -70,8 +70,8 @@ def _objects(context):
 
 
 def _uv_name(context, obj):
-    from ...core import view3d
-    return view3d._uv_layer_name(context, obj)
+    from ...core.view3d import mesh as v3d_mesh
+    return v3d_mesh.uv_layer_name(context, obj)
 
 
 def _read_mesh(context, obj):

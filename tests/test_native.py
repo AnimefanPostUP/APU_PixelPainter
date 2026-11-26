@@ -79,7 +79,7 @@ _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'paint.smooth', 'paint.native_paths', 'tools.mask.data', 'tools.mask.guard', 'tools.mask.geometry',
     'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
     'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
-    'core.view3d')}
+    'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -97,6 +97,9 @@ BRUSHES = SimpleNamespace(
     CircleBrushTool=_mod('tools.brushes.circle').CircleBrushTool,
     SprayBrushTool=_mod('tools.brushes.spray').SprayBrushTool,
     EraserTool=_mod('tools.brushes.eraser').EraserTool)
+V3D = SimpleNamespace(   # the 3D Viewport modules (core/view3d/)
+    mesh=_mod('core.view3d.mesh'), islands=_mod('core.view3d.islands'),
+    footprint=_mod('core.view3d.footprint'), patch=_mod('core.view3d.patch'))
 FILTERS = SimpleNamespace(
     SmoothTool=_mod('tools.filters.smooth').SmoothTool,
     SmearTool=_mod('tools.filters.smear').SmearTool)
@@ -541,24 +544,24 @@ class IslandClipTest(NativeTestCase):
     W = H = 40
 
     def setUp(self):
-        self.view3d = _mod('core.view3d')
+        self.view3d = V3D
         self.base_mod = _mod('tools.base')
         self.brushes = BRUSHES
         self.filters = FILTERS
         self.cache = quad_island_mesh()
-        self._orig_cache = self.view3d._mesh_cache
-        self.view3d._mesh_cache = lambda context: self.cache
-        self.view3d._island_map = None
+        self._orig_cache = self.view3d.mesh.mesh_cache
+        self.view3d.mesh.mesh_cache = lambda context: self.cache
+        self.view3d.islands._island_map = None
 
     def tearDown(self):
-        self.view3d._mesh_cache = self._orig_cache
-        self.view3d._island_map = None
+        self.view3d.mesh.mesh_cache = self._orig_cache
+        self.view3d.islands._island_map = None
         super().tearDown()
 
     def island_map(self, use_native):
         native.set_override(use_native)
-        self.view3d._island_map = None
-        return self.view3d.island_map(None, SimpleNamespace(size=(self.W, self.H)))
+        self.view3d.islands._island_map = None
+        return self.view3d.islands.island_map(None, SimpleNamespace(size=(self.W, self.H)))
 
     def test_labels_both_backends(self):
         maps = [self.island_map(False), self.island_map(True)]
@@ -588,7 +591,7 @@ class IslandClipTest(NativeTestCase):
             opacity=1.0, alpha_opacity=1.0, protect_transparent=False, radius=8, spacing='FREE', wm=wm,
             cursor_x=cursor[0], cursor_y=cursor[1], interpolation_steps=lambda: list(steps),
             curve_sampler_factory=lambda ctx: None, modifier=0.5)
-        env.islands = self.view3d.IslandClip(islands, cursor, cursor_tri)
+        env.islands = self.view3d.islands.IslandClip(islands, cursor, cursor_tri)
         pixel_io.begin_stroke(img)
         tool.on_stroke_begin(env)
         with pixel_io.deferred(img):
@@ -627,7 +630,7 @@ class IslandClipTest(NativeTestCase):
 def seam_strip_mesh():
     """Two quads side by side in 3D (sharing the edge x = 1), cut apart in UV:
     A at u, v in 0.1..0.4, B at 0.6..0.9 (same orientation)."""
-    view3d = _mod('core.view3d')
+    view3d = V3D
     verts = np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)], dtype=np.float32)
     tri_verts = np.array([(0, 1, 2), (0, 2, 3), (1, 4, 5), (1, 5, 2)], dtype=np.int32)
     a = {0: (0.1, 0.1), 1: (0.4, 0.1), 2: (0.4, 0.4), 3: (0.1, 0.4)}
@@ -635,7 +638,7 @@ def seam_strip_mesh():
     uvs = [a[v] for v in (0, 1, 2, 0, 2, 3)] + [b[v] for v in (1, 4, 5, 1, 5, 2)]
     uvs = np.array(uvs, dtype=np.float32)
     tri_loops = np.arange(12, dtype=np.int32).reshape(-1, 3)
-    return view3d._MeshCache('seam-strip', None, tri_verts, tri_loops, verts, uvs, np.ones(4))
+    return view3d.mesh.MeshCache('seam-strip', None, tri_verts, tri_loops, verts, uvs, np.ones(4))
 
 
 class EdgeFilterTest(NativeTestCase):
@@ -644,15 +647,15 @@ class EdgeFilterTest(NativeTestCase):
     RED, BLUE, GREEN = (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)
 
     def setUp(self):
-        self.view3d = _mod('core.view3d')
+        self.view3d = V3D
         self.base_mod = _mod('tools.base')
         self.filters = FILTERS
         self.cache = seam_strip_mesh()
-        self._orig_cache = self.view3d._mesh_cache
-        self.view3d._mesh_cache = lambda context: self.cache
+        self._orig_cache = self.view3d.mesh.mesh_cache
+        self.view3d.mesh.mesh_cache = lambda context: self.cache
 
     def tearDown(self):
-        self.view3d._mesh_cache = self._orig_cache
+        self.view3d.mesh.mesh_cache = self._orig_cache
         super().tearDown()
 
     def image(self):
@@ -678,9 +681,9 @@ class EdgeFilterTest(NativeTestCase):
                 cursor_x=cx, cursor_y=cy, interpolation_steps=(lambda s=steps: list(s)),
                 curve_sampler_factory=lambda ctx: None, modifier=1.0)
             env.edge_mode = True
-            env.expand_stamp = lambda x, y, p, wt, tri=tri, cx=cx, cy=cy: self.view3d.edge_expand(
+            env.expand_stamp = lambda x, y, p, wt, tri=tri, cx=cx, cy=cy: self.view3d.footprint.edge_expand(
                 None, img, x, y, p, wt, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
-            env.edge_patch = lambda x, y, p, pad, tri=tri, cx=cx, cy=cy: self.view3d.edge_patch(
+            env.edge_patch = lambda x, y, p, pad, tri=tri, cx=cx, cy=cy: self.view3d.patch.edge_patch(
                 None, img, x, y, p, pad, (0, 0), prefer_tri=tri if (x, y) == (cx, cy) else None)
             if i == 0:
                 tool.on_stroke_begin(env)
@@ -700,7 +703,7 @@ class EdgeFilterTest(NativeTestCase):
     def test_patch_unfolds_neighbour(self):
         img = SimpleNamespace(size=(self.W, self.H))
         pixels = [(x, 10) for x in range(12, 20)]
-        patch = self.view3d.edge_patch(None, img, 15, 10, pixels, 2, (0, 0), prefer_tri=0)
+        patch = self.view3d.patch.edge_patch(None, img, 15, 10, pixels, 2, (0, 0), prefer_tri=0)
         self.assertIsNotNone(patch)
         # texel 17 lies right of A's edge (x = 16): on the surface it is B's texel 25 (row 30)
         f = patch.flat([(17, 10)])[0]

@@ -123,8 +123,8 @@ def _set_rot(rv3d, rot):
 def target_object(context):
     """The painted object (the 3D paint session's mesh), else the active object."""
     import bpy
-    from ...core import view3d
-    cache = view3d.cached_mesh()
+    from ...core.view3d import mesh as v3d_mesh
+    cache = v3d_mesh.cached_mesh()
     if cache is not None:
         obj = bpy.data.objects.get(cache.key[0])
         if obj is not None:
@@ -134,8 +134,8 @@ def target_object(context):
 
 def object_points(obj):
     """World-space points to frame: the cached paint mesh's vertices, else the bounding box."""
-    from ...core import view3d
-    cache = view3d.cached_mesh()
+    from ...core.view3d import mesh as v3d_mesh
+    cache = v3d_mesh.cached_mesh()
     if cache is not None and cache.key[0] == obj.name and len(cache.tri_pos):
         local = cache.tri_pos.reshape(-1, 3)
     else:

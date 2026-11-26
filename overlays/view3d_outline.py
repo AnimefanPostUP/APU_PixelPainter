@@ -12,7 +12,7 @@ import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 
-from ..core import view3d
+from ..core.view3d import frames, mesh as v3d_mesh, surface_path
 from ..utils import blender_utils, math_utils
 
 
@@ -28,7 +28,7 @@ def _edge_line_outline(context, state, tool, img, radius):
     ends = tool.surface_endpoints(state) if hasattr(tool, 'surface_endpoints') else None
     if ends is None or state.get('start_position') is None:
         return None
-    result = view3d.edge_line(context, img, *ends, radius)
+    result = surface_path.edge_line(context, img, *ends, radius)
     if result is None:
         return None
     frame, line = result
@@ -37,7 +37,7 @@ def _edge_line_outline(context, state, tool, img, radius):
         return np.empty((0, 2, 3), dtype=np.float64)
     w, h = img.size
     seg = np.array(edges, dtype=np.float64) / np.array((w, h), dtype=np.float64)  # tile 0: frame space
-    return view3d.project_segments(frame, seg)
+    return frames.project_segments(frame, seg)
 
 
 def _outline_local(context, state, tool, cache, img, cx, cy, radius, edge_mode):
@@ -68,13 +68,13 @@ def _outline_local(context, state, tool, cache, img, cx, cy, radius, edge_mode):
             # Lay the mesh out around the hovered face so the outline
             # continues over mesh edges, across UV seams.
             center = ((cx + 0.5) / w + tile[0], (cy + 0.5) / h + tile[1])
-            seed = view3d.find_triangle(cache, center, prefer=hit_tri)
+            seed = frames.find_triangle(cache, center, prefer=hit_tri)
             flat = seg.reshape(-1, 2)
-            frame = (view3d.unfold(cache, seed, flat.min(axis=0), flat.max(axis=0))
+            frame = (frames.unfold(cache, seed, flat.min(axis=0), flat.max(axis=0))
                      if seed is not None else None)
-            local = view3d.project_segments(frame, seg)
+            local = frames.project_segments(frame, seg)
         else:
-            local = view3d.project_uv_segments(cache, seg)
+            local = frames.project_uv_segments(cache, seg)
     else:
         local = np.empty((0, 2, 3), dtype=np.float64)
     _cache_key, _cache_local = key, local
@@ -109,7 +109,7 @@ def draw_brush_outline_3d(context, state):
     cx, cy = state.get('current_cx'), state.get('current_cy')
     if cx is None or cy is None:
         return
-    cache = view3d.cached_mesh()
+    cache = v3d_mesh.cached_mesh()
     if cache is None:
         return
     obj = bpy.data.objects.get(cache.key[0])

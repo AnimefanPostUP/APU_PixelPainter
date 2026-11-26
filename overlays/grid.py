@@ -138,8 +138,8 @@ def draw_pixel_grid_overlay_3d(context, image, grid_opacity):
     w, h = image.size
     if w == 0 or h == 0:
         return
-    from ..core import view3d
-    cache = view3d.cached_mesh()
+    from ..core.view3d import mesh as v3d_mesh
+    cache = v3d_mesh.cached_mesh()
     if cache is None or len(cache.tri_pos) == 0:
         return
     import bpy

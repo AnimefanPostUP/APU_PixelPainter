@@ -1,6 +1,7 @@
 """Stroke tools: press-drag-release painting plus the standard modifier subtools."""
 
-from ..core import history, view3d
+from ..core import history
+from ..core.view3d import footprint, islands as v3d_islands, patch, stroke_path
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
 from ..model import color_history, tertiary_color
@@ -216,7 +217,7 @@ class StrokeTool(ToolBase):
         end = state.get('mouse_region')
         if state['last_paint_cx'] is None or start is None or end is None:
             return [(cx, cy)]
-        return view3d.pixel_path(ctx.context, start, end, img) or [(cx, cy)]
+        return stroke_path.pixel_path(ctx.context, start, end, img) or [(cx, cy)]
 
     def paint(self, ctx):
         """Build the :class:`DrawEnvironment` and run one :meth:`on_draw` step."""
@@ -267,17 +268,17 @@ class StrokeTool(ToolBase):
             modifier=modifier,
         )
         if ctx.is_3d and not ctx.edge_mode:
-            islands = view3d.island_map(context, img)
+            islands = v3d_islands.island_map(context, img)
             if islands is not None:
-                env.islands = view3d.IslandClip(islands, (cx, cy), state.get('view3d_hit_tri'))
+                env.islands = v3d_islands.IslandClip(islands, (cx, cy), state.get('view3d_hit_tri'))
         if ctx.edge_mode:
             env.edge_mode = True
             tile = state.get('view3d_uv_tile') or (0, 0)
             hit_tri = state.get('view3d_hit_tri')
-            env.expand_stamp = lambda x, y, pixels, weights: view3d.edge_expand(
+            env.expand_stamp = lambda x, y, pixels, weights: footprint.edge_expand(
                 context, img, x, y, pixels, weights, tile,
                 prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
-            env.edge_patch = lambda x, y, pixels, pad: view3d.edge_patch(
+            env.edge_patch = lambda x, y, pixels, pad: patch.edge_patch(
                 context, img, x, y, pixels, pad, tile,
                 prefer_tri=hit_tri if (x, y) == (cx, cy) else None)
 

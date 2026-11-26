@@ -1,6 +1,7 @@
 """Line tool: a straight line from the press to the cursor, tipped with the last brush shape.
 """
 
+from ...core.view3d import footprint as v3d_footprint, surface_path
 from ...paint import native_paths as native_paint
 from ..base import SettingDefaults
 from ..mask import guard as mask_guard
@@ -112,9 +113,8 @@ class LineBrushTool(BrushTool):
         frame = None
         if env.edge_mode:
             # Shortest path over the surface, across UV seams.
-            from ...core import view3d
             ends = self.surface_endpoints(env.state)
-            result = view3d.edge_line(env.context, env.img, *ends, env.radius) if ends else None
+            result = surface_path.edge_line(env.context, env.img, *ends, env.radius) if ends else None
             if result is not None:
                 frame, line = result
         if line is None:
@@ -128,9 +128,8 @@ class LineBrushTool(BrushTool):
         pixels, weights = footprint if footprint is not None else self._line_footprint(env, line)
         if frame is not None:
             # ``line`` is in the start face's unfolded texture space: map to real pixels.
-            from ...core import view3d
             w, h = env.img.size
-            pixels, weights = view3d.expand_footprint(
+            pixels, weights = v3d_footprint.expand_footprint(
                 frame, pixels, weights, w, h, (0, 0), drop_uncovered=True)
         if len(pixels):
             paint_pixels(env, pixels, base_buffer=env.state['back_buffer'], weights=weights)

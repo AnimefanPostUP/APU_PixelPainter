@@ -21,7 +21,8 @@ from ..overlays import brush_outline, cursor as cursor_overlays, handler as draw
 from ..overlays import grid as draw_gridoverlay
 from ..tools.mask import overlay as mask_overlay
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
-from . import history, view3d
+from . import history
+from .view3d import mesh as v3d_mesh, raycast
 from ..overlays import view3d_outline as overlays_view3d
 from .context import ToolContext, is_shift_smooth_global
 from .framework import InputEvent, ToolManager
@@ -178,7 +179,7 @@ def _register_draw_handler(space, context):
         try:
             if not _in_session_area(ctx):
                 return
-            if view3d.is_view3d(ctx):
+            if raycast.is_view3d(ctx):
                 cursor_overlays.draw_view3d_offmesh_cursor(ctx, _state)
             else:
                 tctx = ToolContext(ctx, MANAGER)
@@ -523,7 +524,7 @@ class PixelPainterOperator(Operator):
                 return {'CANCELLED'}
 
             # Every event, so the outline follows F-key resizing in real time.
-            if view3d.is_view3d(context):
+            if raycast.is_view3d(context):
                 _sync_brush_size_3d(context)
             else:
                 _sync_external_brush_size_into_tool_setting(context)
@@ -557,11 +558,11 @@ class PixelPainterOperator(Operator):
                 return {'CANCELLED'}
             _end_session()  # started in another editor: take the session over
 
-        if view3d.is_view3d(context):
+        if raycast.is_view3d(context):
             if blender_utils.get_paint_image(context) is None:
                 self.report({'WARNING'}, "Pixel Painter: no texture to paint on (add a paint slot / canvas)")
                 return {'CANCELLED'}
-            view3d.invalidate()  # the mesh may have changed since the last session
+            v3d_mesh.invalidate()  # the mesh may have changed since the last session
 
         global _session_counter
         reset_session()

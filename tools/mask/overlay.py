@@ -116,11 +116,11 @@ def draw_2d(context, v2d, image):
 def draw_3d(context, image):
     """3D Viewport: red stripes over mesh triangles whose UV center is protected (POST_VIEW)."""
     global _local3d
-    from ...core import view3d
+    from ...core.view3d import mesh as v3d_mesh
     allowed_pixels = _blocked_for_draw(context, image)
     if allowed_pixels is None:
         return
-    cache = view3d.cached_mesh()
+    cache = v3d_mesh.cached_mesh()
     rv3d = getattr(context, 'region_data', None)
     if cache is None or rv3d is None:
         return
