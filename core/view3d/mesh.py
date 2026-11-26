@@ -46,12 +46,14 @@ _cache_version = 0
 
 
 _cache = None
+_failed_key = None   # key whose build gave no mesh (no UV map, no faces): not retried per event
 
 
 def invalidate():
     """Drop the cached mesh (call when a painting session starts)."""
-    global _cache
+    global _cache, _failed_key
     _cache = None
+    _failed_key = None
 
 
 def uv_layer_name(context, obj):
@@ -125,19 +127,22 @@ def _build(context, obj, uv_name, key):
 
 def mesh_cache(context):
     """Cached BVH + UV data of the active mesh object, or None."""
-    global _cache
+    global _cache, _failed_key
     obj = getattr(context, 'active_object', None)
     if obj is None or obj.type != 'MESH':
         return None
     uv_name = uv_layer_name(context, obj)
     key = (obj.name, obj.data.name, uv_name)
     if _cache is None or _cache.key != key:
+        if key == _failed_key:
+            return None   # evaluating the mesh again would fail again (until invalidate())
         try:
             _cache = _build(context, obj, uv_name, key)
         except Exception:
             import traceback
             traceback.print_exc()
             _cache = None
+        _failed_key = key if _cache is None else None
     return _cache
 
 
