@@ -18,7 +18,8 @@ sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ i
 
 falloff = importlib.import_module(f'{_PACKAGE}.model.falloff')
 math_utils = importlib.import_module(f'{_PACKAGE}.utils.math_utils')
-pen_bar_ui = importlib.import_module(f'{_PACKAGE}.ui.pen.bar')
+pen_falloff_field = importlib.import_module(f'{_PACKAGE}.ui.pen.falloff_field')
+pen_metrics = importlib.import_module(f'{_PACKAGE}.ui.pen.metrics')
 theme_mod = importlib.import_module(f'{_PACKAGE}.ui.kit.theme')
 
 
@@ -101,12 +102,12 @@ class FalloffFieldTest(unittest.TestCase):
         self.values = [(0.25, 0.75)]
         self.warps, self.hidden = [], []
         self.active = active
-        field = pen_bar_ui.FalloffField(
+        field = pen_falloff_field.FalloffField(
             value=lambda: self.values[-1], on_value=lambda h, s: self.values.append((h, s)),
             active=lambda: self.active, on_drag_state=self.hidden.append,
             warp=(lambda x, y: self.warps.append((x, y))) if warp else None)
         field.r0, field.r1 = 90.0, 170.0
-        field.a0, field.a1 = pen_bar_ui.FALLOFF_FIELD_ARC
+        field.a0, field.a1 = pen_metrics.FALLOFF_FIELD_ARC
         field.place_on(0.0, 0.0, _Theme(), 2.5)
         field._theme = _Theme()
         return field
@@ -123,7 +124,7 @@ class FalloffFieldTest(unittest.TestCase):
         field = self.make()
         def at(r, a):
             return field.field_at(math.cos(math.radians(a)) * r, math.sin(math.radians(a)) * r)
-        mid = sum(pen_bar_ui.FALLOFF_FIELD_ARC) * 0.5
+        mid = sum(pen_metrics.FALLOFF_FIELD_ARC) * 0.5
         self.assertGreater(at(100.0, mid)[0], at(160.0, mid)[0])
         self.assertLess(at(130.0, mid + 20.0)[1], at(130.0, mid - 20.0)[1])
 
@@ -175,7 +176,7 @@ class FalloffFieldTest(unittest.TestCase):
         """A straight swipe across the field's middle ray changes only the sharpness, and
         one along it only the hardness -- wherever the marker is (no arc to follow)."""
         field = self.make()
-        am = math.radians(sum(pen_bar_ui.FALLOFF_FIELD_ARC) * 0.5)
+        am = math.radians(sum(pen_metrics.FALLOFF_FIELD_ARC) * 0.5)
         ux, uy = math.cos(am), math.sin(am)
         for start in ((0.1, 0.1), (0.9, 0.9), (0.5, 0.5)):
             self.values.append(start)
@@ -254,7 +255,7 @@ class FalloffFieldTest(unittest.TestCase):
     def test_preview_radius_scaled(self):
         field = self.make()
         self.assertGreater(field.preview_radius(), 0.0)
-        self.assertEqual(pen_bar_ui.FIELD_PREVIEW_SCALE, 1.6)
+        self.assertEqual(pen_metrics.FIELD_PREVIEW_SCALE, 1.6)
 
 
 if __name__ == '__main__':

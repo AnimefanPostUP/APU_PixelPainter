@@ -23,7 +23,10 @@ import math
 
 from . import anim
 from . import draw
-from .geometry import Rect, corner_contains, corner_room, corner_segment_points, polygon_centroid, ring_contains, ring_segment_points, round_strip
+from .geometry import (
+    Rect, corner_contains, corner_room, corner_segment_points, polygon_centroid, ring_contains,
+    ring_segment_points, round_strip,
+)
 from .theme import mix, with_alpha
 from .widget import Widget, _resolve
 

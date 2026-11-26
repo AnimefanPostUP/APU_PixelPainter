@@ -24,7 +24,8 @@ from ..kit.form import text_left
 from ..kit.theme import with_alpha
 from ..kit.widget import _resolve
 from ...model import blend_modes, falloff
-from .bar import TINT_FALLOFF, TINT_MODES, TINT_TOOLS, _paint_color_wheel, _paint_curve, _paint_eyedropper, _paint_save, _thick_line
+from .icons import paint_color_wheel, paint_curve, paint_eyedropper, paint_save, thick_line
+from .metrics import TINT_FALLOFF, TINT_MODES, TINT_TOOLS
 from .style import PenButton, PlainGroup
 
 
@@ -85,7 +86,7 @@ def _ink(dc, alpha, amount=0.92):
 def _icon_brush(dc, x, y, size, alpha):
     s = size * 0.6
     color = _ink(dc, alpha)
-    _thick_line((x + s * 0.45, y + s * 0.45), (x - s * 0.05, y - s * 0.05), s * 0.13, color)
+    thick_line((x + s * 0.45, y + s * 0.45), (x - s * 0.05, y - s * 0.05), s * 0.13, color)
     draw.circle(x - s * 0.22, y - s * 0.22, s * 0.24, color, segments=16)
 
 
@@ -97,7 +98,7 @@ def _icon_blend(dc, x, y, size, alpha):
 
 
 def _icon_falloff(dc, x, y, size, alpha):
-    _paint_curve(dc, x, y, size * 1.2, alpha)
+    paint_curve(dc, x, y, size * 1.2, alpha)
 
 
 def _icon_pen(dc, x, y, size, alpha):
@@ -106,7 +107,7 @@ def _icon_pen(dc, x, y, size, alpha):
     ux = uy = math.sqrt(0.5)
     tip = (x - ux * s * 0.5, y - uy * s * 0.5)
     base = (x - ux * s * 0.2, y - uy * s * 0.2)
-    _thick_line(base, (x + ux * s * 0.5, y + uy * s * 0.5), s * 0.22, color)
+    thick_line(base, (x + ux * s * 0.5, y + uy * s * 0.5), s * 0.22, color)
     draw.triangle(tip, (base[0] - uy * s * 0.11, base[1] + ux * s * 0.11),
                   (base[0] + uy * s * 0.11, base[1] - ux * s * 0.11), color)
 
@@ -197,7 +198,7 @@ def _icon_layout(kind):
 
 
 TABS = (
-    ('COLOR', "Color Selector", TINT_COLOR, _paint_color_wheel(None)),
+    ('COLOR', "Color Selector", TINT_COLOR, paint_color_wheel(None)),
     ('TOOLS', "Tools", TINT_TOOLS, _icon_brush),
     ('BLENDING', "Blending", TINT_MODES, _icon_blend),
     ('FALLOFF', "Falloff", TINT_FALLOFF, _icon_falloff),
@@ -374,7 +375,7 @@ class SettingsMenu:
                         "Tap an empty slot: store the current color.")),
         ], gap=6.0)
         return [
-            self._group("Layout", layouts, tint, _paint_color_wheel(None)),
+            self._group("Layout", layouts, tint, paint_color_wheel(None)),
             self._group("Color Model", model, tint),
             self._group("Channel Sliders", sliders, tint),
             self._group("Pen Color Selector", preview, tint, _icon_eye),
@@ -445,7 +446,7 @@ class SettingsMenu:
                      for p in presets]
             rows.append(Row([head, Grid(cells, columns=7, gap=3.0)], gap=12.0))
         per_tool = Column(rows + [self._hint(("Left: the tool (tap selects it); right: its falloff.",))], gap=5.0)
-        edit = PenButton("Edit Custom Curve", painter=_paint_curve, layout='row', size=(200.0, 30.0),
+        edit = PenButton("Edit Custom Curve", painter=paint_curve, layout='row', size=(200.0, 30.0),
                           key='SET_EDIT_CURVE')
         edit.on_click = lambda: self.bar._open_curve(edit)
         return [
@@ -469,8 +470,8 @@ class SettingsMenu:
         return [
             self._group("Pen Menu", menu, tint, _icon_pen),
             self._group("Pen Pressure Affects", pressure, tint, _icon_pressure),
-            self._group("Save Image (top right)", self._save_settings(), tint, _paint_save(None)),
-            self._group("How to Use", self._hint(USAGE), tint, _paint_eyedropper),
+            self._group("Save Image (top right)", self._save_settings(), tint, paint_save(None)),
+            self._group("How to Use", self._hint(USAGE), tint, paint_eyedropper),
         ]
 
     def _save_settings(self):

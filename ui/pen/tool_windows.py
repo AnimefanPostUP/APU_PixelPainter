@@ -37,7 +37,8 @@ from ..kit.form import text_left
 from ..kit.geometry import ring_segment_points, round_strip
 from ..kit.theme import mix, with_alpha
 from ..kit.widget import _resolve
-from .bar import TINT_MASK, TINT_VIEW, _captioned, _paint_mask, _paint_mask_invert, _paint_mask_pick, _paint_view, _thick_line
+from .icons import captioned, paint_mask, paint_mask_invert, paint_mask_pick, paint_view, thick_line
+from .metrics import TINT_MASK, TINT_VIEW
 from .settings import _icon_eye, _icon_reset
 from .style import BUTTON_ROUND, PenButton, pen_fill
 
@@ -91,7 +92,7 @@ VIEW_HELP = ("Left dial: view from Front (middle), Top,",
 class _WindowGroup(Group):
     """A window's content under a *title plate*: a small rounded plate centered on
     top with the lock (left), the icon + title, and '?', X and the resize triangle
-    (right; placed by ``_Window._place_on_plate``). ``plate`` (screen Rect) is set by
+    (right; placed by ``Window._place_on_plate``). ``plate`` (screen Rect) is set by
     :meth:`arrange`. No box around the content: the window's background is shaped to
     its parts (:func:`window_shapes`).
 
@@ -400,7 +401,7 @@ class _ArcSlider(RingSegment):
 
 def _paint_edit(dc, x, y, size, alpha):
     """The Mask window's center: Edit (choose islands / parts on the canvas)."""
-    _paint_mask_pick(dc, x, y, size, alpha, caption=True)
+    paint_mask_pick(dc, x, y, size, alpha, caption=True)
 
 
 def _paint_source_band(source):
@@ -488,7 +489,7 @@ def _icon_arrow(angle_deg):
         dx, dy = math.cos(a), math.sin(a)
         tip = (x + dx * s, y + dy * s)
         base = (x + dx * s * 0.05, y + dy * s * 0.05)
-        _thick_line((x - dx * s, y - dy * s), base, _stroke(theme) * 1.6, color)
+        thick_line((x - dx * s, y - dy * s), base, _stroke(theme) * 1.6, color)
         nx, ny = -dy, dx
         draw.triangle(tip, (base[0] + nx * s * 0.6, base[1] + ny * s * 0.6),
                       (base[0] - nx * s * 0.6, base[1] - ny * s * 0.6), color)
@@ -534,8 +535,8 @@ def _icon_fit(dc, x, y, size, alpha):
     for sx in (-1, 1):
         for sy in (-1, 1):
             cx, cy = x + sx * s, y + sy * s
-            _thick_line((cx, cy), (cx - sx * s * 0.55, cy), w, color)
-            _thick_line((cx, cy), (cx, cy - sy * s * 0.55), w, color)
+            thick_line((cx, cy), (cx - sx * s * 0.55, cy), w, color)
+            thick_line((cx, cy), (cx, cy - sy * s * 0.55), w, color)
     draw.circle(x, y, s * 0.3, color, segments=12)
 
 
@@ -547,7 +548,7 @@ def _icon_center(dc, x, y, size, alpha):
     w = _stroke(theme)
     draw.circle_outline(x, y, s * 0.6, color, width=w)
     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        _thick_line((x + dx * s * 0.3, y + dy * s * 0.3), (x + dx * s, y + dy * s), w, color)
+        thick_line((x + dx * s * 0.3, y + dy * s * 0.3), (x + dx * s, y + dy * s), w, color)
 
 
 def _icon_zoom(sign):
@@ -559,10 +560,10 @@ def _icon_zoom(sign):
         w = _stroke(theme)
         gx, gy, gr = x - s * 0.2, y + s * 0.2, s * 0.72
         draw.circle_outline(gx, gy, gr, color, width=w)
-        _thick_line((gx + gr * 0.7, gy - gr * 0.7), (x + s, y - s), w * 2.0, color)
-        _thick_line((gx - gr * 0.5, gy), (gx + gr * 0.5, gy), w, color)
+        thick_line((gx + gr * 0.7, gy - gr * 0.7), (x + s, y - s), w * 2.0, color)
+        thick_line((gx - gr * 0.5, gy), (gx + gr * 0.5, gy), w, color)
         if sign > 0:
-            _thick_line((gx, gy - gr * 0.5), (gx, gy + gr * 0.5), w, color)
+            thick_line((gx, gy - gr * 0.5), (gx, gy + gr * 0.5), w, color)
     return paint
 
 
@@ -580,7 +581,7 @@ def _icon_perspective(persp):
 
 
 def _icon_mask_title(dc, x, y, size, alpha):
-    _paint_mask(dc, x, y, size * 1.4, alpha, caption=False)
+    paint_mask(dc, x, y, size * 1.4, alpha, caption=False)
 
 
 # ---- windows -----------------------------------------------------------------------------
@@ -604,11 +605,11 @@ def build_mask_window(bar):
                          selected=a.mask_picking, on_click=a.toggle_mask_pick)
     dial = Dial(center, gap=DIAL_GAP)
     ring = [   # counter-clockwise from the right: top right, top left, bottom left, bottom right
-        segment('INVERT', _paint_mask_invert, selected=a.mask_inverted, on_click=a.toggle_mask_invert),
-        segment('MASK', _paint_mask, selected=a.mask_enabled, on_click=a.toggle_mask),
-        segment('SHOW', _captioned(_icon_eye, "Show"), selected=lambda: bool(a.wm_get('mask_show')),
+        segment('INVERT', paint_mask_invert, selected=a.mask_inverted, on_click=a.toggle_mask_invert),
+        segment('MASK', paint_mask, selected=a.mask_enabled, on_click=a.toggle_mask),
+        segment('SHOW', captioned(_icon_eye, "Show"), selected=lambda: bool(a.wm_get('mask_show')),
                 on_click=lambda: a.wm_set('mask_show', not a.wm_get('mask_show'))),
-        segment('CLEAR', _captioned(_icon_reset, "Clear"),
+        segment('CLEAR', captioned(_icon_reset, "Clear"),
                 on_click=lambda: bar.confirm(["Forget all chosen islands / parts?"], a.clear_mask, "Clear")),
     ]
     for i, seg in enumerate(ring):
@@ -692,4 +693,4 @@ def build_view_window(bar):
 
 
 def _paint_view_title(dc, x, y, size, alpha):
-    _paint_view(dc, x, y - size * 0.15, size * 1.6, alpha)
+    paint_view(dc, x, y - size * 0.15, size * 1.6, alpha)

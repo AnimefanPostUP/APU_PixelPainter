@@ -27,7 +27,8 @@ import bpy
 from ...core.context import ToolContext
 from ...core.framework import ToolFrame
 from ...ui.kit import Theme, UIEvent, hsv_for_rgb
-from ...ui.pen.bar import LAYOUT_STATE, PenBar
+from ...ui.pen.bar import PenBar
+from ...ui.pen.metrics import LAYOUT_STATE
 from ...utils import blender_utils, palette_library
 from ...model import blend_modes, color_history, color_palette, falloff, tertiary_color
 from ..mask import data as mask_data

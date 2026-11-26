@@ -4,7 +4,9 @@ import numpy as np
 
 from ..paint import blending as draw_blending
 from ..utils import blender_utils, pixel_io
-from .gpu_prims import draw_precision_pixel_guide, draw_circle_outline, draw_fill, draw_filled_circle, draw_lines
+from .gpu_prims import (
+    draw_precision_pixel_guide, draw_circle_outline, draw_fill, draw_filled_circle, draw_lines,
+)
 
 
 def _draw_selection_pixel_preview(state, rect):

@@ -18,7 +18,10 @@ sys.path.insert(0, os.path.dirname(_ADDON_DIR))  # for the package import
 sys.path.insert(0, _ADDON_DIR)                   # first: `ui` must be this addon's ui package
 sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ imports bpy
 
-from ui.kit import Button, ColorPad, DragBubble, hsv_for_rgb, Overlay, Panel, Row, RoundButton, UIEvent  # noqa: E402
+from ui.kit import (
+    Button, ColorPad, DragBubble, hsv_for_rgb, Overlay, Panel, Row, RoundButton,
+    UIEvent  # noqa: E402,
+)
 from ui.kit.events import PASS_THROUGH, RUNNING  # noqa: E402
 
 framework = importlib.import_module(f'{_PACKAGE}.core.framework')

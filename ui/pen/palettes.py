@@ -14,7 +14,7 @@
   button, *Cancel*. A tap outside it, ESC or right click cancel.
 
 Drag payloads are ``('palette', palette, origin)`` with origin ``('project', i)``
-or ``('library', i)`` (see ``ui.pen_bar._ColorDrag``).
+or ``('library', i)`` (see ``ui.pen_bar.ColorDrag``).
 """
 
 from ..kit import Column, Rect, Row, TextBlock, Widget
@@ -22,7 +22,7 @@ from ..kit import draw
 from ..kit.theme import mix, with_alpha
 from ..kit.widget import _resolve
 from ...model import color_palette
-from .bar import _ColorDrag
+from .color_widgets import ColorDrag
 from .style import DangerButton, PenButton, PenPanel, PlainGroup
 
 PAGE_WIDTH = 300.0
@@ -123,7 +123,7 @@ def draw_palette_cells(rect, palette, alpha, theme, rows=2):
 
 # ---- widgets ---------------------------------------------------------------------------
 
-class PalettePreview(_ColorDrag, Widget):
+class PalettePreview(ColorDrag, Widget):
     """A palette as a strip of color cells. Drag source (``origin()``: the payload's
     origin); ``palette()`` None shows an empty strip."""
 

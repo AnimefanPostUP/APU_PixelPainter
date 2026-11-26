@@ -40,7 +40,9 @@ without one, the color from before the drag is marked.
 import math
 
 from . import draw
-from .color_models import CHANNELS, HSL, HSV, RGB, clamp01, convert, from_tone_weights, to_rgb, tone_weights, wraps
+from .color_models import (
+    CHANNELS, HSL, HSV, RGB, clamp01, convert, from_tone_weights, to_rgb, tone_weights, wraps,
+)
 from .geometry import Rect
 from .textfield import NUMBER_CHARS, TextField
 from .theme import with_alpha

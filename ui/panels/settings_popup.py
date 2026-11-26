@@ -370,7 +370,7 @@ class PixelPainterResetPenUIOperator(Operator):
 
     def execute(self, context):
         from ...core.state import STATE
-        from ..pen.bar import LAYOUT_STATE
+        from ..pen.metrics import LAYOUT_STATE
         STATE.update(LAYOUT_STATE)
         for window in context.window_manager.windows:
             for area in window.screen.areas:
