@@ -48,15 +48,15 @@ everything here works with press, drag and release only.
   the tertiary color; tap: selects it / back to the color before). With the
   tertiary color selected, the color selector still edits the primary or the
   secondary color: that one has a dotted outline, a tap on the other switches.
-  bottom right the palette band (24 slots in two bands along the circle) and
-  *Palettes* (switches the band between the active palette's colors and the
-  project's 24 palettes);
-  bottom left *Windows* (opens the Windows ring on the press), *Save* (saves /
+  bottom right the palette band (24 slots in two bands along the circle) and,
+  in the gap right of the circle (centered on the right), *Palettes* (switches
+  the band between the active palette's colors and the project's 24 palettes);
+  bottom left, a capsule (an arc band with round ends) along the circle: *Windows* (opens the Windows ring on the press), *Save* (saves /
   packs the painted image as set in settings > Pen > Save Image; a green dot
   while it has unsaved changes) and the pixel *Grid* (opacity %; tap: on / off,
   drag up / down: opacity) and, ending at the bottom, *Blend* (opens the
-  flyout; a dark-to-light gray gradient with the mode's name). Top right, past the color history, *Pixel* /
-  *Free* (spacing) and *Alphalock* (protect transparent pixels).
+  flyout; a dark-to-light gray gradient with the mode's name). Top right, past the color history, a
+  capsule with *Pixel* / *Free* (spacing) and *Alphalock* (protect transparent pixels).
 * **Palettes** are stored per project (in the .blend); the library window
   (``ui/pen_palettes.py``) imports / exports them to ``palettes.json`` and the
   clipboard -- project and library are not synced. *From image...* turns an
@@ -175,8 +175,9 @@ TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
 HISTORY_ARC = (210.0, 322.5)   # Undo / Redo (inner ring)
 FAVORITES_ARC = HISTORY_ARC    # the favorite blend modes (outer ring)
 FAVORITE_ROWS = 2              # the favorites split into this many rings (the outer one takes the odd one)
-# Top-right corner, past the color history: Pixel / Free (spacing) and Alphalock.
-BRUSH_MODE_ARC = (22.0, 68.0)
+# Top-right corner, past the color history: Pixel / Free (spacing) and Alphalock as
+# one capsule (an arc band with round ends; radii: BRUSH_MODE_RING, below).
+BRUSH_MODE_ARC = (25.0, 65.0)
 BLEND_GRADIENT = ((0.16, 0.16, 0.16), (0.78, 0.78, 0.78))   # the Blend button: dark gray -> light gray
 _INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
 # Category tints (mixed lightly into the segment fills).
@@ -215,15 +216,16 @@ COLORS_WEIGHTS = (2.0, 1.6, 1.4, 1.6, 2.0)
 SWAP_DEPTH = 27.0                    # Swap's radial depth; the Mix bubble sits past it
 COLOR_ROUND = 6.0                    # corner radius of the color section's buttons
 MIX_BUBBLE_MARGIN = 1.5              # the tertiary bubble keeps this far from its slot's edges
-COLOR_WHEEL_ARC = (270.0, 360.0)     # bottom right: the palette (2 bands along the circle)
-# Palettes: around the diagonal, the only part of the corner with room left past the
-# palette bands. (Color / Library: the Windows ring.)
-PALETTE_BUTTON_ARC = (290.0, 340.0)
+COLOR_WHEEL_ARC = (270.0, 350.0)     # bottom right: the palette (2 bands along the circle)
+# Palettes: a capsule in the gap right of the circle, centered on the right (as deep
+# as the palette bands; Color / Library: the Windows ring).
+PALETTE_BUTTON_ARC = (350.0, 370.0)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
-WHEEL_CORNER_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
-# Bottom left, from the circle out to the square: Windows, Save, Grid, Blend (Blend ends
-# at the bottom, where the palette band starts).
+BRUSH_MODE_RING = (COLOR_CORNER_INNER, COLOR_CORNER_INNER + 26.0)
+# Bottom left, a capsule along the circle: Windows, Save, Grid, Blend (Blend ends at the
+# bottom, where the palette band starts; the band stays inside the square there).
 BOTTOM_LEFT_INNER = CORNER_INNER
+BOTTOM_LEFT_RING = (BOTTOM_LEFT_INNER, SQUARE_HALF - 2.0)
 BOTTOM_LEFT_ARC = (192.0, 270.0)
 _BL_SHARE = (BOTTOM_LEFT_ARC[1] - BOTTOM_LEFT_ARC[0]) / 4.0
 WINDOWS_ARC = (BOTTOM_LEFT_ARC[0], BOTTOM_LEFT_ARC[0] + _BL_SHARE)   # Windows' share
@@ -720,7 +722,7 @@ def _paint_mask_pick(dc, x, y, size, alpha, caption=True):
         _caption(dc, x, cy - s * 0.8 - theme.px(5.0), "Pick", alpha)
 
 
-class _GridCorner(CornerSegment):
+class _GridCorner(RingSegment):
     """Pixel grid overlay: shows the opacity in percent (dimmed while hidden). A tap
     toggles the grid (``on_click``); dragging up / down sets the opacity
     (``on_value(v)``, 0..1; ESC restores it)."""
@@ -1526,6 +1528,18 @@ class _WindowRing(Widget):
                                 with_alpha(theme.accent, 0.35 * dc.alpha), width=max(1.0, theme.px(1.0)), segments=96)
 
 
+def _add_capsule(dial, segments, r0, r1, a0, a1, **kwargs):
+    """``segments`` as one capsule: a band ``r0 .. r1`` along ``a0 .. a1`` (split like
+    :meth:`Dial.add_band`) whose two outer ends are half circles."""
+    segments = dial.add_band(segments, r0, r1, a0, a1, **kwargs)
+    for i, segment in enumerate(segments):
+        segment.round = (r1 - r0) * 0.5
+        segment.round_ends = (i == 0, i == len(segments) - 1)
+        if len(segments) == 1:
+            segment.edge_extra = (0.0, 0.0)   # its round ends set it apart; keep the room
+    return segments
+
+
 def _is_inside(widget, ancestor):
     while widget is not None:
         if widget is ancestor:
@@ -1591,8 +1605,8 @@ def _paint_spacing(mode):
     return paint
 
 
-class _BlendButton(CornerSegment):
-    """Blend (opens the flyout), a corner button: filled with a gradient from dark to
+class _BlendButton(RingSegment):
+    """Blend (opens the flyout): filled with a gradient from dark to
     light gray along the circle (``BLEND_GRADIENT``), the active blend mode's name
     (``mode()``) on it."""
 
@@ -1806,21 +1820,21 @@ class PenBar:
     def _add_corners(self, dial):
         """Top left the color section: the gradient slider (tertiary color), secondary's
         Picker / secondary / Swap + tertiary bubble / primary / primary's Picker; top right
-        the color history band and past it Pixel / Free and Alphalock; bottom right the palette and its button; bottom left
-        Windows, Save, Grid and Blend."""
+        the color history band and past it the Pixel / Free + Alphalock capsule; bottom right
+        the palette, right of the circle its button; bottom left the Windows / Save / Grid /
+        Blend capsule."""
         a = self.actions
-        corner = dict(chamfer=CORNER_CHAMFER)
 
         # Top right, outside S / A / M: the color history, newest at the top end.
         swatches = [_Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
-        # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock.
-        dial.add_corner([
-            CornerSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing), on_click=a.toggle_spacing),
-            CornerSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
-                          selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
-        ], COLOR_CORNER_INNER, SQUARE_HALF, *BRUSH_MODE_ARC, tint=TINT_MODES, **corner)
+        # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock, one capsule.
+        _add_capsule(dial, [
+            RingSegment("Spacing", key='SPACING', painter=_paint_spacing(a.spacing), on_click=a.toggle_spacing),
+            RingSegment("Alphalock", key='ALPHA_LOCK', painter=_paint_alpha_lock,
+                        selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
+        ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
         # Top left along the circle: the gradient primary (left) -> secondary (top).
         self.gradient_slider = _GradientSlider("Tertiary", key='GRADIENT', colors=a.colors, value=a.tertiary_t,
                                                active=a.tertiary_active, on_value=a.set_tertiary_t)
@@ -1849,11 +1863,11 @@ class PenBar:
         mix.r0 = swap_outer + DIAL_GAP
 
         from .pen_palettes import paint_library, paint_palettes
-        palettes = CornerSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
-                                 on_click=lambda: a.set_palette_view(not a.palette_view()))
-        dial.add_corner([palettes], WHEEL_CORNER_INNER, SQUARE_HALF, *PALETTE_BUTTON_ARC, **corner)
+        palettes = RingSegment("Palettes", key='PALETTES', painter=paint_palettes, selected=a.palette_view,
+                               on_click=lambda: a.set_palette_view(not a.palette_view()))
+        _add_capsule(dial, [palettes], CORNER_INNER, CORNER_INNER + PALETTE_DEPTH, *PALETTE_BUTTON_ARC)
 
-        # Palette band in front of them: the active palette's colors, or (palette view) the
+        # Palette band left of it: the active palette's colors, or (palette view) the
         # project's palettes. Slot 0 at the left.
         palette = [_PaletteSlot(self, i, key=f"PALETTE_{i}") for i in range(color_palette.PALETTE_SIZE)]
         per_row = (len(palette) + PALETTE_ROWS - 1) // PALETTE_ROWS
@@ -1861,23 +1875,23 @@ class PenBar:
             r0 = CORNER_INNER + row * (HISTORY_DEPTH + DIAL_GAP)
             dial.add_band(palette[row * per_row:(row + 1) * per_row], r0, r0 + HISTORY_DEPTH, *COLOR_WHEEL_ARC)
 
-        # Bottom left, from the circle out to the square: Windows (opens the popup ring on
+        # Bottom left, a capsule along the circle: Windows (opens the popup ring on
         # the press -- keep the pen down, drag onto an entry, lift), Save, Grid (tap: on /
         # off, drag: opacity), Blend (opens the flyout on the press; shows the mode).
         blend = _BlendButton("Blend", key='BLEND', mode=lambda: blend_modes.short_label(a.active_blend()),
                              on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
                              selected=lambda: self.flyout is self.blend_flyout)
         blend.activate_on_press = True
-        save = CornerSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
-                             tint=TINT_SAVE, on_click=a.save_image)
+        save = RingSegment("Save", key='SAVE_IMAGE', painter=_paint_save(a.image_unsaved, caption=False),
+                           tint=TINT_SAVE, on_click=a.save_image)
         grid = _GridCorner("Grid", key='GRID', shown=a.grid_shown, value=a.grid_opacity,
                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
-        windows = CornerSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
-                                selected=lambda: self.flyout in (self.window_ring, self.settings_flyout,
-                                                                  self.library_flyout),
-                                on_click=lambda: self.toggle_flyout(self.window_ring, windows))
+        windows = RingSegment("Windows", key='WINDOWS', painter=_paint_windows, tint=TINT_WINDOWS,
+                              selected=lambda: self.flyout in (self.window_ring, self.settings_flyout,
+                                                                self.library_flyout),
+                              on_click=lambda: self.toggle_flyout(self.window_ring, windows))
         windows.activate_on_press = True
-        dial.add_corner([windows, save, grid, blend], BOTTOM_LEFT_INNER, SQUARE_HALF, *BOTTOM_LEFT_ARC, **corner)
+        _add_capsule(dial, [windows, save, grid, blend], *BOTTOM_LEFT_RING, *BOTTOM_LEFT_ARC)
         self.windows_button = windows
 
         # The Windows popup ring (added last: over everything else of the dial).

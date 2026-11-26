@@ -365,30 +365,42 @@ def _fillet(p0, corner, p1, steps):
     return out
 
 
-def round_strip(inner, outer, radius, steps=6):
+def round_strip(inner, outer, radius, steps=6, ends=(True, True)):
     """``(inner, outer)`` strip outline (as from :func:`ring_segment_points` /
-    :func:`corner_segment_points`) with its four corners rounded by ``radius`` px
-    (less where the segment is too small). Still two lists of equal length running
-    from the first side edge to the second, usable as a triangle strip."""
-    if radius <= 0.0 or len(inner) < 2 or len(inner) != len(outer):
+    :func:`corner_segment_points`) with its corners rounded by ``radius`` px (less
+    where the segment is too small). ``ends``: round the first / last side edge's two
+    corners (a radius of half the depth makes that end a half circle -- several
+    segments in a row with only the outer ends rounded form one capsule). Still two
+    lists of equal length running from the first side edge to the second, usable as a
+    triangle strip."""
+    head, tail = bool(ends[0]), bool(ends[1])
+    if radius <= 0.0 or not (head or tail) or len(inner) < 2 or len(inner) != len(outer):
         return inner, outer
     li, lo = _length(inner), _length(outer)
-    r = min(radius, 0.5 * math.dist(inner[0], outer[0]), 0.5 * math.dist(inner[-1], outer[-1]),
-            0.5 * li, 0.5 * lo)
+    limits = [radius, 0.5 * li if head and tail else li, 0.5 * lo if head and tail else lo]
+    if head:
+        limits.append(0.5 * math.dist(inner[0], outer[0]))
+    if tail:
+        limits.append(0.5 * math.dist(inner[-1], outer[-1]))
+    r = min(limits)
     if r < 0.5:
         return inner, outer
-    mid_in, mid_out = _trim(inner, r, li - r), _trim(outer, r, lo - r)
+    r0, r1 = (r if head else 0.0), (r if tail else 0.0)
+    mid_in, mid_out = _trim(inner, r0, li - r1), _trim(outer, r0, lo - r1)
     if len(mid_in) < 2 or len(mid_out) < 2:
         return inner, outer
     count = max(len(mid_in), len(mid_out))
     mid_in, mid_out = _resample(mid_in, count), _resample(mid_out, count)
     if len(mid_in) != len(mid_out):
         return inner, outer
-    head_in = _fillet(_toward(inner[0], outer[0], r), inner[0], mid_in[0], steps)
-    head_out = _fillet(_toward(outer[0], inner[0], r), outer[0], mid_out[0], steps)
-    tail_in = _fillet(mid_in[-1], inner[-1], _toward(inner[-1], outer[-1], r), steps)
-    tail_out = _fillet(mid_out[-1], outer[-1], _toward(outer[-1], inner[-1], r), steps)
-    return (head_in[:-1] + mid_in + tail_in[1:], head_out[:-1] + mid_out + tail_out[1:])
+    new_in, new_out = list(mid_in), list(mid_out)
+    if head:
+        new_in = _fillet(_toward(inner[0], outer[0], r), inner[0], mid_in[0], steps)[:-1] + new_in
+        new_out = _fillet(_toward(outer[0], inner[0], r), outer[0], mid_out[0], steps)[:-1] + new_out
+    if tail:
+        new_in = new_in + _fillet(mid_in[-1], inner[-1], _toward(inner[-1], outer[-1], r), steps)[1:]
+        new_out = new_out + _fillet(mid_out[-1], outer[-1], _toward(outer[-1], inner[-1], r), steps)[1:]
+    return new_in, new_out
 
 
 def best_circle(r0, half, a0, a1, inset0, inset1, chamfer, samples=48):

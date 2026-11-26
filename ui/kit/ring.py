@@ -43,10 +43,11 @@ class RingSegment(Widget):
     interactive = True
 
     def __init__(self, label="", *, icon=None, icons=None, painter=None, fill=None,
-                 tint=None, tint_amount=0.16, font_size=10.0, round=0.0, **kwargs):
+                 tint=None, tint_amount=0.16, font_size=10.0, round=0.0, round_ends=(True, True), **kwargs):
         super().__init__(**kwargs)
         self.label = label
         self.round = round
+        self.round_ends = round_ends   # which side edges (a0, a1) ``round`` applies to
         self._round_px = 0.0
         self.icon = icon
         self.icons = icons
@@ -89,7 +90,7 @@ class RingSegment(Widget):
         inner, outer = ring_segment_points(self.cx, self.cy, self.pr0 if r0 is None else r0,
                                            self.pr1 if r1 is None else r1, *self.angles,
                                            self.insets[0], inset1=self.insets[1])
-        return round_strip(inner, outer, self._round_px)
+        return round_strip(inner, outer, self._round_px, ends=self.round_ends)
 
     def middle(self, r=None):
         """Point in the middle of the drawn segment at radius ``r`` (default: mid radius)."""
@@ -191,7 +192,7 @@ class CornerSegment(RingSegment):
         inner, outer = corner_segment_points(self.pr0, half, a0, a1, *self.insets, chamfer)
         self._inner = [(cx + x, cy + y) for x, y in inner]
         self._outer = [(cx + x, cy + y) for x, y in outer]
-        self._drawn = round_strip(self._inner, self._outer, self._round_px)
+        self._drawn = round_strip(self._inner, self._outer, self._round_px, ends=self.round_ends)
         if not inner:
             self._room = 0.0
             return

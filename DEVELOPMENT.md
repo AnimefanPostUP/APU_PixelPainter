@@ -215,7 +215,9 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
   top right, outside S / A / M, the color history band (`HISTORY_BAND_ARC`,
   `tools/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`)
-  and past it Pixel-Free / Alphalock corner buttons (`BRUSH_MODE_ARC`).
+  and past it Pixel-Free / Alphalock as a capsule (`BRUSH_MODE_RING` / `_ARC`;
+  `_add_capsule`: a band whose two outer ends are half circles, via
+  `RingSegment(round=..., round_ends=...)` and `kit.geometry.round_strip(ends=...)`).
   The optional tertiary color (`tools/tertiary_color.py`, pure) is a point `t` on
   the primary -> secondary gradient (state `pen_tertiary_t`); while selected
   (`pen_tertiary`, set by the slider / bubble) `StrokeTool` paints left-button
@@ -223,10 +225,11 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   still edit primary / secondary: `PenBarTool._target` (state `pen_color_target`
   while the tertiary color is selected, else the RMB lock); that color gets a dotted
   outline (`kit.draw.ring_segment_dashed_outline`, `kit.geometry.dash_runs`);
-  bottom right the palette band (24 slots in `PALETTE_ROWS` bands) and Palettes;
-  bottom left Windows, Save, Grid and Blend (`BOTTOM_LEFT_ARC`, from the circle out;
-  Blend is a `_BlendButton` corner: a `BLEND_GRADIENT` dark-to-light gray fill with
-  the mode's name).
+  bottom right the palette band (24 slots in `PALETTE_ROWS` bands) and, a capsule
+  in the gap right of the circle, Palettes (`PALETTE_BUTTON_ARC`);
+  bottom left Windows, Save, Grid and Blend as a capsule (`BOTTOM_LEFT_RING` /
+  `BOTTOM_LEFT_ARC`; Blend is a `_BlendButton`: a `BLEND_GRADIENT` dark-to-light
+  gray fill with the mode's name).
   Palettes (`tools/color_palette.py`, pure): a project holds 24 palettes of 24
   colors, stored as JSON in the scene property `pixel_painter_palettes` (saved in
   the .blend); the band shows the active palette's colors or, in the palette view
