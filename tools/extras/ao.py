@@ -5,17 +5,22 @@ object-space point + face normal); rays over the hemisphere around the normal ar
 against the mesh's BVH (the evaluated mesh cache, :mod:`core.view3d.mesh`). The
 occlusion is the share of rays that hit something within ``distance``.
 
-Only the painted object occludes. Cost: texels x samples ray casts (Python calls), so
-large textures take a few seconds; the window manager's progress shows meanwhile.
+Only the painted object occludes. Cost: texels x samples ray casts. With the C# backend
+(:mod:`utils.native`) the rays are traced natively against its own BVH of the triangles;
+otherwise every ray is a Python call to the mesh's ``BVHTree`` and large textures take a
+few seconds. The window manager's progress shows meanwhile.
 """
 
 import math
 
 import numpy as np
 
+from ...utils import native
+
 
 MAX_CANDIDATES = 1 << 22     # (triangle, texel) pairs tested per rasterization chunk
 CHUNK = 2048                 # texels per progress update
+NATIVE_CHUNK = 16384         # texels per progress update with the C# backend
 OFFSET = 1e-4                # ray origins lifted off the surface (fraction of the mesh size)
 
 
@@ -146,19 +151,52 @@ def occlusion(cache, pos, normals, samples=32, distance=0.25, progress=None, see
     lift = OFFSET * size
     local = hemisphere(max(1, int(samples)))
     rng = np.random.default_rng(seed)
-    ray_cast = cache.bvh.ray_cast
-    for start in range(0, count, CHUNK):
-        stop = min(count, start + CHUNK)
-        frames = _frames(normals[start:stop], rng)
-        dirs = np.einsum('kj,njd->nkd', local, frames)            # (n, K, 3) object space
-        origins = (pos[start:stop] + normals[start:stop] * lift).tolist()
-        dirs = dirs.tolist()
-        for i, (origin, rays) in enumerate(zip(origins, dirs)):
-            hits = 0
-            for d in rays:
-                if ray_cast(origin, d, reach)[0] is not None:
-                    hits += 1
-            out[start + i] = hits / len(rays)
-        if progress is not None:
-            progress(stop)
+    tree = _native_tree(cache)
+    try:
+        start = 0
+        while start < count:
+            stop = min(count, start + (NATIVE_CHUNK if tree is not None else CHUNK))
+            frames = _frames(normals[start:stop], rng)
+            origins = pos[start:stop] + normals[start:stop] * lift
+            occ = tree.occlusion(origins, frames, local, reach) if tree is not None else None
+            if occ is None:
+                tree = _close(tree)            # native failure: the rest in Python
+                occ = _occlusion_python(cache.bvh.ray_cast, origins, frames, local, reach)
+            out[start:stop] = occ
+            start = stop
+            if progress is not None:
+                progress(stop)
+    finally:
+        _close(tree)
     return out
+
+
+def _native_tree(cache):
+    if not native.enabled():
+        return None
+    try:
+        return native.TriangleBVH(cache.tri_pos)
+    except Exception:
+        return None
+
+
+def _close(tree):
+    if tree is not None:
+        tree.close()
+    return None
+
+
+def _occlusion_python(ray_cast, origins, frames, local, reach):
+    """One chunk of :func:`occlusion` with ``BVHTree.ray_cast`` (Python calls)."""
+    out = np.zeros(len(origins), dtype=np.float64)
+    if len(origins) == 0:
+        return out
+    dirs = np.einsum('kj,njd->nkd', local, frames)            # (n, K, 3) object space
+    for i, (origin, rays) in enumerate(zip(origins.tolist(), dirs.tolist())):
+        hits = 0
+        for d in rays:
+            if ray_cast(origin, d, reach)[0] is not None:
+                hits += 1
+        out[i] = hits / len(rays)
+    return out
+

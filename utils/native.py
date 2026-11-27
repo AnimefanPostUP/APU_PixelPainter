@@ -27,7 +27,7 @@ import numpy as np
 from ..paths import NATIVE_RUNTIMES_DIR
 
 
-API_VERSION = 3  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
+API_VERSION = 4  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
 
 # Blend mode ids, must match Blend.cs.
@@ -86,6 +86,9 @@ _SIGNATURES = {
     'pp_blit_region': (_I, (_P, _I, _I, _P, _I, _I, _I, _I, _I, _I, _I, _I, _I, _I, _I, _F)),
     'pp_raster_triangles': (_I, (_P, _I, _I, _I, _D, _P)),
     'pp_fill_uv_triangles': (_L, (_P, _I, _I, _P, _I, _F, _F, _F)),
+    'pp_bvh_build': (_I, (_P, _I)),
+    'pp_bvh_free': (_I, (_I,)),
+    'pp_occlusion': (_I, (_I, _P, _P, _I, _P, _I, _D, _P)),
 }
 
 
@@ -422,3 +425,57 @@ def fill_uv_triangles(buf, w, h, tri_uv, color):
     r = lib.pp_fill_uv_triangles(_ptr(buf), w, h, _ptr(tris), len(tris),
                                  float(color[0]), float(color[1]), float(color[2]))
     return r if _ok(r) else None
+
+
+# ---------------------------------------------------------------------------
+# Ray casting (triangle BVH)
+# ---------------------------------------------------------------------------
+
+class TriangleBVH:
+    """A triangle BVH in the native library, for ray casting (both faces hit).
+
+    ``TriangleBVH(tri_pos)`` with (T, 3, 3) corner positions; use as a context
+    manager (or call :meth:`close`) so the native tree is freed. Raises
+    ``RuntimeError`` when the library could not build it."""
+
+    def __init__(self, tri_pos):
+        lib = _load()
+        tris = np.ascontiguousarray(tri_pos, dtype=np.float64).reshape(-1, 9)
+        handle = lib.pp_bvh_build(_ptr(tris), len(tris))
+        if not _ok(handle) or handle <= 0:
+            raise RuntimeError("native BVH build failed")
+        self._lib = lib
+        self.handle = handle
+
+    def close(self):
+        if self.handle:
+            self._lib.pp_bvh_free(self.handle)
+            self.handle = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def occlusion(self, origins, frames, local, reach):
+        """Share of the ``local`` (K, 3) hemisphere rays -- turned into each point's
+        frame (N, 3, 3; rows tangent, bitangent, normal) -- that hit a triangle within
+        ``reach`` from ``origins`` (N, 3). ``(N,)`` float64, or None on failure."""
+        origins = np.ascontiguousarray(origins, dtype=np.float64).reshape(-1, 3)
+        frames = np.ascontiguousarray(frames, dtype=np.float64).reshape(-1, 9)
+        local = np.ascontiguousarray(local, dtype=np.float64).reshape(-1, 3)
+        if len(frames) != len(origins):
+            raise ValueError("occlusion: origins / frames size mismatch")
+        out = np.zeros(len(origins), dtype=np.float64)
+        if len(origins) == 0:
+            return out
+        r = self._lib.pp_occlusion(self.handle, _ptr(origins), _ptr(frames), len(origins),
+                                   _ptr(local), len(local), float(reach), _ptr(out))
+        return out if _ok(r) else None

@@ -79,7 +79,8 @@ _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'paint.smooth', 'paint.native_paths', 'tools.mask.data', 'tools.mask.guard', 'tools.mask.geometry',
     'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
     'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
-    'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch')}
+    'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch',
+    'tools.extras.ao')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -732,6 +733,76 @@ class EdgeFilterTest(NativeTestCase):
         np.testing.assert_allclose(out[..., 1], base[..., 1])      # no green pulled in
         self.assertGreater(out[30, 26, 0], 0.0)                      # red dragged into B
         self.assertFalse(np.any(out[:, 16:24] != base[:, 16:24]))
+
+
+def _brute_ray_cast(tri_pos):
+    """mathutils BVHTree.ray_cast stand-in (both faces, nearest hit within distance)."""
+    tris = np.asarray(tri_pos, dtype=np.float64)
+    a, e1, e2 = tris[:, 0], tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]
+
+    def ray_cast(origin, direction, distance):
+        o, d = np.asarray(origin), np.asarray(direction)
+        p = np.cross(d, e2)
+        det = np.einsum('ij,ij->i', e1, p)
+        ok = np.abs(det) > 1e-20
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        s = o - a
+        u = np.einsum('ij,ij->i', s, p) * inv
+        q = np.cross(s, e1)
+        v = (q @ d) * inv
+        t = np.einsum('ij,ij->i', e2, q) * inv
+        hit = ok & (u >= 0) & (u <= 1) & (v >= 0) & (u + v <= 1) & (t > 0) & (t <= distance)
+        if not hit.any():
+            return None, None, None, None
+        i = int(np.flatnonzero(hit)[np.argmin(t[hit])])
+        return o + d * t[i], np.cross(e1[i], e2[i]), i, t[i]
+    return ray_cast
+
+
+class OcclusionParityTest(NativeTestCase):
+    def _scene(self, seed):
+        """A floor quad with random boxes / triangles above it, and points on the floor."""
+        rng = np.random.default_rng(seed)
+        tris = [[[-1, -1, 0], [1, -1, 0], [1, 1, 0]], [[-1, -1, 0], [1, 1, 0], [-1, 1, 0]]]
+        for _ in range(60):
+            c = rng.uniform(-1, 1, 3) * (1, 1, 0.3) + (0, 0, 0.35)
+            tris.append((c + rng.normal(0, 0.15, (3, 3))).tolist())
+        tri_pos = np.asarray(tris, dtype=np.float64)
+        n = 300
+        pos = np.column_stack((rng.uniform(-0.9, 0.9, (n, 2)), np.zeros(n)))
+        nrm = np.tile([0.0, 0.0, 1.0], (n, 1))
+        cache = SimpleNamespace(tri_pos=tri_pos, verts=tri_pos.reshape(-1, 3),
+                                bvh=SimpleNamespace(ray_cast=_brute_ray_cast(tri_pos)))
+        return cache, pos, nrm
+
+    def test_occlusion_matches_python(self):
+        ao = _mod('tools.extras.ao')
+        for seed in (1, 2, 3):
+            cache, pos, nrm = self._scene(seed)
+            results = []
+            for use_native in (False, True):
+                native.set_override(use_native)
+                results.append(ao.occlusion(cache, pos, nrm, samples=24, distance=0.4))
+            py, cs = results
+            self.assertGreater(py.max(), 0.0)          # the scene does occlude
+            # identical rays: only rays grazing a triangle's edge may differ
+            self.assertLess(np.abs(py - cs).max(), 2.0 / 24 + 1e-9, msg=f"seed {seed}")
+            self.assertLess(np.abs(py - cs).mean(), 1e-3, msg=f"seed {seed}")
+
+    def test_open_floor_and_closed_box(self):
+        ao = _mod('tools.extras.ao')
+        native.set_override(True)
+        floor = np.array([[[-1, -1, 0], [1, -1, 0], [1, 1, 0]], [[-1, -1, 0], [1, 1, 0], [-1, 1, 0]]], float)
+        lid = floor + (0, 0, 0.1)
+        tri_pos = np.concatenate((floor, lid))
+        cache = SimpleNamespace(tri_pos=tri_pos, verts=tri_pos.reshape(-1, 3), bvh=None)
+        pos = np.zeros((4, 3))
+        nrm = np.tile([0.0, 0.0, 1.0], (4, 1))
+        occ = ao.occlusion(cache, pos, nrm, samples=16, distance=1.0)
+        self.assertTrue(np.all(occ > 0.9))         # under the lid: (almost) every ray hits
+        cache.tri_pos, cache.verts = floor, floor.reshape(-1, 3)
+        occ = ao.occlusion(cache, pos, nrm, samples=16, distance=1.0)
+        np.testing.assert_array_equal(occ, 0.0)    # an open floor: nothing above
 
 
 if __name__ == '__main__':

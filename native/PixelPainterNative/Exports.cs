@@ -19,7 +19,7 @@ namespace PixelPainterNative;
 /// </summary>
 public static unsafe class Exports
 {
-    public const int ApiVersion = 3;
+    public const int ApiVersion = 4;
     private const int Failed = -1000;
 
     [UnmanagedCallersOnly(EntryPoint = "pp_api_version")]
@@ -134,6 +134,28 @@ public static unsafe class Exports
                                              float r, float g, float b)
     {
         try { return Raster.FillUv(buf, w, h, tris, count, r, g, b); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_bvh_build")]
+    public static int BvhBuildExport(double* tris, int count)
+    {
+        try { return Occlusion.Build(tris, count); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_bvh_free")]
+    public static int BvhFreeExport(int handle)
+    {
+        try { return Occlusion.Free(handle); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_occlusion")]
+    public static int OcclusionExport(int handle, double* origins, double* frames, int n, double* local, int k,
+                                      double reach, double* outp)
+    {
+        try { return Occlusion.Trace(handle, origins, frames, n, local, k, reach, outp); }
         catch { return Failed; }
     }
 }
