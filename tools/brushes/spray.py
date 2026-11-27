@@ -7,14 +7,15 @@ from ...utils import math_utils
 from .weighted import WeightedBrushTool
 
 
-SPRAY_KNEE = (0.8, 0.08)   # M up to 80 % = density up to 8 % (the spray reacts strongly)
+SPRAY_KNEE = (0.5, 0.016)  # M up to 50 % = density up to 1.6 % (the spray reacts strongly)
+SPRAY_MAX = 1.0             # density at M = 100 %: the full circle
 
 
 def spray_density(modifier):
     """Spray density (share of the circle per step) for the modifier ``modifier`` (0..1).
 
-    A hard curve: linear up to the knee (M 0..80 % -> 0..8 %), then a quadratic rise
-    to the full circle at M = 100 %, starting with the same slope (no kink)."""
+    A hard curve: linear up to the knee (M 0..50 % -> 0..1.6 %), then a quadratic rise
+    to SPRAY_MAX (100 %) at M = 100 %, starting with the same slope (no kink)."""
     m = min(1.0, max(0.0, float(modifier)))
     km, kd = SPRAY_KNEE
     slope = kd / km
@@ -22,7 +23,7 @@ def spray_density(modifier):
         return m * slope
     t = (m - km) / (1.0 - km)
     linear = slope * (1.0 - km)          # the linear part's share of the rest
-    return min(1.0, kd + linear * t + (1.0 - kd - linear) * t * t)
+    return min(SPRAY_MAX, kd + linear * t + (SPRAY_MAX - kd - linear) * t * t)
 
 
 class SprayBrushTool(WeightedBrushTool):
