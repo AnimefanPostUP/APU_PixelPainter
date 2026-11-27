@@ -192,14 +192,16 @@ def paint_view(dc, x, y, size, alpha):
 
 
 def paint_mask_source(source, caption=True):
-    """UV Islands / Mesh Parts: the source in big letters."""
+    """UV Islands / Mesh Parts / Sharp Areas: the source in big letters."""
+    names = {'UV_ISLAND': ("UV", "Islands"), 'MESH_PART': ("Mesh", "Parts"), 'SHARP': ("Sharp", "Areas")}
+
     def paint(dc, x, y, size, alpha):
         theme = dc.theme
-        uv = _resolve(source, 'UV_ISLAND') != 'MESH_PART'
-        draw.text_centered("UV" if uv else "Mesh", x, y + (size * 0.1 if caption else 0.0),
-                           theme.px(11.0 if uv else 9.0), with_alpha(theme.text, alpha), theme.font_id)
+        big, small = names.get(_resolve(source, 'UV_ISLAND'), names['UV_ISLAND'])
+        draw.text_centered(big, x, y + (size * 0.1 if caption else 0.0),
+                           theme.px(11.0 if len(big) <= 2 else 9.0), with_alpha(theme.text, alpha), theme.font_id)
         if caption:
-            draw_caption(dc, x, y - size * 0.25, "Islands" if uv else "Parts", alpha)
+            draw_caption(dc, x, y - size * 0.25, small, alpha)
     return paint
 
 

@@ -3,6 +3,7 @@
 
 from ....model import value_curve
 from ...extras import tool as extras_tool
+from .mask import next_source
 
 
 class ExtrasActions:
@@ -34,7 +35,7 @@ class ExtrasActions:
         return self.wm_get('extras_source', 'UV_ISLAND')
 
     def toggle_extras_source(self):
-        self.wm_set('extras_source', 'MESH_PART' if self.extras_source() == 'UV_ISLAND' else 'UV_ISLAND')
+        self.wm_set('extras_source', next_source(self.extras_source()))
 
     # ---- curves: 'ao' (AO) / 'edge' (Edges falloff), model/value_curve.py --------------------
 

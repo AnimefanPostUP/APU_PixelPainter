@@ -9,6 +9,18 @@ from ...mask import data as mask_data
 from ...mask import tool as mask_tool
 
 
+SOURCE_CYCLE = ('UV_ISLAND', 'MESH_PART', 'SHARP')
+
+
+def next_source(source):
+    """The source a tap on the source arc switches to: UV Islands -> Mesh Parts ->
+    Sharp Areas -> UV Islands (the Mask and Extras windows)."""
+    try:
+        return SOURCE_CYCLE[(SOURCE_CYCLE.index(source) + 1) % len(SOURCE_CYCLE)]
+    except ValueError:
+        return SOURCE_CYCLE[0]
+
+
 class MaskActions:
     """Part of :class:`.bar.PenBarTool` (a mixin: uses its state)."""
 
@@ -27,7 +39,7 @@ class MaskActions:
         return self.wm_get('mask_source', 'UV_ISLAND')
 
     def toggle_mask_source(self):
-        self.wm_set('mask_source', 'MESH_PART' if self.mask_source() == 'UV_ISLAND' else 'UV_ISLAND')
+        self.wm_set('mask_source', next_source(self.mask_source()))
 
     def mask_inverted(self):
         return bool(self.wm_get('mask_invert', False))

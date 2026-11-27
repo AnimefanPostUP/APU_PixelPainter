@@ -120,6 +120,8 @@ def _draw_mask(layout, context):
     row.prop(wm, "pixel_painter_mask_show", text="Show", toggle=True, icon='HIDE_OFF')
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_mask_source", expand=True)
+    if wm.pixel_painter_mask_source == 'SHARP':
+        layout.prop(wm, "pixel_painter_sharp_angle", text="Sharp Angle")
     layout.prop(wm, "pixel_painter_mask_grow", text="Grow (px)")
     row = layout.row(align=True)
     picking = bool(STATE.get('mask_picking'))

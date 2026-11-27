@@ -91,6 +91,43 @@ def mesh_part_labels(loop_start, loop_vert, n_verts, edge_verts):
     return compact.astype(np.int64)
 
 
+def sharp_labels(tri_verts, tri_pos, angle_deg, tri_group=None):
+    """Sharp-area label per triangle (0..k-1): triangles joined across edges whose two
+    faces meet at no more than ``angle_deg`` (smooth edges). Sharper edges, open borders
+    and non-manifold edges (used by more than two triangles) separate areas.
+    ``tri_group`` (T,): triangles of one group (a polygon) always stay together."""
+    tv = np.asarray(tri_verts, dtype=np.int64).reshape(-1, 3)
+    n = len(tv)
+    if n == 0:
+        return np.zeros(0, dtype=np.int64)
+    pos = np.asarray(tri_pos, dtype=np.float64).reshape(-1, 3, 3)
+    normal = np.cross(pos[:, 1] - pos[:, 0], pos[:, 2] - pos[:, 0])
+    length = np.linalg.norm(normal, axis=1)
+    normal = normal / np.maximum(length, 1e-20)[:, None]
+    a = tv.reshape(-1)
+    b = tv[:, (1, 2, 0)].reshape(-1)
+    base = int(tv.max()) + 1
+    key = np.minimum(a, b) * base + np.maximum(a, b)
+    owner = np.repeat(np.arange(n, dtype=np.int64), 3)
+    order = np.argsort(key, kind='stable')
+    key_s, owner_s = key[order], owner[order]
+    uniq, first, count = np.unique(key_s, return_index=True, return_counts=True)
+    two = first[count == 2]
+    t0, t1 = owner_s[two], owner_s[two + 1]
+    cos = np.einsum('ij,ij->i', normal[t0], normal[t1])
+    # Degenerate (zero-area) triangles join their neighbours: they have no direction.
+    degenerate = (length[t0] <= 1e-20) | (length[t1] <= 1e-20)
+    smooth = degenerate | (cos >= np.cos(np.radians(float(angle_deg))) - 1e-9)
+    ja, jb = [t0[smooth]], [t1[smooth]]
+    if tri_group is not None:
+        group = np.asarray(tri_group, dtype=np.int64).reshape(-1)
+        g_order = np.argsort(group, kind='stable')
+        same = group[g_order][1:] == group[g_order][:-1]
+        ja.append(g_order[:-1][same])
+        jb.append(g_order[1:][same])
+    return components(n, np.concatenate(ja), np.concatenate(jb))
+
+
 def raster_triangles(tri_uv, width, height, grow=0.0):
     """Sorted flat pixel indices (``y * width + x``) whose center lies inside any of
     the UV triangles ``tri_uv`` (T, 3, 2), each edge pushed out by ``grow`` pixels."""

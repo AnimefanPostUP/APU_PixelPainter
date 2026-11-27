@@ -27,6 +27,7 @@ from ..icons.extras import (icon_all_edges, icon_angle, icon_curve, icon_fade, i
                             icon_symmetric, paint_ao, paint_all, paint_edges, paint_extras_title, paint_fill)
 from ..icons.menu import captioned
 from ..icons.windows import paint_source_band
+from .mask import sharp_angle_slider
 from ..metrics import (TINT_EXTRAS, TINT_EXTRAS_EDGES, TINT_EXTRAS_OPTIONS, TINT_EXTRAS_SOURCE,
                        TINT_EXTRAS_TOOLS, TINT_EXTRAS_VALUES)
 from .parts import (DIAL_GAP, GAP, HELP_SIZE, ROW_GAP, TITLE_INDENT, ArcSlider, DialCenter, WindowButton,
@@ -39,6 +40,7 @@ OUTER_RING = (INNER_RING[1] + 2.5, 92.0)
 TOOLS_ARC = (0.0, 180.0)            # inner ring, top (left to right: Fill, Edges, AO)
 CHOICES_ARC = (180.0, 360.0)        # inner ring, bottom: the armed tool's choices
 SOURCE_ARC = (55.0, 125.0)          # outer ring, top
+ANGLE_BAND = (OUTER_RING[1] + 2.5, OUTER_RING[1] + 20.0)   # Sharp Angle, outside the source
 LEFT_SLIDER_ARC = (125.0, 220.0)    # outer ring, left side (grows upward)
 OPTIONS_ARC = (220.0, 320.0)        # outer ring, bottom: Edges' Placement / Fade / Curve
 RIGHT_SLIDER_ARC = (-40.0, 55.0)    # outer ring, right side (grows upward)
@@ -55,7 +57,9 @@ EXTRAS_HELP = ("Tap Fill, Edges or AO, then tap an island /",
                "part on the canvas (outlined under the cursor).",
                "Left: primary color first, right: secondary.",
                "All (middle): every island / part at once.",
-               "Arc on top: UV islands or connected mesh parts.",
+               "Arc on top: UV islands, connected mesh parts or",
+               "sharp areas (split at edges sharper than the",
+               "Sharp arc above it).",
                "Fill: one color. Edges: primary along the model's",
                "edges into secondary, the same on both sides",
                "(Pixel line: a 1-texel line on the edge).",
@@ -86,12 +90,22 @@ class TrimmedDial(Dial):
                 reach = max(reach, extent * seg.r1)
         return reach + self.PAD
 
+    def _square(self, theme):
+        """The full square's side, from the visible bands only (the Sharp Angle band
+        outside the rings takes room only while shown)."""
+        corners = self.corners
+        self.corners = [c for c in corners if c.visible]
+        try:
+            return Dial.measure(self, theme)[0]
+        finally:
+            self.corners = corners
+
     def measure(self, theme):
-        d, _h = super().measure(theme)
+        d = self._square(theme)
         return d, theme.px(self._reach(1) + self._reach(-1))
 
     def arrange(self, rect, theme):
-        d, _h = super().measure(theme)
+        d = self._square(theme)
         cy = rect.y1 - theme.px(self._reach(1))
         super().arrange(Rect.from_center(rect.cx, cy, d, d), theme)
 
@@ -138,6 +152,9 @@ def build_extras_window(bar):
     # Outer ring, top: the source.
     ring([RingSegment("", painter=paint_source_band(a.extras_source), key='EXTRAS_SOURCE', tint=TINT_EXTRAS_SOURCE,
                       on_click=a.toggle_extras_source)], OUTER_RING, SOURCE_ARC)
+    dial.add_band([sharp_angle_slider(a, 'EXTRAS_SHARP_ANGLE', lambda: a.extras_source() == 'SHARP',
+                                      TINT_EXTRAS_SOURCE, TINT_EXTRAS_VALUES, round=SLIDER_ROUND)],
+                  *ANGLE_BAND, *SOURCE_ARC)
 
     def choice(caption, painter, key, shown, selected, on_click, tint):
         """A deep icon + caption button (like Undo / Redo), shown while ``shown()``."""

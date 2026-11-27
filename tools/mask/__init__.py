@@ -1,7 +1,8 @@
 """Paint mask: limit painting to chosen UV islands or mesh parts.
 
 Settings (WindowManager, ``pixel_painter_mask_*``): *enabled*, *source*
-(``UV_ISLAND`` / ``MESH_PART``), *invert*, *grow* (pixels added around each
+(``UV_ISLAND`` / ``MESH_PART`` / ``SHARP`` -- areas between edges sharper than the
+shared ``pixel_painter_sharp_angle``), *invert*, *grow* (pixels added around each
 island) and *show* (red stripes over the blocked area). The chosen islands / parts are
 stored per project in the scene property ``pixel_painter_mask_selection``
 (JSON ``{object name: [face index, ...]}``: one face per chosen element, so a

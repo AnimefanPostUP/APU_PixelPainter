@@ -293,8 +293,14 @@ def _static_properties():
             items=[
                 ('UV_ISLAND', "UV Islands", "Choose UV islands (faces connected in the UV map)"),
                 ('MESH_PART', "Mesh Parts", "Choose connected mesh parts (loose parts are separate)"),
+                ('SHARP', "Sharp Areas", "Choose areas between sharp edges (faces meeting at more than "
+                                         "the Sharp Angle)"),
             ],
             default='UV_ISLAND', update=_redraw_mask),
+        'sharp_angle': bpy.props.FloatProperty(
+            name="Sharp Angle", description="Sharp Areas (mask and Extras): faces meeting at more than this "
+                                            "angle are split into separate areas (degrees)",
+            min=1.0, max=180.0, soft_min=5.0, soft_max=90.0, default=30.0, update=_redraw_mask),
         'mask_invert': bpy.props.BoolProperty(
             name="Invert Mask", description="Protect the chosen islands / parts instead of painting only on them",
             default=False, update=_redraw_mask),
@@ -309,6 +315,7 @@ def _static_properties():
             items=[
                 ('UV_ISLAND', "UV Islands", "One UV island (faces connected in the UV map)"),
                 ('MESH_PART', "Mesh Parts", "All faces connected in the mesh (loose parts are separate)"),
+                ('SHARP', "Sharp Areas", "Faces between sharp edges (meeting at more than the Sharp Angle)"),
             ],
             default='UV_ISLAND', update=_redraw_mask),
         'extras_edge_width': bpy.props.IntProperty(

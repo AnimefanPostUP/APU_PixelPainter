@@ -18,11 +18,14 @@ def paint_edit(dc, x, y, size, alpha):
     paint_mask_pick(dc, x, y, size, alpha, caption=True)
 
 
+SOURCE_NAMES = {'UV_ISLAND': "UV Islands", 'MESH_PART': "Mesh Parts", 'SHARP': "Sharp Areas"}
+
+
 def paint_source_band(source):
-    """The source arc: 'UV Islands' / 'Mesh Parts' written on it."""
+    """The source arc: 'UV Islands' / 'Mesh Parts' / 'Sharp Areas' written on it."""
     def paint(dc, x, y, size, alpha):
         theme = dc.theme
-        text = "UV Islands" if _resolve(source, 'UV_ISLAND') != 'MESH_PART' else "Mesh Parts"
+        text = SOURCE_NAMES.get(_resolve(source, 'UV_ISLAND'), "UV Islands")
         draw.text_centered(text, x, y, theme.px(FONT * 0.9), with_alpha(theme.text, alpha), theme.font_id)
     return paint
 

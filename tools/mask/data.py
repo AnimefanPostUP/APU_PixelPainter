@@ -53,9 +53,17 @@ def invalidate():
     _allowed = None
 
 
+def sharp_angle(wm):
+    """The Sharp Areas angle (degrees), shared by the mask and the Extras tools."""
+    return float(getattr(wm, 'pixel_painter_sharp_angle', 30.0))
+
+
 def _settings(wm):
-    return (getattr(wm, 'pixel_painter_mask_source', 'UV_ISLAND'),
-            int(getattr(wm, 'pixel_painter_mask_grow', 0)))
+    source = getattr(wm, 'pixel_painter_mask_source', 'UV_ISLAND')
+    # The angle only matters for Sharp Areas (part of the source: a change rebuilds).
+    if source == 'SHARP':
+        source = ('SHARP', round(sharp_angle(wm), 3))
+    return source, int(getattr(wm, 'pixel_painter_mask_grow', 0))
 
 
 def _objects(context):
@@ -102,18 +110,34 @@ def _read_mesh(context, obj):
                 uvs=uvs.reshape(-1, 2), edges=edges, n_verts=len(me.vertices), fingerprint=fingerprint)
 
 
+def _sharp_poly_labels(me, arrays, tri_loops, tri_poly, angle):
+    """Sharp-area label per polygon (its triangles always stay together)."""
+    co = np.empty(arrays['n_verts'] * 3, dtype=np.float64)
+    me.vertices.foreach_get('co', co)
+    tri_verts = arrays['loop_vert'][tri_loops.reshape(-1, 3)]
+    tri_label = geo.sharp_labels(tri_verts, co.reshape(-1, 3)[tri_verts], angle, tri_group=tri_poly)
+    n_polys = len(arrays['loop_start'])
+    labels = np.full(n_polys, -1, dtype=np.int64)
+    labels[tri_poly] = tri_label
+    lone = np.flatnonzero(labels < 0)           # polygons without triangles: one area each
+    labels[lone] = (int(labels.max()) + 1 if len(tri_label) else 0) + np.arange(len(lone))
+    return labels
+
+
 def _elements(obj_name, arrays, source, w, h, grow):
     me = arrays['mesh']
-    if source == 'MESH_PART':
-        labels = geo.mesh_part_labels(arrays['loop_start'], arrays['loop_vert'], arrays['n_verts'], arrays['edges'])
-    else:
-        labels = geo.uv_island_labels(arrays['loop_start'], arrays['loop_total'], arrays['loop_vert'], arrays['uvs'])
     me.calc_loop_triangles()
     n_tris = len(me.loop_triangles)
     tri_loops = np.empty(n_tris * 3, dtype=np.int32)
     me.loop_triangles.foreach_get('loops', tri_loops)
     tri_poly = np.empty(n_tris, dtype=np.int32)
     me.loop_triangles.foreach_get('polygon_index', tri_poly)
+    if isinstance(source, tuple) and source[0] == 'SHARP':
+        labels = _sharp_poly_labels(me, arrays, tri_loops, tri_poly, source[1])
+    elif source == 'MESH_PART':
+        labels = geo.mesh_part_labels(arrays['loop_start'], arrays['loop_vert'], arrays['n_verts'], arrays['edges'])
+    else:
+        labels = geo.uv_island_labels(arrays['loop_start'], arrays['loop_total'], arrays['loop_vert'], arrays['uvs'])
     tri_uv = arrays['uvs'][tri_loops.reshape(-1, 3)]          # (T, 3, 2)
     tri_label = labels[tri_poly]
     count = int(labels.max()) + 1 if len(labels) else 0
