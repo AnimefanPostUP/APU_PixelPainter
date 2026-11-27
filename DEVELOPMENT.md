@@ -20,14 +20,16 @@ core/                  manages tools, knows nothing about what they do
   history.py           pixel undo integrated with Blender's undo
   variables.py         ToolVariableStore
   view3d/              3D Viewport: mesh (cache), raycast (mouse -> pixel), islands (UV island
-                       clipping), stroke_path, frames, surface_path, footprint, patch (Edge mode)
+                       clipping), elements (texel -> island / part map, hover, outlines),
+                       stroke_path, frames, surface_path, footprint, patch (Edge mode)
 model/                 pure domain data (no bpy): falloff, blend_modes, color_history,
-                       color_palette, tertiary_color
+                       color_palette, tertiary_color, value_curve (AO curve + presets)
 paint/                 pixel kernels, no tool logic: pixels (write / alpha), blending, smooth,
-                       native_paths (C# fast paths of whole draw steps)
+                       native_paths (C# fast paths of whole draw steps), region_paint (per-texel
+                       colors), edge_ramp (Edges band math)
 overlays/              canvas drawing in the draw handlers: handler (add / remove), gpu_prims
                        (shared primitives), brush_outline, cursor, sub_modes (E / Shift+E / Ctrl
-                       HUDs), selection, grid, view3d_outline
+                       HUDs), selection, grid, view3d_outline, element_outline (hovered island / part)
 tools/                 all tool behaviour
   base.py              ToolBase (a ToolFrame + registry metadata), DrawEnvironment, SettingDefaults
   stroke.py            StrokeTool / BrushTool: press-drag-release painting + standard subtools
@@ -39,6 +41,8 @@ tools/                 all tool behaviour
   selection/           tool (SelectionTool), operators (Apply / Copy / Cancel / Stencil), geometry
   mask/                data (elements, chosen set, allowed()), geometry (pure numpy), guard
                        (enforcement during strokes), overlay (drawing), tool (MaskTool)
+  extras/              the Extras window's tools: tool (ExtrasTool, global), operations (Fill /
+                       Edges / Ambient Occlusion), ao (per-texel ray casting)
   pen/                 tool (PenBarTool: lifecycle, events, drawing), actions/ (its actions by
                        concern: colors, settings, palettes, falloff, windows, mask), layout
                        (per-project window layout), pressure, view_nav, eyedropper
@@ -53,8 +57,8 @@ ui/
     menu/              PenBar's concerns: dial, flyouts, drag_drop, window_layout, readouts
     widgets/           the dial's widgets: color, blend, falloff_field, grid_corner, window_ring
     windows/           frame (Window: move / lock / resize / help), parts, mask, view, settings,
-                       palettes, dialog (ConfirmDialog), shapes (window backgrounds)
-    icons/             icon painters: menu, settings, palettes, windows
+                       palettes, extras, dialog (ConfirmDialog), shapes (window backgrounds)
+    icons/             icon painters: menu, settings, palettes, windows, extras
   panels/              tool_settings (header / N-panel), settings_popup (tabbed settings popup)
   menus/               pie_menu (ToolPie / FalloffPie / FalloffPicker), native_menus (blend / mode
                        pies), selection_actions (buttons under the selection box)
@@ -420,6 +424,59 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
 * Overlay: `mask.overlay.draw_2d` (red / light red stripes at 15% opacity, a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
   before tool overlays) and `mask.overlay.draw_3d` (POST_VIEW, triangles whose UV
   center is blocked).
+
+## Extras window (`tools/extras/`, `ui/pen/windows/extras.py`)
+
+Tools that act on a whole *element* -- a UV island or a connected mesh part
+(`pixel_painter_extras_source`) -- opened from the Windows ring.
+
+* **Element map** (`core/view3d/elements.py`): built from the evaluated mesh cache
+  (the active object, modifiers included). Triangles get element labels (UV islands:
+  `islands._tri_island_labels`; mesh parts: shared vertices), texels get them through
+  the UV rasterizer (`native.raster_labels`, merged where elements share texels),
+  then dilated by one texel (the half-covered edge texels). Cached per source and
+  mesh cache version. `label_under(ctx, emap)`: in the 3D Viewport the element of the
+  hit triangle, in the Image Editor the one of the hovered texel.
+* **Hover outline** (`overlays/element_outline.py`): `set_hover(owner, active, emap,
+  label, color)` from modal code; the core's draw callbacks draw it (3D: the
+  element's border edges -- edges only one of its triangles uses -- faint through
+  geometry, full in front; 2D: its texel contour). It disappears once `active(state)`
+  is false. Used by `ExtrasTool` (cyan) and `MaskTool` while picking (orange).
+* **ExtrasTool** (global, priority 140): while state `extras_mode` is `FILL` /
+  `EDGES` / `AO`, a canvas press runs it on the hovered element (LMB: primary color
+  first, RMB: secondary), Esc disarms. Arming disarms mask picking and vice versa.
+  *All* (the window's center) runs it with `label=None` (every element).
+* **Operations** (`tools/extras/operations.py`): per-texel colors and opacities go
+  through `paint.region_paint.blend_texels` with the brush's blend mode and the
+  active tool's strength / alpha, filtered by `mask.data.allowed` and Alphalock; one
+  `history.begin` / `commit` per run. Edges: model edges only (`edge_ramp.model_edges`:
+  by angle / all / marked sharp; the mesh cache keeps the real edges, `cache.edges`,
+  so triangulation diagonals never count, and `cache.edge_marked`), drawn in the UV
+  space of each triangle beside the edge onto that triangle's element. The band is
+  the true distance from texel centers to the edge (`segment_distance`), so both
+  sides get the same width: `'BETWEEN'` (Symmetric; an edge on a texel border gets
+  both columns beside it) or `'ON'` (Pixel Line: the edge snapped to texel centers,
+  `snap_segments`, an odd band), then `band` and `ramp` through the Edges falloff
+  curve (`pixel_painter_extras_edge_curve`, kind `'edge'` in `model/value_curve.py`:
+  x = steps / width, weight f -> color `1 - f`, opacity `f` with Fade). AO (`tools/extras/ao.py`): texels placed on
+  their triangle (`texel_surface`, vectorized barycentrics; uncovered edge texels take
+  a neighbour's point), cosine-weighted Hammersley rays spun per texel, cast with
+  `cache.bvh.ray_cast` (Python calls: texels x samples), occlusion = hit share, shaped
+  by the AO curve (`model/value_curve.py`: monotone cubic, presets `AO_PRESETS`,
+  stored as JSON in `pixel_painter_extras_ao_curve`).
+* Window (`ui/pen/windows/extras.py`): a `TrimmedDial` with two rings -- inner: the
+  tools on top, the armed tool's choices below as deep icon + caption segments (like
+  Undo / Redo); outer: the source on top, a `ShownArcSlider` on each side
+  (`ArcSlider(short=True)`: only the label's first letter, upright; while dragged
+  `Readouts._draw_drag_readout` shows `ArcSlider.readout()` -- full name and value -- in
+  a pill beside the window, like the pen menu's S / A / M; the left one `reverse=True`,
+  so both grow upward), Edges' Placement (one button swapping
+  Symmetric / Pixel line) / Fade / Curve below. Tints by category (`TINT_EXTRAS_*` in
+  `ui/pen/metrics.py`): tools = the pen menu's tool blue, source, edge choices, options,
+  sliders. Mode-specific parts are `ShownSegment`s; `TrimmedDial` reserves height only
+  for the visible parts. *Curve* (state `pen_extras_curve`) folds out the tool's
+  `CurveEditor` with presets.
+* Tests: `tests/test_extras.py` (curve, edge math, texel blending, AO placement).
 
 ## Settings popup (`ui/panels/settings_popup.py`)
 

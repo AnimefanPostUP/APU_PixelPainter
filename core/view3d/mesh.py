@@ -14,7 +14,8 @@ from mathutils.bvhtree import BVHTree
 
 class MeshCache:
     __slots__ = ('key', 'bvh', 'tri_verts', 'tri_loops', 'verts', 'uvs', 'density',
-                 'tri_uv', 'tri_pos', 'uv_min', 'uv_max', 'uv_sign', 'uv_ok', 'version', '_adj', '_nbrs', '_centroids')
+                 'tri_uv', 'tri_pos', 'uv_min', 'uv_max', 'uv_sign', 'uv_ok', 'version', '_adj', '_nbrs', '_centroids',
+                 'edges', 'edge_marked')
 
     def __init__(self, key, bvh, tri_verts, tri_loops, verts, uvs, density):
         self.key = key
@@ -40,6 +41,8 @@ class MeshCache:
         self._adj = None
         self._nbrs = None
         self._centroids = None
+        self.edges = None            # (E, 2) vertex indices of the mesh's real edges (no triangulation diagonals)
+        self.edge_marked = None      # (E,) bool: marked sharp, or None
 
 
 _cache_version = 0
@@ -108,6 +111,18 @@ def _build(context, obj, uv_name, key):
         uvs = np.empty(n_loops * 2, dtype=np.float32)
         uv_layer.data.foreach_get('uv', uvs)
         uvs = uvs.reshape(-1, 2)
+
+        edges = np.empty(len(mesh.edges) * 2, dtype=np.int32)
+        mesh.edges.foreach_get('vertices', edges)
+        edges = edges.reshape(-1, 2)
+        edge_marked = None
+        try:
+            attr = mesh.attributes.get('sharp_edge')
+            if attr is not None and attr.domain == 'EDGE' and len(attr.data) == len(edges):
+                edge_marked = np.zeros(len(edges), dtype=bool)
+                attr.data.foreach_get('value', edge_marked)
+        except Exception:
+            edge_marked = None
     finally:
         obj_eval.to_mesh_clear()
 
@@ -122,7 +137,10 @@ def _build(context, obj, uv_name, key):
     with np.errstate(divide='ignore', invalid='ignore'):
         density = np.sqrt(np.where(area3d > 1e-12, area_uv / area3d, 0.0))
 
-    return MeshCache(key, bvh, tri_verts, tri_loops, verts, uvs, density)
+    cache = MeshCache(key, bvh, tri_verts, tri_loops, verts, uvs, density)
+    cache.edges = edges
+    cache.edge_marked = edge_marked
+    return cache
 
 
 def mesh_cache(context):

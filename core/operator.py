@@ -20,6 +20,7 @@ from ..model import blend_modes
 from ..ui.kit import anim
 from ..overlays import brush_outline, cursor as cursor_overlays, handler as draw_handler
 from ..overlays import grid as draw_gridoverlay
+from ..overlays import element_outline
 from ..tools.mask import overlay as mask_overlay
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
 from . import history
@@ -185,6 +186,7 @@ def _register_draw_handler(space, context):
             else:
                 tctx = ToolContext(ctx, MANAGER)
                 mask_overlay.draw_2d(ctx, tctx.v2d, tctx.image)
+                element_outline.draw_2d(ctx, tctx.v2d, tctx.image, _state)
                 wm = ctx.window_manager
                 if wm.pixel_painter_grid_show:
                     draw_gridoverlay.draw_pixel_grid_overlay(ctx, wm.pixel_painter_grid_opacity)
@@ -200,6 +202,7 @@ def _register_draw_handler(space, context):
                 if wm.pixel_painter_grid_show:
                     draw_gridoverlay.draw_pixel_grid_overlay_3d(ctx, image, wm.pixel_painter_grid_opacity)
                 mask_overlay.draw_3d(ctx, image)
+                element_outline.draw_3d(ctx, _state)
                 overlays_view3d.draw_brush_outline_3d(ctx, _state)
         except Exception:
             traceback.print_exc()

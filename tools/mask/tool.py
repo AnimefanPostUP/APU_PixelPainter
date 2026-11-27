@@ -5,6 +5,8 @@
 
 
 from ...core.framework import Shortcut, ToolFrame
+from ...core.view3d import elements
+from ...overlays import element_outline
 from .data import active, element_at, is_chosen, refresh, selection, set_chosen
 from .overlay import draw_edit_frame, draw_hint
 
@@ -23,11 +25,33 @@ def redraw_editors(context):
         pass
 
 
+HOVER_COLOR = (1.0, 0.55, 0.15, 1.0)   # the edit frame's orange (ui/viewport_frame.MASK_EDIT_COLOR)
+
+
+def _picking(state):
+    return bool(state.get('mask_picking'))
+
+
+def update_hover(ctx):
+    """Outline the island / part under the cursor (the mask's source); True when it changed."""
+    source = getattr(ctx.wm, 'pixel_painter_mask_source', 'UV_ISLAND')
+    try:
+        emap = elements.element_map(ctx.context, ctx.image, source)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        emap = None
+    return element_outline.set_hover('MASK', _picking, emap, elements.label_under(ctx, emap), HOVER_COLOR)
+
+
 def set_picking(state, context, on):
     """Start / stop choosing elements on the canvas (starting also turns the mask on)."""
     state['mask_picking'] = bool(on)
     state['mask_pick_value'] = None
+    if not on:
+        element_outline.clear('MASK')
     if on:
+        state['extras_mode'] = None    # one canvas picker at a time (the Extras window's tools)
         wm = context.window_manager
         if not active(wm):
             wm.pixel_painter_mask_enabled = True
@@ -57,6 +81,7 @@ class MaskTool(ToolFrame):
     def on_session_end(self, ctx):
         ctx.state['mask_picking'] = False
         ctx.state['mask_pick_value'] = None
+        element_outline.clear('MASK')
 
     def _apply(self, ctx, value=None):
         """Toggle (``value`` None) or set the element under the cursor; returns its new state."""
@@ -93,6 +118,8 @@ class MaskTool(ToolFrame):
     def on_event(self, ctx, event):
         if event.type != 'MOUSEMOVE':
             return
+        if ctx.state.get('mask_picking') and update_hover(ctx):
+            ctx.redraw()
         value = ctx.state.get('mask_pick_value')
         if ctx.state.get('mask_picking') and value is not None:
             self._apply(ctx, value)

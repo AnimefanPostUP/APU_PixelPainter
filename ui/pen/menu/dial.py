@@ -11,8 +11,9 @@ from ..widgets.color import ColorCorner, GradientSlider, PaletteSlot, Swatch, Te
 from ..widgets.falloff_field import FalloffField
 from ..widgets.grid_corner import GridCorner
 from ..icons.menu import captioned, paint_alpha_lock, paint_arrow, paint_color_wheel, paint_curve, paint_gear, paint_mask_menu, paint_save, paint_spacing, paint_swap, paint_target_picker, paint_view, paint_windows
-from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL
+from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_EXTRAS, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL
 from ..widgets.window_ring import WindowRing
+from ..icons.extras import paint_extras_menu
 from ..icons.palettes import paint_library, paint_palettes
 
 
@@ -211,6 +212,9 @@ class DialControls:
             RingSegment("Palettes", key='RING_PALETTES', painter=captioned(paint_library, "Palettes"),
                         tint=TINT_WINDOWS, selected=lambda: a.panel_open('library'),
                         on_click=self._flyout_action(lambda: self.toggle_window('library'))),
+            RingSegment("Extras", key='RING_EXTRAS', painter=paint_extras_menu(a.colors), tint=TINT_EXTRAS,
+                        selected=lambda: a.panel_open('extras'),
+                        on_click=self._flyout_action(lambda: self.toggle_window('extras'))),
         ], WINDOW_RING_START)
 
     def _history(self, index):

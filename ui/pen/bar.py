@@ -100,7 +100,8 @@ everything here works with press, drag and release only.
   inner ring (around the Size knob; while open a backdrop hides both rings,
   the tools too):
   *Settings* (the settings flyout), *Mask* / *View* (their windows), *Color*
-  (the color selector) and *Palettes* (the palette library). Opened by the
+  (the color selector), *Palettes* (the palette library) and *Extras* (Fill /
+  Edges / Ambient Occlusion on UV islands or mesh parts). Opened by the
   *press* like a flyout: keep the pen down, drag onto an entry and lift -- or
   lift anywhere and tap an entry. A tap outside or on Windows closes it.
 * **Flyout** (Blend): opened by the *press*. Keep the pen down, drag
@@ -129,6 +130,7 @@ from .menu.flyouts import Flyouts
 from .menu.drag_drop import ColorDragDrop
 from .menu.window_layout import WindowLayout
 from .windows.dialog import ConfirmDialog
+from .windows.extras import build_extras_window
 from .windows.mask import build_mask_window
 from .icons.palettes import paint_library
 from .windows.palettes import PaletteLibrary
@@ -203,7 +205,7 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
                                          shape=body_shapes)
         self.color_overlay = Overlay(self.color_window, modal=False, animate=False)
 
-        # Mask / View / Settings / Palettes windows (opened from the Windows ring).
+        # Mask / View / Settings / Palettes / Extras windows (opened from the Windows ring).
         builders = {
             'mask': (build_mask_window, window_shapes, True),
             'view': (build_view_window, window_shapes, True),
@@ -211,6 +213,7 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
                          body_shapes, False),
             'library': (lambda bar: build_body_window("Palettes", self.library_menu.content, paint_library),
                         body_shapes, False),
+            'extras': (build_extras_window, window_shapes, True),
         }
         self.tool_windows = {}
         for name in TOOL_WINDOWS:

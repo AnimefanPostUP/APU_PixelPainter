@@ -8,7 +8,7 @@ right), sizes in unscaled px, category tints, window and drag constants.
 BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this much larger than the kit default
 # Each element's own size (resize triangle), relative to BAR_SCALE.
 SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0),
-                'settings': (0.4, 2.0), 'library': (0.4, 2.0)}
+                'settings': (0.4, 2.0), 'library': (0.4, 2.0), 'extras': (0.4, 2.0)}
 # Tool state keys holding the elements' size and position; Reset Pen UI restores these.
 LAYOUT_STATE = {
     'pen_bar_scale': 1.0, 'pen_bar_pos': None,       # pos: (x0, y1) top-left in region px, None = default
@@ -17,11 +17,12 @@ LAYOUT_STATE = {
     'pen_view_scale': 0.8, 'pen_view_pos': None,
     'pen_settings_scale': 0.8, 'pen_settings_pos': None,
     'pen_library_scale': 0.8, 'pen_library_pos': None,
+    'pen_extras_scale': 0.8, 'pen_extras_pos': None,
 }
 # Windows besides the menu and the color selector, opened from the Windows ring
 # (content: ui/pen/windows/, ui/pen/windows/settings.py, ui/pen/windows/palettes.py); shown while
 # the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
-TOOL_WINDOWS = ('mask', 'view', 'settings', 'library')
+TOOL_WINDOWS = ('mask', 'view', 'settings', 'library', 'extras')
 POINTER_TYPES = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE',
                   'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TIMER'}
 COLOR_SHAPES = (('SHEET', "Sheet"), ('SQUARE', "Square"), ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))
@@ -135,6 +136,13 @@ TINT_GRID = (0.55, 0.78, 0.95)
 TINT_SAVE = (0.45, 0.80, 0.45)
 TINT_MASK = (0.78, 0.52, 1.00)
 TINT_VIEW = (0.40, 0.85, 0.95)
+TINT_EXTRAS = (0.35, 0.95, 0.75)
+# The Extras window's categories: tools in the pen menu's tool blue, then one tint per kind of setting.
+TINT_EXTRAS_TOOLS = TINT_TOOLS        # Fill / Edges / AO
+TINT_EXTRAS_SOURCE = TINT_MASK        # UV Islands / Mesh Parts (what the mask chooses too)
+TINT_EXTRAS_EDGES = TINT_MODES        # which model edges: Angle / All / Marked
+TINT_EXTRAS_OPTIONS = TINT_CUSTOM     # placement, Fade, Curve
+TINT_EXTRAS_VALUES = TINT_EXTRAS      # the sliders
 MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)

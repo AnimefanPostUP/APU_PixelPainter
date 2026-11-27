@@ -303,6 +303,54 @@ def _static_properties():
             min=0, max=8, default=0, update=_redraw_mask),
         'mask_show': bpy.props.BoolProperty(
             name="Show Mask", description="Show red stripes over the protected area", default=True, update=_redraw_mask),
+        # ---- Extras window (tools/extras/) ----
+        'extras_source': bpy.props.EnumProperty(
+            name="Extras Source", description="What the Extras tools act on",
+            items=[
+                ('UV_ISLAND', "UV Islands", "One UV island (faces connected in the UV map)"),
+                ('MESH_PART', "Mesh Parts", "All faces connected in the mesh (loose parts are separate)"),
+            ],
+            default='UV_ISLAND', update=_redraw_mask),
+        'extras_edge_width': bpy.props.IntProperty(
+            name="Edge Width", description="Width of the Edges band in texels (per side)",
+            min=1, max=32, soft_max=16, default=3, update=_persist),
+        'extras_edge_source': bpy.props.EnumProperty(
+            name="Edges", description="Which model edges the Edges tool paints along",
+            items=[
+                ('ANGLE', "Angle", "Edges whose faces meet at more than the angle"),
+                ('ALL', "All", "Every model edge (open borders included)"),
+                ('MARKED', "Marked", "Edges marked sharp"),
+            ],
+            default='ANGLE', update=_persist),
+        'extras_edge_center': bpy.props.EnumProperty(
+            name="Edge Placement", description="How the band sits on the edge",
+            items=[
+                ('BETWEEN', "Symmetric", "The band hugs the edge: the same number of texels on both sides"),
+                ('ON', "Pixel Line", "A one-texel line on the edge (snapped to texel centers), "
+                                     "the band spreads evenly from it"),
+            ],
+            default='BETWEEN', update=_persist),
+        'extras_edge_angle': bpy.props.FloatProperty(
+            name="Sharp Angle", description="Faces meeting at more than this angle make a sharp edge (degrees)",
+            min=1.0, max=180.0, soft_min=5.0, soft_max=90.0, default=30.0, update=_persist),
+        'extras_edge_curve': bpy.props.StringProperty(
+            name="Edges Falloff", description="Edges falloff curve anchors (JSON, model/value_curve.py)",
+            default="", options={'HIDDEN'}, update=_persist),
+        'extras_edge_fade': bpy.props.BoolProperty(
+            name="Fade Edges", description="The Edges band fades out toward its inner side",
+            default=True, update=_persist),
+        'extras_ao_samples': bpy.props.IntProperty(
+            name="AO Samples", description="Rays per texel (more: smoother, slower)",
+            min=4, max=512, soft_min=8, soft_max=128, default=32, update=_persist),
+        'extras_ao_distance': bpy.props.FloatProperty(
+            name="AO Distance", description="How far occluders count, as a share of the mesh's size",
+            min=0.01, max=2.0, soft_min=0.02, soft_max=1.0, default=0.25, update=_persist),
+        'extras_ao_fade': bpy.props.BoolProperty(
+            name="Fade AO", description="Open areas keep their pixels (opacity follows the AO curve)",
+            default=True, update=_persist),
+        'extras_ao_curve': bpy.props.StringProperty(
+            name="AO Curve", description="Ambient occlusion curve anchors (JSON, model/value_curve.py)",
+            default="", options={'HIDDEN'}, update=_persist),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",

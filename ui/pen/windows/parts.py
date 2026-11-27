@@ -301,12 +301,20 @@ class ArcSlider(RingSegment):
     from the ``a0`` end to the ``a1`` end. A press sets it from the pointer's angle,
     dragging keeps setting it; ESC / RMB restore the value from before. ``value()``,
     ``on_value(v)``, ``value_range`` (lo, hi) or a callable; ``label`` and the value
-    are written on it."""
+    are written on it (``fmt(value)``: the value's text, default "<n> px"). ``short``:
+    only the label's first letter, upright (arcs on the sides of a dial, where longer
+    level text would cross the band) -- :meth:`readout` gives the full name and value for
+    a readout beside the window while dragging (like the pen menu's S / A / M);
+    ``reverse``: the value grows from the ``a1`` end."""
 
     draggable = True
 
-    def __init__(self, label="", *, value, on_value, value_range=(0.0, 1.0), fill_color=None, **kwargs):
+    def __init__(self, label="", *, value, on_value, value_range=(0.0, 1.0), fill_color=None, fmt=None,
+                 short=False, reverse=False, **kwargs):
         super().__init__(label, **kwargs)
+        self.fmt = fmt              # value -> text (default: "<n> px")
+        self.short = short
+        self.reverse = reverse
         self.value = value
         self.on_value = on_value
         self.value_range = value_range
@@ -329,12 +337,25 @@ class ArcSlider(RingSegment):
         angle = math.atan2(y - self.cy, x - self.cx) % math.tau
         mid = (s0 + s1) * 0.5    # unwrap around the slider's middle
         angle = mid + (angle - mid + math.pi) % math.tau - math.pi
-        return max(0.0, min(1.0, (angle - s0) / max(1e-6, s1 - s0)))
+        f = max(0.0, min(1.0, (angle - s0) / max(1e-6, s1 - s0)))
+        return 1.0 - f if self.reverse else f
 
     def _fraction(self):
         lo, hi = self._range()
         v = float(_resolve(self.value, lo) or lo)
         return 0.0 if hi <= lo else max(0.0, min(1.0, (v - lo) / (hi - lo)))
+
+    @property
+    def dragging(self):
+        return self._original is not None
+
+    def value_text(self):
+        value = float(_resolve(self.value, 0) or 0)
+        return self.fmt(value) if self.fmt is not None else f"{int(round(value))} px"
+
+    def readout(self):
+        """The full name and value (shown beside the window while dragging)."""
+        return f"{self.label}  {self.value_text()}"
 
     def drag_begin(self, x, y):
         self._original = _resolve(self.value, None)
@@ -355,19 +376,35 @@ class ArcSlider(RingSegment):
         f = self._fraction()
         if f > 0.0:
             a0, a1 = self.angles
-            inner, outer = ring_segment_points(self.cx, self.cy, self.pr0, self.pr1, a0, a0 + (a1 - a0) * f,
-                                               self.insets[0], inset1=self.insets[1] if f >= 1.0 else 0.0)
-            inner, outer = round_strip(inner, outer, self._round_px, ends=(True, f >= 1.0))
+            full = f >= 1.0
+            if self.reverse:    # filled from the a1 end
+                inner, outer = ring_segment_points(self.cx, self.cy, self.pr0, self.pr1, a1 - (a1 - a0) * f, a1,
+                                                   self.insets[0] if full else 0.0, inset1=self.insets[1])
+                inner, outer = round_strip(inner, outer, self._round_px, ends=(full, True))
+            else:
+                inner, outer = ring_segment_points(self.cx, self.cy, self.pr0, self.pr1, a0, a0 + (a1 - a0) * f,
+                                                   self.insets[0], inset1=self.insets[1] if full else 0.0)
+                inner, outer = round_strip(inner, outer, self._round_px, ends=(True, full))
             if inner:
                 fill = self.fill_color or theme.accent
                 dark = tuple(c * 0.62 for c in fill[:3])
                 last = max(1, len(inner) - 1)
                 colors = [(*(dark[k] + (fill[k] - dark[k]) * f * i / last for k in range(3)), 0.85 * alpha)
                           for i in range(len(inner))]
+                if self.reverse:   # brightest at the moving end
+                    colors.reverse()
                 draw.gradient_ring_segment(inner, outer, colors)
         x, y = self.middle()
-        value = _resolve(self.value, 0) or 0
-        draw.text_centered(f"{self.label} {int(round(float(value)))} px", x, y, theme.px(FONT * 0.9),
+        if self.short:
+            # The first letter with the value under it, both upright (compact: no space before a unit).
+            letter_size, value_size = theme.px(FONT * 1.1), theme.px(FONT * 0.8)
+            gap = (letter_size + value_size) * 0.28
+            draw.text_centered(str(self.label)[:1].upper(), x, y + gap, letter_size,
+                               with_alpha(theme.text, alpha), theme.font_id)
+            draw.text_centered(self.value_text().replace(" ", ""), x, y - gap, value_size,
+                               with_alpha(theme.text_muted, alpha), theme.font_id)
+            return
+        draw.text_centered(f"{self.label} {self.value_text()}", x, y, theme.px(FONT * 0.9),
                            with_alpha(theme.text, alpha), theme.font_id)
 
 

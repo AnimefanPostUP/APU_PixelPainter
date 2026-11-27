@@ -16,6 +16,7 @@ from .brushes.spray import SprayBrushTool
 from .brushes.square import SquareBrushTool
 from .filters.smear import SmearTool
 from .filters.smooth import SmoothTool
+from .extras.tool import ExtrasTool
 from .mask.tool import MaskTool
 from .pen.tool import PenBarTool
 from .registry import ToolRegistry
@@ -42,6 +43,7 @@ def global_tools():
     return [
         PenBarTool(TOOLS),           # on-screen pen controls (screen space, runs first)
         MaskTool(),                  # paint mask: picking islands / parts on the canvas
+        ExtrasTool(),                # Extras window: Fill / Edges / AO on the island / part under the cursor
         ToolSwitchShortcuts(TOOLS),  # Shift+1..9
     ]
 

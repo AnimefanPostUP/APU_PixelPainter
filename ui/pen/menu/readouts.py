@@ -40,6 +40,11 @@ class Readouts:
             self._pill(f"Scale  {self._scale(name) * 100:.0f}%", window.rect, window.grip.rect.cy, 14.0,
                        theme.accent)
             return
+        for window, overlay in self.tool_windows.values():   # a window's arc slider (Extras)
+            slider = overlay.dragging
+            if window.visible and getattr(slider, 'dragging', False) and hasattr(slider, 'readout'):
+                self._pill(slider.readout(), window.rect, slider.middle()[1], 16.0, theme.accent)
+                return
         field = getattr(self, 'falloff_field', None)
         if field is not None and field.dragging:
             self._draw_falloff_readout(field)

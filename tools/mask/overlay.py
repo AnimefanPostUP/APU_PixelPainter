@@ -231,14 +231,14 @@ def _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d):
         gpu.state.blend_set('NONE')
 
 
-def draw_hint(context):
+def draw_hint(context, text=PICK_HINT):
     region = getattr(context, 'region', None)
     if region is None:
         return
     font = 0
     size = int(13 * context.preferences.system.ui_scale)
     blf.size(font, size)
-    tw, th = blf.dimensions(font, PICK_HINT)
+    tw, th = blf.dimensions(font, text)
     x, y = (region.width - tw) * 0.5, 40.0 * context.preferences.system.ui_scale
     pad = 6.0
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
@@ -250,7 +250,7 @@ def draw_hint(context):
     batch.draw(shader)
     blf.position(font, x, y, 0)
     blf.color(font, 1.0, 1.0, 1.0, 1.0)
-    blf.draw(font, PICK_HINT)
+    blf.draw(font, text)
     gpu.state.blend_set('NONE')
 
 
