@@ -4,7 +4,7 @@ dragging the knobs (size / strength / alpha / modifier).
 
 import math
 
-from ...kit import Dial, DragBubble, CornerSegment, RingSegment, RingSlider
+from ...kit import MENU, Dial, DragBubble, CornerSegment, RingSegment, RingSlider
 from ....model import blend_modes, color_history, color_palette, falloff
 from ..widgets.blend import BlendButton, BlendFavorite, BlendFavorites
 from ..widgets.color import ColorCorner, GradientSlider, PaletteSlot, Swatch, TertiaryBubble
@@ -115,7 +115,7 @@ class DialControls:
         curve = RingSegment("Curve", key='CURVE', painter=paint_curve, fill=INNER_FILL,
                             tint=TINT_CUSTOM, tint_amount=CUSTOM_TINT_AMOUNT,
                             selected=lambda: self.flyout is self.curve_flyout,
-                            on_click=lambda: self._open_curve(curve))
+                            on_click=lambda: self._open_curve(curve), options=MENU)
         dial.add_arc([custom, curve], INNER_RING[0], FALLOFF_SPLIT, *FALLOFF_FIELD_ARC)
         self._add_corners(dial)
         return dial
@@ -134,7 +134,8 @@ class DialControls:
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
         # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock, one capsule.
         _add_capsule(dial, [
-            RingSegment("Spacing", key='SPACING', painter=paint_spacing(a.spacing), on_click=a.toggle_spacing),
+            RingSegment("Spacing", key='SPACING', painter=paint_spacing(a.spacing), on_click=a.toggle_spacing,
+                        options=lambda: (2, 0 if a.spacing() == 'PIXEL' else 1)),
             RingSegment("Alphalock", key='ALPHA_LOCK', painter=paint_alpha_lock,
                         selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
         ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
@@ -182,7 +183,7 @@ class DialControls:
         # off, drag: opacity), Blend (opens the flyout on the press; shows the mode).
         blend = BlendButton("Blend", key='BLEND', mode=lambda: blend_modes.short_label(a.active_blend()),
                              on_click=lambda: self.toggle_flyout(self.blend_flyout, blend),
-                             selected=lambda: self.flyout is self.blend_flyout)
+                             selected=lambda: self.flyout is self.blend_flyout, options=MENU)
         blend.activate_on_press = True
         save = RingSegment("Save", key='SAVE_IMAGE', painter=paint_save(a.image_unsaved, caption=False),
                            tint=TINT_SAVE, on_click=a.save_image)
@@ -190,7 +191,7 @@ class DialControls:
                            on_value=a.set_grid_opacity, on_click=a.toggle_grid, tint=TINT_GRID)
         windows = RingSegment("Windows", key='WINDOWS', painter=paint_windows, tint=TINT_WINDOWS,
                               selected=lambda: self.flyout is self.window_ring,
-                              on_click=lambda: self.toggle_flyout(self.window_ring, windows))
+                              on_click=lambda: self.toggle_flyout(self.window_ring, windows), options=MENU)
         windows.activate_on_press = True
         _add_capsule(dial, [windows, save, grid, blend], *BOTTOM_LEFT_RING, *BOTTOM_LEFT_ARC)
         self.windows_button = windows

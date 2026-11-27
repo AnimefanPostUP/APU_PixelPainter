@@ -16,7 +16,7 @@ Values are read and written through the pen menu's actions
 """
 
 
-from ...kit import Column, Grid, Rect, Row, Slider, TextBlock, Widget
+from ...kit import MENU, Column, Grid, Rect, Row, Slider, TextBlock, Widget
 from ...kit import draw
 from ...kit.form import text_left
 from ...kit.theme import with_alpha
@@ -326,7 +326,7 @@ class SettingsMenu:
             rows.append(Row([head, Grid(cells, columns=7, gap=3.0)], gap=12.0))
         per_tool = Column(rows + [self._hint(("Left: the tool (tap selects it); right: its falloff.",))], gap=5.0)
         edit = PenButton("Edit Custom Curve", painter=paint_curve, layout='row', size=(200.0, 30.0),
-                          key='SET_EDIT_CURVE')
+                          key='SET_EDIT_CURVE', options=MENU)
         edit.on_click = lambda: self.bar._open_curve(edit)
         return [
             self._group("Falloff per Tool", per_tool, tint, icon_falloff),

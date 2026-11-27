@@ -318,6 +318,15 @@ def _static_properties():
                 ('SHARP', "Sharp Areas", "Faces between sharp edges (meeting at more than the Sharp Angle)"),
             ],
             default='UV_ISLAND', update=_redraw_mask),
+        'extras_fill_fade': bpy.props.BoolProperty(
+            name="Fade Fill", description="Fill also runs past the island / part into its neighbours, fading out",
+            default=False, update=_persist),
+        'extras_fill_width': bpy.props.IntProperty(
+            name="Fill Fade Width", description="How far Fill fades out past the island / part, in texels",
+            min=1, max=64, soft_max=32, default=4, update=_persist),
+        'extras_fill_curve': bpy.props.StringProperty(
+            name="Fill Fade Curve", description="Fill fade-out curve anchors (JSON, model/value_curve.py)",
+            default="", options={'HIDDEN'}, update=_persist),
         'extras_edge_width': bpy.props.IntProperty(
             name="Edge Width", description="Width of the Edges band in texels (per side)",
             min=1, max=32, soft_max=16, default=3, update=_persist),

@@ -21,6 +21,25 @@ def paint_edit(dc, x, y, size, alpha):
 SOURCE_NAMES = {'UV_ISLAND': "UV Islands", 'MESH_PART': "Mesh Parts", 'SHARP': "Sharp Areas"}
 
 
+SOURCE_SHORT = {'UV_ISLAND': "UV", 'MESH_PART': "Mesh", 'SHARP': "Sharp"}
+
+
+def paint_source_name(source_id):
+    """One source's short name (the Extras window's UV / Mesh / Sharp buttons)."""
+    def paint(dc, x, y, size, alpha):
+        theme = dc.theme
+        draw.text_centered(SOURCE_SHORT.get(source_id, source_id), x, y, theme.px(FONT * 0.9),
+                           with_alpha(theme.text, alpha), theme.font_id)
+    return paint
+
+
+def source_options(source):
+    """``(count, index)`` of ``source`` among the sources (the source arc's option dots;
+    same order as the cycle a tap steps through)."""
+    order = list(SOURCE_NAMES)
+    return len(order), order.index(source) if source in order else 0
+
+
 def paint_source_band(source):
     """The source arc: 'UV Islands' / 'Mesh Parts' / 'Sharp Areas' written on it."""
     def paint(dc, x, y, size, alpha):

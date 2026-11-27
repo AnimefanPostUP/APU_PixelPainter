@@ -7,6 +7,8 @@ presets of the Extras window's curves (``kind``):
   (occluded) color.
 * ``'edge'`` -- the Edges falloff: ``x`` = distance from the edge (0 = on it, 1 = the
   band's width), ``y`` = the edge's weight (1 = primary color, full opacity).
+* ``'fill'`` -- Fill's fade-out past the element: ``x`` = distance from the element's
+  border (0 = on it, 1 = the fade's width), ``y`` = opacity.
 """
 
 import json
@@ -40,8 +42,11 @@ EDGE_PRESETS = (
 )
 EDGE_DEFAULT = 'LINEAR'
 
-PRESETS = {'ao': AO_PRESETS, 'edge': EDGE_PRESETS}
-DEFAULTS = {'ao': AO_DEFAULT, 'edge': EDGE_DEFAULT}
+FILL_PRESETS = EDGE_PRESETS     # the same falloff shapes
+FILL_DEFAULT = 'LINEAR'
+
+PRESETS = {'ao': AO_PRESETS, 'edge': EDGE_PRESETS, 'fill': FILL_PRESETS}
+DEFAULTS = {'ao': AO_DEFAULT, 'edge': EDGE_DEFAULT, 'fill': FILL_DEFAULT}
 _BY_KIND = {kind: {pid: points for pid, _label, points in presets} for kind, presets in PRESETS.items()}
 
 

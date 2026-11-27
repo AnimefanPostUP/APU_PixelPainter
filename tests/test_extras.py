@@ -149,6 +149,23 @@ class EdgeRampTest(unittest.TestCase):
             self.assertIsNotNone(curve.preset('edge', pid))
         self.assertEqual(curve.from_text("", 'edge'), curve.preset('edge', 'LINEAR'))
 
+    def test_fill_presets(self):
+        self.assertEqual(curve.from_text("", 'fill'), curve.preset('fill', 'LINEAR'))
+        self.assertEqual(curve.default_points('fill')[0], (0.0, 1.0))   # full opacity at the border
+
+    def test_border_sides(self):
+        # A strip of three triangles: 0 (label 0) | 1 (label 1) | 2 (label 2), sharing
+        # the edges 1-2 (tris 0 / 1) and 2-3 (tris 1 / 2).
+        tri_verts = [(0, 1, 2), (1, 3, 2), (2, 3, 4)]
+        tri, k = edge.border_sides(tri_verts, [0, 1, 2], (0,))
+        self.assertEqual(tri.tolist(), [1])                    # only the neighbour of 0
+        a, b = tri_verts[1][k[0]], tri_verts[1][(k[0] + 1) % 3]
+        self.assertEqual({a, b}, {1, 2})                       # on the shared edge
+        tri, _k = edge.border_sides(tri_verts, [0, 1, 2], (1,))
+        self.assertEqual(sorted(tri.tolist()), [0, 2])         # both sides
+        tri, _k = edge.border_sides(tri_verts, [0, -1, 2], (0,))
+        self.assertEqual(len(tri), 0)                          # unlabelled neighbours get nothing
+
 
 class RegionPaintTest(unittest.TestCase):
     def test_mix_with_opacity_and_alpha(self):

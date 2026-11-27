@@ -305,13 +305,15 @@ class ArcSlider(RingSegment):
     only the label's first letter, upright (arcs on the sides of a dial, where longer
     level text would cross the band) -- :meth:`readout` gives the full name and value for
     a readout beside the window while dragging (like the pen menu's S / A / M);
-    ``reverse``: the value grows from the ``a1`` end."""
+    ``reverse``: the value grows from the ``a1`` end. ``tag``: a short name written
+    instead of the first letter (``short`` sliders; e.g. "Dist")."""
 
     draggable = True
 
     def __init__(self, label="", *, value, on_value, value_range=(0.0, 1.0), fill_color=None, fmt=None,
-                 short=False, reverse=False, **kwargs):
+                 short=False, reverse=False, tag=None, **kwargs):
         super().__init__(label, **kwargs)
+        self.tag = tag
         self.fmt = fmt              # value -> text (default: "<n> px")
         self.short = short
         self.reverse = reverse
@@ -396,10 +398,12 @@ class ArcSlider(RingSegment):
                 draw.gradient_ring_segment(inner, outer, colors)
         x, y = self.middle()
         if self.short:
-            # The first letter with the value under it, both upright (compact: no space before a unit).
-            letter_size, value_size = theme.px(FONT * 1.1), theme.px(FONT * 0.8)
+            # The tag (or the first letter) with the value under it, both upright (compact: no
+            # space before a unit).
+            name = self.tag or str(self.label)[:1].upper()
+            letter_size, value_size = theme.px(FONT * (0.9 if self.tag else 1.1)), theme.px(FONT * 0.8)
             gap = (letter_size + value_size) * 0.28
-            draw.text_centered(str(self.label)[:1].upper(), x, y + gap, letter_size,
+            draw.text_centered(name, x, y + gap, letter_size,
                                with_alpha(theme.text, alpha), theme.font_id)
             draw.text_centered(self.value_text().replace(" ", ""), x, y - gap, value_size,
                                with_alpha(theme.text_muted, alpha), theme.font_id)

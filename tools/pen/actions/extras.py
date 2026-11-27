@@ -5,6 +5,8 @@ from ....model import value_curve
 from ...extras import tool as extras_tool
 from .mask import next_source
 
+EXTRAS_TOOLS = ('FILL', 'EDGES', 'AO')
+
 
 class ExtrasActions:
     """Part of :class:`.bar.PenBarTool` (a mixin: uses its state)."""
@@ -15,18 +17,27 @@ class ExtrasActions:
     def extras_selected(self, mode):
         return self.extras_mode() == mode
 
-    def toggle_extras_mode(self, mode):
-        """Arm ``mode`` (tapping the armed one disarms it)."""
+    def _arm_extras(self, mode):
         ctx = self._c()
-        extras_tool.set_mode(ctx.state, None if self.extras_mode() == mode else mode)
+        extras_tool.set_mode(ctx.state, mode)
+        if mode is not None:
+            ctx.state['extras_last_mode'] = mode
         ctx.state['extras_status'] = None
         ctx.redraw()
 
+    def toggle_extras_mode(self, mode):
+        """Arm ``mode`` (tapping the armed one disarms it)."""
+        self._arm_extras(None if self.extras_mode() == mode else mode)
+
+    def extras_tool(self):
+        """The tool the Extras window shows: the armed one, else the last armed (Fill at first)."""
+        state = self._c().state
+        mode = state.get('extras_mode') or state.get('extras_last_mode')
+        return mode if mode in EXTRAS_TOOLS else EXTRAS_TOOLS[0]
+
     def extras_run_all(self):
-        """Run the armed tool on every island / part."""
-        mode = self.extras_mode()
-        if mode is not None:
-            extras_tool.run(self._c(), mode, None)
+        """Run the shown tool on every island / part."""
+        extras_tool.run(self._c(), self.extras_tool(), None)
 
     def extras_status(self):
         return self._c().state.get('extras_status') or ""
@@ -37,7 +48,7 @@ class ExtrasActions:
     def toggle_extras_source(self):
         self.wm_set('extras_source', next_source(self.extras_source()))
 
-    # ---- curves: 'ao' (AO) / 'edge' (Edges falloff), model/value_curve.py --------------------
+    # ---- curves: 'ao' (AO) / 'edge' (Edges falloff) / 'fill' (Fill fade-out), model/value_curve.py --------------------
 
     def extras_curve_open(self):
         """The curve section under the circle is folded out."""

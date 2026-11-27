@@ -25,7 +25,7 @@ from . import anim
 from . import draw
 from .geometry import Rect, corner_contains, corner_room, corner_segment_points, polygon_centroid, ring_contains, ring_segment_points, round_strip
 from .theme import mix, with_alpha
-from .widget import Widget, _resolve
+from .widget import Widget, _resolve, draw_dots
 
 
 class RingSegment(Widget):
@@ -157,6 +157,21 @@ class RingSegment(Widget):
     def draw_self(self, dc):
         alpha = self.draw_frame(dc)
         self.draw_content(dc, alpha)
+
+    def draw_options(self, dc, flags):
+        """The option dots: a row along the circle by the inner edge (left to right,
+        or top to bottom on the sides)."""
+        theme = dc.theme
+        step = theme.px(5.0)
+        depth = self.pr1 - self.pr0
+        if depth <= 0.0:
+            return
+        x, y = self.middle(self.pr0 + max(theme.px(4.5), depth * 0.16))
+        a = math.atan2(y - self.cy, x - self.cx)
+        dx, dy = -math.sin(a), math.cos(a)
+        if dx < -0.3 or (abs(dx) <= 0.3 and dy > 0.0):
+            dx, dy = -dx, -dy
+        draw_dots(dc, flags, x, y, dx * step, dy * step, self._alpha(dc))
 
     def draw_content(self, dc, alpha):
         theme = dc.theme

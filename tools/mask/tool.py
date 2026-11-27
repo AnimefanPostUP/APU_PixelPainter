@@ -8,6 +8,7 @@ from ...core.framework import Shortcut, ToolFrame
 from ...core.view3d import elements
 from ...overlays import element_outline
 from ...overlays.cursor import draw_pick_cursor
+from .. import pickers
 from .data import active, element_at, is_chosen, refresh, selection, set_chosen
 from .overlay import draw_edit_frame, draw_hint
 
@@ -45,14 +46,25 @@ def update_hover(ctx):
     return element_outline.set_hover('MASK', _picking, emap, elements.label_under(ctx, emap), HOVER_COLOR)
 
 
-def set_picking(state, context, on):
-    """Start / stop choosing elements on the canvas (starting also turns the mask on)."""
-    state['mask_picking'] = bool(on)
+def release(state):
+    """Stop choosing elements (also when another canvas picker starts, tools/pickers.py)."""
+    state['mask_picking'] = False
     state['mask_pick_value'] = None
+    element_outline.clear('MASK')
+
+
+pickers.register('MASK', release)
+
+
+def set_picking(state, context, on):
+    """Start / stop choosing elements on the canvas (starting also turns the mask on and
+    stops the other canvas pickers)."""
     if not on:
-        element_outline.clear('MASK')
-    if on:
-        state['extras_mode'] = None    # one canvas picker at a time (the Extras window's tools)
+        release(state)
+    else:
+        pickers.claim(state, 'MASK')
+        state['mask_picking'] = True
+        state['mask_pick_value'] = None
         wm = context.window_manager
         if not active(wm):
             wm.pixel_painter_mask_enabled = True
@@ -83,9 +95,7 @@ class MaskTool(ToolFrame):
         ctx.state['mask_pick_value'] = None
 
     def on_session_end(self, ctx):
-        ctx.state['mask_picking'] = False
-        ctx.state['mask_pick_value'] = None
-        element_outline.clear('MASK')
+        release(ctx.state)
 
     def _apply(self, ctx, value=None):
         """Toggle (``value`` None) or set the element under the cursor; returns its new state."""

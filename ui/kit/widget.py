@@ -22,6 +22,43 @@ interaction state and the overlay's open/close animation progress.
 
 from . import anim
 from .geometry import Rect
+from .theme import with_alpha
+
+
+MENU = 'menu'   # ``options=MENU``: the widget opens a dropdown (three filled dots)
+
+
+def option_dots(options):
+    """The dots an ``options`` binding asks for, as filled flags: ``(count, index)``
+    -- a toggle that switches between ``count`` options, ``index`` is the active one
+    (one filled dot among empty ones) -- or :data:`MENU` (three filled dots)."""
+    value = _resolve(options, None)
+    if value is None:
+        return []
+    if value == MENU:
+        return [True, True, True]
+    try:
+        count, index = value
+    except (TypeError, ValueError):
+        return []
+    return [i == index for i in range(max(0, int(count)))]
+
+
+def draw_dots(dc, flags, x, y, dx, dy, alpha):
+    """``flags`` as dots centered on ``x, y``, one step ``(dx, dy)`` apart (screen px):
+    filled ones solid, the others as rings."""
+    from . import draw
+    theme = dc.theme
+    r = theme.px(1.8)
+    n = len(flags)
+    for i, filled in enumerate(flags):
+        t = i - (n - 1) * 0.5
+        px, py = x + dx * t, y + dy * t
+        if filled:
+            draw.circle(px, py, r, with_alpha(theme.text, 0.95 * alpha), segments=12)
+        else:
+            draw.circle_outline(px, py, r, with_alpha(theme.text_muted, 0.85 * alpha), width=max(1.0, theme.px(0.8)),
+                                segments=12)
 
 
 def _resolve(value, default=None):
@@ -81,8 +118,9 @@ class Widget:
                                # flyout the pointer can then be dragged into)
 
     def __init__(self, *, key=None, on_click=None, selected=None, enabled=True,
-                 visible=True, keep_open=False):
+                 visible=True, keep_open=False, options=None):
         self.key = key
+        self.options = options       # dots: (count, index) of a multi-option toggle, or MENU
         self.parent = None
         self.children = []
         self.rect = Rect()
@@ -214,11 +252,24 @@ class Widget:
             return
         self.update(dc)
         self.draw_self(dc)
+        if self.options is not None:
+            flags = option_dots(self.options)
+            if flags:
+                self.draw_options(dc, flags)
         for child in self.children:
             child.draw(dc)
 
     def draw_self(self, dc):
         pass
+
+    def draw_options(self, dc, flags):
+        """The option dots (see :func:`option_dots`): a column inside the right edge."""
+        r = self.rect
+        if r.width <= 0.0 or r.height <= 0.0:
+            return
+        step = dc.theme.px(5.0)
+        alpha = dc.alpha * (1.0 if self.is_enabled else dc.theme.disabled_alpha)
+        draw_dots(dc, flags, r.x1 - dc.theme.px(6.0), (r.y0 + r.y1) * 0.5, 0.0, -step, alpha)
 
 
 # ---------------------------------------------------------------------------

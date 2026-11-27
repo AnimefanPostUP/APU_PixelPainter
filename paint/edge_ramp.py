@@ -14,6 +14,8 @@ the same on both sides of the edge:
   one-texel line and the band spreads evenly from it (an odd band).
 
 * :func:`model_edges` -- which triangle sides are model edges to draw.
+* :func:`border_sides` -- the sides of the triangles just outside chosen elements
+  (Fill's fade-out runs from them into the neighbouring elements).
 * :func:`snap_segments` -- segments moved onto texel centers ('ON').
 * :func:`segment_distance` -- per-texel distance to the edges of its own element.
 * :func:`band` / :func:`ramp` -- distance -> painted texels; through the falloff curve
@@ -81,6 +83,27 @@ def model_edges(tri_verts, tri_pos, mode='ANGLE', angle_deg=30.0, real_edges=Non
     sharp &= is_edge[s0]
     sides = np.concatenate((s0[sharp], s1[sharp]))
     return tri[sides], k[sides]
+
+
+def border_sides(tri_verts, tri_label, chosen):
+    """Sides of the triangles *outside* the ``chosen`` labels (and labelled, >= 0) that
+    share a mesh edge with a triangle inside them: ``(tri, k)`` int arrays (side ``k``
+    runs from corner ``k`` to ``(k + 1) % 3``)."""
+    tv = np.asarray(tri_verts, dtype=np.int64).reshape(-1, 3)
+    lab = np.asarray(tri_label, dtype=np.int64).reshape(-1)
+    empty = np.zeros(0, dtype=np.int64)
+    if len(tv) == 0:
+        return empty, empty
+    inside = np.isin(lab, np.asarray(list(chosen), dtype=np.int64))
+    n = len(tv)
+    tri = np.tile(np.arange(n, dtype=np.int64), 3)
+    k = np.repeat(np.arange(3, dtype=np.int64), n)
+    a, b = tv[tri, k], tv[tri, (k + 1) % 3]
+    base = int(tv.max()) + 1
+    key = np.minimum(a, b) * base + np.maximum(a, b)
+    inner_keys = key[inside[tri]]
+    outside = ~inside[tri] & (lab[tri] >= 0) & np.isin(key, inner_keys)
+    return tri[outside], k[outside]
 
 
 def snap_segments(seg_px):

@@ -3,7 +3,7 @@ the Blend modes; opening and closing them.
 """
 
 
-from ...kit import Column, CurveEditor, Grid, Label, Row, Spacer, TextField
+from ...kit import MENU, Column, CurveEditor, Grid, Label, Row, Spacer, TextField
 from ...kit import clipboard
 from ...kit.color_models import parse_color, to_hex
 from ..icons.settings import icon_layout
@@ -29,7 +29,7 @@ class Flyouts:
         shape = PenButton(lambda: labels.get(a.color_layout(), "Shape"), layout='row', size=(92.0, 26.0),
                           painter=lambda dc, x, y, size, alpha: icon_layout(a.color_layout())(dc, x, y, size, alpha),
                           key='COLOR_SHAPE', selected=lambda: self.flyout is self.shape_flyout,
-                          on_click=lambda: self.toggle_flyout(self.shape_flyout, shape))
+                          on_click=lambda: self.toggle_flyout(self.shape_flyout, shape), options=MENU)
         fold = PenButton("Sliders", painter=paint_sliders, layout='icon', size=(26.0, 26.0),
                          key='COLOR_SLIDERS', selected=a.color_sliders_open, on_click=self._toggle_color_sliders)
         return Row([self.color_bubble, Spacer(6.0), shape, fold], gap=4.0)

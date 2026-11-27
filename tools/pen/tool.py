@@ -28,6 +28,7 @@ from ...core.framework import ToolFrame
 from ...ui.kit import Theme, UIEvent, hsv_for_rgb
 from ...ui.pen.bar import PenBar
 from ...ui.pen.metrics import LAYOUT_STATE
+from .. import pickers
 from ...model import tertiary_color
 from .actions.colors import ColorActions
 from .actions.extras import ExtrasActions
@@ -39,6 +40,13 @@ from .actions.windows import WindowActions
 from .layout import LayoutStore
 from .eyedropper import PenEyedropperTool
 
+
+def _release_eyedropper(state):
+    """Disarm the eyedroppers (another canvas picker starts, tools/pickers.py)."""
+    state['pen_armed'] = None
+
+
+pickers.register('EYEDROPPER', _release_eyedropper)
 
 
 def _side_insets(area, region):
@@ -404,7 +412,11 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
 
     def toggle_arm(self, kind):
         state = self._c().state
-        state['pen_armed'] = None if state.get('pen_armed') == kind else kind
+        if state.get('pen_armed') == kind:
+            state['pen_armed'] = None
+            return
+        pickers.claim(state, 'EYEDROPPER')     # one canvas picker at a time
+        state['pen_armed'] = kind
 
     def colors(self):
         ctx = self._c()

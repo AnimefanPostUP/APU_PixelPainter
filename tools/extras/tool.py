@@ -10,6 +10,7 @@ from ...core.framework import Shortcut, ToolFrame
 from ...core.view3d import elements
 from ...overlays import element_outline
 from ...overlays.cursor import draw_pick_cursor
+from .. import pickers
 from . import operations
 
 
@@ -33,16 +34,25 @@ def element_map(ctx):
         return None
 
 
+def release(state):
+    """Disarm (also when another canvas picker starts, tools/pickers.py)."""
+    state['extras_mode'] = None
+    element_outline.clear('EXTRAS')
+
+
+pickers.register('EXTRAS', release)
+
+
 def set_mode(state, mode):
-    """Arm ``mode`` (None: disarm). Arming ends mask editing (one canvas picker at a time)."""
+    """Arm ``mode`` (None: disarm). Arming stops the other canvas pickers (mask editing,
+    the eyedroppers): one at a time."""
     mode = mode if mode in operations.MODES else None
-    state['extras_mode'] = mode
     if mode is None:
-        element_outline.clear('EXTRAS')
-    else:
-        state['mask_picking'] = False
-        state['mask_pick_value'] = None
-        element_outline.clear('MASK')
+        release(state)
+        return
+    pickers.claim(state, 'EXTRAS')
+    element_outline.clear('EXTRAS')     # the previous tool's hover outline
+    state['extras_mode'] = mode
 
 
 def run(ctx, mode, label, secondary=False):

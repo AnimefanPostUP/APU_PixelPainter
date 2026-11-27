@@ -9,7 +9,7 @@ from ..metrics import TINT_MASK
 from ..icons.settings import icon_eye, icon_reset
 from .parts import (DIAL_GAP, ROW_GAP, TITLE_INDENT, ArcSlider, DialCenter, ShownSegment, WindowGroup, _Shown,
                     help_lines)
-from ..icons.windows import icon_mask_title, paint_edit, paint_source_band
+from ..icons.windows import icon_mask_title, paint_edit, paint_source_band, source_options
 # Mask circle menu: Edit in the middle, the inner ring around it (Invert, Mask, Show, Grow,
 # Clear); outside it the source arc on top and Sharp Angle on the left (only while editing).
 MASK_CENTER = 24.0
@@ -81,7 +81,8 @@ def build_mask_window(bar):
     for seg, a0, a1 in ring:
         dial.add_segment(seg, *MASK_RING, a0, a1)
     source = ShownSegment(a.mask_picking, "", painter=paint_source_band(a.mask_source),
-                           key='MASKWIN_SOURCE', tint=tint, round=MASK_BAND_ROUND, on_click=a.toggle_mask_source)
+                           key='MASKWIN_SOURCE', tint=tint, round=MASK_BAND_ROUND, on_click=a.toggle_mask_source,
+                           options=lambda: source_options(a.mask_source()))
     angle = sharp_angle_slider(a, 'MASKWIN_SHARP_ANGLE', lambda: a.mask_picking() and a.mask_source() == 'SHARP',
                                tint, TINT_MASK, round=MASK_BAND_ROUND, short=True, reverse=True)
     dial.add_band([source], *MASK_BAND, *SOURCE_ARC)

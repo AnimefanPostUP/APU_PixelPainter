@@ -1,6 +1,9 @@
 """The Extras window's operations on one element (UV island / mesh part) or all of them:
 
-* **Fill** -- the element in the primary color (secondary with RMB).
+* **Fill** -- the element in the primary color (secondary with RMB); with *Fade* the
+  color also runs past the element's border into the neighbouring elements (across the
+  mesh edges they share, in their own UV space), fading out over ``extras_fill_width``
+  texels as the Fill curve says.
 * **Edges** -- a band along the model's edges (sharp by angle, all, or marked sharp;
   not the UV borders), the same width on both sides of each edge: primary on the
   edge, running to the secondary color outward, shaped by the Edges falloff curve; with
@@ -79,29 +82,62 @@ def _targets(emap, label):
     return emap.pixels(label)
 
 
+def fill_fade(ctx, emap, label):
+    """Fill's fade-out past the element ``label``: ``(texels, opacity)`` in the
+    neighbouring elements, ``extras_fill_width`` texels deep from the shared mesh edges,
+    opacity from the Fill curve (1 at the border)."""
+    empty = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.float32))
+    cache = v3d_mesh.mesh_cache(ctx.context)
+    if cache is None or label is None:
+        return empty
+    width = max(1, int(_wm(ctx, 'fill_width', 4)))
+    tri, k = edge_ramp.border_sides(cache.tri_verts, emap.tri_label, (int(label),))
+    seg, seg_label = _uv_segments(cache, emap, tri, k)
+    if len(seg) == 0:
+        return empty
+    dist = edge_ramp.segment_distance(seg, seg_label, emap.labels, emap.w, emap.h, width + 1.0)
+    inside, steps = edge_ramp.band(dist, width, 'BETWEEN')
+    idx = np.flatnonzero(inside)
+    points = curve_points(ctx.wm, 'fill')
+    _t, opacity = edge_ramp.ramp(steps[idx], width, True, curve=lambda x: value_curve.sample(points, x))
+    return idx, opacity.astype(np.float32)
+
+
 def fill(ctx, emap, label, secondary=False):
     img = ctx.image
     idx = _targets(emap, label)
+    opacity = np.ones(len(idx), dtype=np.float32)
+    faded = 0
+    if bool(_wm(ctx, 'fill_fade', False)):
+        fade_idx, fade_opacity = fill_fade(ctx, emap, label)
+        faded = len(fade_idx)
+        idx = np.concatenate((idx, fade_idx))
+        opacity = np.concatenate((opacity, fade_opacity))
     color = _colors(ctx, secondary)[0]
-    n = _paint(ctx, img, idx, color, 1.0, secondary, "Extras: Fill")
-    return f"Fill: {n} texels"
+    n = _paint(ctx, img, idx, color, opacity, secondary, "Extras: Fill")
+    return f"Fill: {n} texels" + (f" ({faded} in the fade)" if faded else "")
+
+
+def _uv_segments(cache, emap, tri, k):
+    """Triangle sides ``(tri, k)`` drawn in their triangle's UV space: ``(segments
+    (S, 2, 2) pixel units, element label per segment)``."""
+    if len(tri) == 0:
+        return np.zeros((0, 2, 2)), np.zeros(0, dtype=np.int64)
+    uv = cache.tri_uv - np.floor(cache.tri_uv.mean(axis=1, keepdims=True))
+    seg = np.stack((uv[tri, k], uv[tri, (k + 1) % 3]), axis=1) * np.array((emap.w, emap.h), dtype=np.float64)
+    return seg, emap.tri_label[tri].astype(np.int64)
 
 
 def edge_segments(ctx, emap):
     """The chosen model edges drawn in the UV space of each triangle beside them:
     ``(segments (S, 2, 2) pixel units, element label per segment)``."""
     cache = v3d_mesh.mesh_cache(ctx.context)
-    empty = (np.zeros((0, 2, 2)), np.zeros(0, dtype=np.int64))
     if cache is None:
-        return empty
+        return np.zeros((0, 2, 2)), np.zeros(0, dtype=np.int64)
     mode = _wm(ctx, 'edge_source', 'ANGLE')
     tri, k = edge_ramp.model_edges(cache.tri_verts, cache.tri_pos, mode, float(_wm(ctx, 'edge_angle', 30.0)),
                                    real_edges=cache.edges, marked=cache.edge_marked)
-    if len(tri) == 0:
-        return empty
-    uv = cache.tri_uv - np.floor(cache.tri_uv.mean(axis=1, keepdims=True))
-    seg = np.stack((uv[tri, k], uv[tri, (k + 1) % 3]), axis=1) * np.array((emap.w, emap.h), dtype=np.float64)
-    return seg, emap.tri_label[tri].astype(np.int64)
+    return _uv_segments(cache, emap, tri, k)
 
 
 def edges(ctx, emap, label, secondary=False):
@@ -131,7 +167,7 @@ def edges(ctx, emap, label, secondary=False):
 
 
 def curve_points(wm, kind):
-    """Anchors of the Extras curve ``kind`` ('ao' / 'edge')."""
+    """Anchors of the Extras curve ``kind`` ('ao' / 'edge' / 'fill')."""
     return value_curve.from_text(getattr(wm, f'pixel_painter_extras_{kind}_curve', ""), kind)
 
 

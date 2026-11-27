@@ -34,7 +34,7 @@ modal     OverlayOperator mixin + draw handler/timer session (bpy)
 from .geometry import Rect
 from .theme import Theme
 from .events import UIEvent
-from .widget import Column, DrawContext, Grid, Row, Widget
+from .widget import MENU, Column, DrawContext, Grid, Row, Widget
 from .widgets import BubbleButton, Button, ColorBubble, DragBubble, Label, Panel, RoundButton
 from .radial import RadialMenu
 from .curve import CurveEditor
