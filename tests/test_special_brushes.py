@@ -19,6 +19,7 @@ sys.modules.setdefault('bpy', types.ModuleType('bpy'))  # the package __init__ i
 
 special = importlib.import_module(f'{_PACKAGE}.paint.special')
 brushes_actions = importlib.import_module(f'{_PACKAGE}.tools.pen.actions.brushes')
+trails = importlib.import_module(f'{_PACKAGE}.model.particle_trails')
 
 
 def _image(w, h, rgba=(0.5, 0.5, 0.5, 1.0)):
@@ -203,6 +204,31 @@ class ParticlesTest(unittest.TestCase):
     def test_chip_size_zero_is_one_pixel(self):
         xs, _ys, _w = special.chips([(5, 5, 1.0)], 0, np.random.default_rng(0), 16, 16)
         self.assertEqual(len(xs), 1)
+
+
+class TrailsTest(unittest.TestCase):
+    def test_fade_and_drop(self):
+        t = trails.Trails(life=1.0)
+        t.add(0.0, '2D', [(0, 0), (1, 1)], [(1, 1)])
+        (trail, fade), = t.live(0.25)
+        self.assertAlmostEqual(fade, 0.75)
+        self.assertEqual(t.live(1.5), [])
+        self.assertEqual(t.items, [])
+
+    def test_space_switch_drops_old(self):
+        t = trails.Trails()
+        t.add(0.0, '3D', [(0, 0, 0), (1, 0, 0)], [])
+        t.add(0.0, '2D', [(0, 0), (1, 1)], [])
+        self.assertEqual(len(t.items), 1)
+        self.assertEqual(t.space, '2D')
+
+    def test_limit_and_empty(self):
+        t = trails.Trails(limit=3)
+        for i in range(5):
+            t.add(float(i), '2D', [(0, 0), (i, i)], [])
+        self.assertEqual([tr.born for tr in t.items], [2.0, 3.0, 4.0])
+        t.add(9.0, '2D', [(0, 0)], [])            # a single point, no hit: nothing to show
+        self.assertEqual(len(t.items), 3)
 
 
 class GroupTest(unittest.TestCase):

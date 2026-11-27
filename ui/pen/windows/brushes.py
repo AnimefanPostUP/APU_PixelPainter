@@ -6,7 +6,7 @@ menu's style, opened from the Windows ring's outer ring.
 * inner ring, top, left to right: Particles, Rust, Noise Blur, Pull, Repair (a tap
   selects one; tapping the selected one goes back);
 * inner ring, bottom: the shown brush's two settings -- Rust: Scale / Coverage;
-  Particles: Count / Bounces; Noise Blur: Scatter / Grain; Pull: Pixel <-> Smooth /
+  Particles: Count / Bounces / Size / Amount (four narrower slots); Noise Blur: Scatter / Grain; Pull: Pixel <-> Smooth /
   Drag -> Pinch -> Push;
   Repair: Auto <-> Source / Texture. Sliders show a short name; while dragged a readout
   beside the window gives the full name and value.
@@ -31,12 +31,14 @@ INNER_RING = (BRUSH_CENTER + 2.5, 62.0)
 TOOL_SPAN = 180.0 / len(SPECIAL_TOOLS)
 FIRST_ARC = (180.0, 270.0)     # bottom left (grows upward from the bottom)
 SECOND_ARC = (270.0, 360.0)    # bottom right (grows upward from the bottom)
+# Particles has four settings: the bottom in 45 degree slots, left to right.
+QUARTER_ARCS = ((180.0, 225.0), (225.0, 270.0), (270.0, 315.0), (315.0, 360.0))
 SLIDER_ROUND = 6.0
 TINT_OPTIONS = TINT_CUSTOM
 
 HINTS = {
     'RUST': "Left: primary patches into secondary; right: swapped.",
-    'PARTICLES': "Bodies bounce off the model, denting it (M: dent size).",
+    'PARTICLES': "Bodies bounce off the model, denting it; their paths show.",
     'NOISE_BLUR': "Pixels take random neighbours: a grainy blur.",
     'PULL': "Drag pixels along, pinch them in or push them out.",
     'REPAIR': "Paint over flaws. Right button: set a source.",
@@ -49,7 +51,9 @@ BRUSHES_HELP = ("Top: tap a brush to use it (again: back to",
                 "Scale = patch size, Coverage = how patchy.",
                 "Particles: in 3D, bodies fly at the model and",
                 "bounce off it, a dent at every hit (edges get",
-                "chipped). Count per stamp, Bounces per body.",
+                "chipped). Count per stamp, Bounces per body,",
+                "Size: dent radius, Amount: how strong. Their",
+                "flight paths show on the canvas while painting.",
                 "Noise Blur: Scatter = how far pixels jump,",
                 "Grain = fewer samples, noisier.",
                 "Pull: liquify. Drag moves pixels along; Pinch",
@@ -92,7 +96,7 @@ def build_brushes_window(bar):
         dial.add_segment(ShownArcSlider(label, shown=is_tool(tool_id), value=lambda: a.wm_get(name, lo),
                                         on_value=set_value, value_range=(lo, hi),
                                         fill_color=(*TINT_EXTRAS_VALUES, 1.0), fmt=fmt, short=True, tag=tag,
-                                        reverse=arc is FIRST_ARC, key=f'BRUSHES_{name.upper()}',
+                                        reverse=arc[1] <= 270.0, key=f'BRUSHES_{name.upper()}',
                                         tint=TINT_EXTRAS_VALUES, round=SLIDER_ROUND),
                          *INNER_RING, *arc)
 
@@ -101,8 +105,10 @@ def build_brushes_window(bar):
     percent = lambda v: f"{v * 100:.0f}%"
     slider("Scale", "Scale", 'rust_scale', 2, 48, px, 'RUST', FIRST_ARC)
     slider("Coverage", "Cover", 'rust_coverage', 0.0, 1.0, percent, 'RUST', SECOND_ARC, integer=False)
-    slider("Count", "Count", 'particle_count', 1, 24, count, 'PARTICLES', FIRST_ARC)
-    slider("Bounces", "Bounce", 'particle_bounces', 0, 6, count, 'PARTICLES', SECOND_ARC)
+    slider("Count", "Count", 'particle_count', 1, 24, count, 'PARTICLES', QUARTER_ARCS[0])
+    slider("Bounces", "Bounce", 'particle_bounces', 0, 6, count, 'PARTICLES', QUARTER_ARCS[1])
+    slider("Size", "Size", 'particle_size', 0, 8, px, 'PARTICLES', QUARTER_ARCS[2])
+    slider("Amount", "Amount", 'particle_amount', 0.0, 1.0, percent, 'PARTICLES', QUARTER_ARCS[3], integer=False)
     slider("Scatter", "Scatter", 'noise_scatter', 1, 16, px, 'NOISE_BLUR', FIRST_ARC)
     slider("Grain", "Grain", 'noise_grain', 0.0, 1.0, percent, 'NOISE_BLUR', SECOND_ARC, integer=False)
     slider("Texture", "Texture", 'repair_texture', 0.0, 1.0, percent, 'REPAIR', SECOND_ARC, integer=False)

@@ -419,6 +419,12 @@ def _static_properties():
         'particle_bounces': bpy.props.IntProperty(
             name="Particle Bounces", description="Particles: how often a body bounces off the model (a dent each time)",
             min=0, max=8, soft_min=0, soft_max=6, default=2, update=_persist),
+        'particle_size': bpy.props.IntProperty(
+            name="Particle Size", description="Particles: radius of the dent each body paints where it hits, in pixels",
+            min=0, max=16, soft_min=0, soft_max=8, default=2, update=_persist),
+        'particle_amount': _factor(
+            "Particle Amount", 1.0, description="Particles: how strongly each dent paints (times the strength)",
+            update=_persist),
         'noise_scatter': bpy.props.IntProperty(
             name="Noise Scatter", description="Noise Blur: how far pixels are taken from, in pixels",
             min=1, max=32, soft_min=1, soft_max=16, default=3, update=_persist),

@@ -534,11 +534,27 @@ whole pixel arrays to the UV island (`island_keep`). The pixel math is pure NumP
 * **Rust**: fractal value noise anchored to the texture (`rust_texels`: color mix `t`
   plus a patchy `presence`); per stroke a max-weight buffer, repainted from the stroke
   snapshot (no pile-up). LMB primary cores, RMB swapped. `rust_scale`, `rust_coverage`.
-* **Particles**: 3D -- bodies launched from in front of the brush along the view ray,
-  integrated under world gravity, collisions by `cache.bvh.ray_cast` per time step,
-  reflected with `RESTITUTION`, a dent (`chips`) at every impact (UV via
-  `raycast.hit_at`); Image Editor -- `scatter_2d`. M = dent size. `step_region` = the
-  dents' box. `particle_count`, `particle_bounces`.
+* **Particles**: 3D -- `tools/special/particle_sim.py` (only `mathutils`): bodies launched
+  from `LIFT` x size in front of the brush along the view ray (`launch_speed`), integrated
+  under world gravity (`DT`), collisions by `cache.bvh.ray_cast` per step. A hit with more
+  than `BOUNCE_SPEED` into the face bounces while bounces are left (`RESTITUTION` of the
+  speed into it, `GLANCE` of the speed along it: small hops); otherwise it slides: gravity
+  along the face minus friction (`FRICTION`, only where pressed on), a ray back onto the
+  surface every step (follows bends), a wall ahead turns it (hits on the face it slides on
+  -- `SAME_FACE` -- are ignored), over an edge it wraps onto the next face when slower than
+  `WRAP_SPEED` (`_wrap`: a ray back from just past the edge) else flies off; it clings to
+  walls / slight overhangs (`ADHESION`). Dies outside the bounding box x `BOUNDS_SCALE`
+  once it touched the mesh or while flying away (`gone`), at rest, or after `MAX_STEPS`.
+  `ParticlesTool._paint_points`: contacts -> pixels (`raycast.hit_at`), consecutive slide
+  contacts joined by pixel lines unless the jump is a UV seam (`SEAM_SLACK` x the 3D
+  distance / texel). Dents via `special.chips` (slide contacts weigh `SLIDE_WEIGHT`: a
+  thinner streak). Image Editor -- `scatter_2d`. `step_region` = the dents' box.
+  `particle_count`, `particle_bounces`, `particle_size` (dent radius, px), `particle_amount`
+  (dent opacity x strength). Display: each body's path and hits go into
+  `model/particle_trails.Trails` (fade over `LIFE`); `draw_overlay` ->
+  `overlays/special.draw_particle_trails` projects them and requests frames while fading.
+  Tests: `tests/test_particle_sim.py` -- real BVH meshes, so they run in Blender only
+  (skipped elsewhere): `blender -b --python-expr` with `unittest discover -p test_particle_sim.py`.
 * **Noise Blur**: `noise_blur`: each pixel = mean of `noise_samples(grain)` random
   pixels within `noise_scatter`.
 * **Pull**: liquify. A (H, W, 2) displacement field per stroke; `pull_mode` DRAG:
