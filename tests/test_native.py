@@ -80,7 +80,7 @@ _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
     'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
     'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch',
-    'tools.extras.ao', 'paint.edge_ramp', 'paint.special')}
+    'tools.extras.ao', 'paint.edge_ramp', 'paint.special', 'tools.special.particles')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -909,6 +909,184 @@ class SpecialBrushParityTest(NativeTestCase):
         # a flat image stays flat
         flat = np.full((h, w, 4), 0.25, np.float32)
         np.testing.assert_allclose(self._blur(flat, [(10, 10), (40, 30)], 8), flat, atol=1e-6)
+
+
+class _Vec:
+    """mathutils.Vector stand-in (float64) for running tools/special/particle_sim.py here."""
+
+    __slots__ = ('v',)
+
+    def __init__(self, seq=(0.0, 0.0, 0.0)):
+        self.v = np.array([float(c) for c in seq], dtype=np.float64)
+
+    @staticmethod
+    def _of(a):
+        out = _Vec.__new__(_Vec)
+        out.v = a
+        return out
+
+    def __add__(self, o): return _Vec._of(self.v + o.v)
+    def __sub__(self, o): return _Vec._of(self.v - o.v)
+    def __neg__(self): return _Vec._of(-self.v)
+    def __mul__(self, s): return _Vec._of(self.v * float(s))
+    __rmul__ = __mul__
+    def __truediv__(self, s): return _Vec._of(self.v / float(s))
+    def __getitem__(self, i): return float(self.v[i])
+    def __iter__(self): return iter(self.v.tolist())
+    def __len__(self): return 3
+    def __eq__(self, o): return isinstance(o, _Vec) and bool(np.all(self.v == o.v))
+    def __ne__(self, o): return not self == o
+    def dot(self, o): return float(self.v @ o.v)
+    def copy(self): return _Vec._of(self.v.copy())
+
+    @property
+    def length(self): return float(np.sqrt(self.v @ self.v))
+
+    def normalized(self):
+        n = self.length
+        return _Vec._of(self.v / n if n > 0 else self.v * 0.0)
+
+
+def _load_particle_sim():
+    import importlib.util
+    path = os.path.join(_ADDON_DIR, 'tools', 'special', 'particle_sim.py')
+    saved = sys.modules.get('mathutils')
+    sys.modules['mathutils'] = types.SimpleNamespace(Vector=_Vec)
+    try:
+        spec = importlib.util.spec_from_file_location('particle_sim_under_test', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            sys.modules.pop('mathutils', None)
+        else:
+            sys.modules['mathutils'] = saved
+    return module
+
+
+class _FixedRng:
+    """rng.normal stand-in replaying pre-drawn rows (the C# sim gets the same rows)."""
+
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def normal(self, loc, scale, size):
+        return self.rows.pop(0)
+
+
+def _grid(n, size, z=0.0):
+    xs = np.linspace(-size / 2, size / 2, n + 1)
+    X, Y = np.meshgrid(xs, xs)
+    V = np.stack((X, Y, np.full_like(X, z)), -1)
+    a, b, c, d = V[:-1, :-1], V[:-1, 1:], V[1:, 1:], V[1:, :-1]
+    return np.concatenate((np.stack((a, b, c), 2).reshape(-1, 3, 3), np.stack((a, c, d), 2).reshape(-1, 3, 3)))
+
+
+def _rot_x(tris, angle):
+    c, s = np.cos(angle), np.sin(angle)
+    m = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+    return tris @ m.T
+
+
+def _cube(half=1.0):
+    q = []
+    for axis in range(3):
+        for sign in (-1.0, 1.0):
+            face = _grid(4, 2 * half, 0.0)
+            pts = face.reshape(-1, 3)
+            pts = np.roll(pts, axis + 1, axis=1) if axis < 2 else pts
+            pts = pts.copy()
+            pts[:, axis] = sign * half
+            q.append(pts.reshape(-1, 3, 3))
+    return np.concatenate(q)
+
+
+class ParticleParityTest(NativeTestCase):
+    def setUp(self):
+        self.sim = _load_particle_sim()
+
+    def _run(self, tri_pos, target, view, bounces, n=6, seed=1):
+        sim = self.sim
+        verts = tri_pos.reshape(-1, 3)
+        box = sim.bounds(verts)
+        size = box[2]
+        gravity = sim.gravity_for(size, _Vec((0, 0, -1)))
+        brute = _brute_ray_cast(tri_pos)
+
+        class Bvh:
+            @staticmethod
+            def ray_cast(o, d, dist):
+                loc, nrm, tri, t = brute(np.asarray(list(o)), np.asarray(list(d)), dist)
+                if loc is None:
+                    return None, None, None, None
+                return _Vec(loc), _Vec(nrm), tri, t
+
+        rng = np.random.default_rng(seed)
+        pairs = []
+        with native.TriangleBVH(tri_pos) as tree:
+            for _ in range(n):
+                forward = _Vec(view).normalized()
+                start = _Vec(target) + _Vec(rng.normal(0, 0.05 * size, 3)) - forward * (0.15 * size)
+                vel = (forward + _Vec(rng.normal(0, 0.12, 3))).normalized() * sim.launch_speed(size)
+                jitter = rng.normal(0.0, sim.JITTER, (bounces, 3))
+                py = sim.fly(Bvh, start, vel, gravity, bounces, box, _FixedRng(jitter))
+                cs = sim.fly_native(tree, start, vel, gravity, bounces, box, _FixedRng(jitter[None]))
+                self.assertIsNotNone(cs)
+                pairs.append((py, cs))
+        return pairs, size
+
+    def _compare(self, pairs, size):
+        for py, cs in pairs:
+            self.assertEqual(py.end, cs.end)
+            self.assertEqual(len(py.contacts), len(cs.tris))
+            self.assertEqual(len(py.path), len(cs.path))
+            self.assertEqual(len(py.hits), len(cs.hits))
+            if py.contacts:
+                np.testing.assert_allclose(np.array([c[0].v for c in py.contacts]), cs.locs, atol=1e-9 * size)
+                np.testing.assert_array_equal([c[1] for c in py.contacts], cs.tris)
+                np.testing.assert_allclose([c[2] for c in py.contacts], cs.weights, atol=1e-12)
+            np.testing.assert_allclose(np.array([q.v for q in py.path]), cs.path, atol=1e-9 * size)
+
+    def test_ramp(self):
+        tris = _rot_x(_grid(8, 6.0), 0.6)
+        for bounces in (0, 2):
+            pairs, size = self._run(tris, (0, 0, 0), (0, 0.3, -1), bounces)
+            self._compare(pairs, size)
+            self.assertTrue(all(cs.end == 'OUT' for _py, cs in pairs))
+            self.assertTrue(any(len(cs.tris) > 10 for _py, cs in pairs))      # it slid
+
+    def test_box_top_and_edges(self):
+        tris = _cube()
+        for target, view in (((0.2, 0.1, 1.0), (0, 0.2, -1)), ((0.9, 0.0, 1.0), (0.3, 0, -1))):
+            pairs, size = self._run(tris, target, view, 1)
+            self._compare(pairs, size)
+
+    def test_step_wall(self):
+        floor = _grid(6, 4.0)
+        wall = _rot_x(_grid(6, 2.0), np.pi / 2) + (0, 0.5, 1.0)
+        tris = np.concatenate((floor, wall))
+        pairs, size = self._run(tris, (0, 0.2, 1.2), (0, 1, -0.6), 2)
+        self._compare(pairs, size)
+
+
+class ContactPixelsTest(unittest.TestCase):
+    def test_quad_maps_onto_its_uvs(self):
+        particles = _mod('tools.special.particles')
+        # a quad in XY (2 x 2 units) with UVs 0..1 (second triangle: tiled one tile over)
+        tri_pos = np.array([[[0, 0, 0], [2, 0, 0], [2, 2, 0]], [[0, 0, 0], [2, 2, 0], [0, 2, 0]]], float)
+        tri_uv = np.array([[[0, 0], [1, 0], [1, 1]], [[1, 0], [2, 1], [1, 1]]], float)
+        locs = np.array([[1.5, 0.5, 0], [0.5, 1.5, 0], [2.0, 2.0, 0]])
+        px = particles.contact_pixels(tri_pos, tri_uv, locs, np.array([0, 1, 0]), 8, 8)
+        np.testing.assert_array_equal(px, [[6, 2], [2, 6], [0, 0]])     # UV 1.0 wraps to 0 (like hit_to_pixel)
+
+    def test_join_streaks(self):
+        particles = _mod('tools.special.particles')
+        # the impact (weight 1) stays a dot; the two slide contacts (3D step 3 texels) get a line
+        out = particles.join_streaks([(0, 0), (4, 0), (4, 3)], [1.0, 0.6, 0.6], [0.0, 4.0, 3.0])
+        self.assertEqual(out, [(0, 0, 1.0), (4, 0, 0.6), (4, 1, 0.6), (4, 2, 0.6), (4, 3, 0.6)])
+        # far apart for their 3D step: a UV seam, no line
+        out = particles.join_streaks([(0, 0), (40, 0)], [0.6, 0.6], [0.0, 2.0])
+        self.assertEqual(out, [(0, 0, 0.6), (40, 0, 0.6)])
 
 
 if __name__ == '__main__':

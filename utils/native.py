@@ -27,7 +27,7 @@ import numpy as np
 from ..paths import NATIVE_RUNTIMES_DIR
 
 
-API_VERSION = 6  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
+API_VERSION = 7  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
 
 # Blend mode ids, must match Blend.cs.
@@ -92,6 +92,7 @@ _SIGNATURES = {
     'pp_segment_distance': (_I, (_P, _P, _I, _P, _I, _I, _D, _P)),
     'pp_noise_blur': (_I, (_P, _I, _I, _P, _I, _I, _P, _P, _P, _I, _D, _I, _I, _D)),
     'pp_heal': (_I, (_P, _P, _P, _P, _P, _I, _I, _D, _P)),
+    'pp_particle_fly': (_I, (_I, _P, _P, _P, _I, _P, _P, _P, _I, _P, _P, _P, _P, _I, _P)),
 }
 
 
@@ -530,6 +531,41 @@ class TriangleBVH:
             self.close()
         except Exception:
             pass
+
+    # Particles.cs: constants passed in this order (tools/special/particle_sim.py names)
+    PARTICLE_PARAMS = ('DT', 'MAX_STEPS', 'RESTITUTION', 'GLANCE', 'BOUNCE_SPEED', 'FRICTION', 'ADHESION',
+                       'WRAP_SPEED', 'BOUNDS_SCALE', 'SLIDE_WEIGHT', 'PATH_EVERY', 'LIFT', 'SAME_FACE')
+    PARTICLE_ENDS = {1: 'OUT', 2: 'REST', 3: 'STEPS'}
+
+    def fly(self, start, vel, gravity, bounces, box, jitter, params):
+        """tools/special/particle_sim.fly for one body. ``box``: (center, half, size);
+        ``jitter``: (bounces, 3) bounce jitter rows; ``params``: the sim constants in
+        :attr:`PARTICLE_PARAMS` order. Returns ``(contact_locs (C, 3), contact_tris (C,),
+        contact_weights (C,), path (P, 3), hits (H, 3), end)`` or None."""
+        bounces = max(0, int(bounces))
+        prm = np.ascontiguousarray(params, dtype=np.float64)
+        cap = int(prm[1]) + 4
+        center, half, size = box
+        box_arr = np.array([*center, *half, size], dtype=np.float64)
+        start = np.ascontiguousarray(start, dtype=np.float64)
+        vel = np.ascontiguousarray(vel, dtype=np.float64)
+        gravity = np.ascontiguousarray(gravity, dtype=np.float64)
+        jitter = np.ascontiguousarray(jitter, dtype=np.float64).reshape(-1, 3) if bounces else None
+        if jitter is not None and len(jitter) < bounces:
+            raise ValueError("fly: one jitter row per bounce")
+        contacts = np.empty((cap, 4), dtype=np.float64)
+        tris = np.empty(cap, dtype=np.int32)
+        path = np.empty((cap, 3), dtype=np.float64)
+        hits = np.empty((cap, 3), dtype=np.float64)
+        counts = np.zeros(4, dtype=np.int32)
+        r = self._lib.pp_particle_fly(self.handle, _ptr(start), _ptr(vel), _ptr(gravity), bounces, _ptr(box_arr),
+                                      _ptr(jitter), _ptr(prm), len(prm), _ptr(contacts), _ptr(tris), _ptr(path),
+                                      _ptr(hits), cap, _ptr(counts))
+        if not _ok(r):
+            return None
+        nc, npath, nh, end = (int(v) for v in counts)
+        return (contacts[:nc, :3], tris[:nc].astype(np.int64), contacts[:nc, 3], path[:npath], hits[:nh],
+                self.PARTICLE_ENDS.get(end, 'STEPS'))
 
     def occlusion(self, origins, frames, local, reach):
         """Share of the ``local`` (K, 3) hemisphere rays -- turned into each point's

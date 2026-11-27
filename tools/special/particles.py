@@ -9,6 +9,10 @@ leave the mesh's bounding box scaled x2 or come to rest (``particle_sim.py``). E
 impact paints a dent, the slide a thinner streak. Image Editor (no mesh): the bodies
 land inside the brush and hop downward (``paint.special.scatter_2d``).
 
+With the C# backend (:mod:`utils.native`) the bodies fly against a native BVH of the
+mesh's triangles (built once per mesh cache) and the contacts are mapped to pixels in
+NumPy; otherwise ``particle_sim.fly`` runs with the mesh's ``BVHTree``.
+
 Size: dent radius; Amount: how strongly they paint (times the strength). Left button:
 primary color, right: secondary.
 
@@ -23,7 +27,7 @@ import numpy as np
 
 from ...model import particle_trails
 from ...paint import region_paint, special
-from ...utils import math_utils
+from ...utils import math_utils, native
 from ..base import SettingDefaults
 from .common import SpecialBrush, commit, image_view, wm_value
 
@@ -51,6 +55,8 @@ class ParticlesTool(SpecialBrush):
         self._rng = np.random.default_rng()
         self._region = None
         self.trails = particle_trails.Trails()
+        self._tree = None            # native TriangleBVH of the mesh cache below
+        self._tree_version = None
 
     def stamp_spacing(self, env):
         return max(1.0, env.radius * 0.5)
@@ -121,12 +127,20 @@ class ParticlesTool(SpecialBrush):
         rng = self._rng
         now = time.perf_counter()
         out = []
+        tree = self._native_tree(cache)
         for _ in range(max(0, count)):
             a = rng.uniform(0.0, math.tau)
             d = spread * math.sqrt(rng.uniform(0.0, 1.0))
             target = hit.local + side * (math.cos(a) * d) + up * (math.sin(a) * d)
             start = target - forward * (LIFT * size)
             vel = particle_sim.spread_direction(forward, rng) * particle_sim.launch_speed(size)
+            if tree is not None:
+                flight = particle_sim.fly_native(tree, start, vel, gravity, bounces, box, rng)
+                if flight is not None:
+                    out.extend(self._flight_points(cache, flight, w, h, size))
+                    self.trails.add(now, '3D', _to_world(world, flight.path), _to_world(world, flight.hits))
+                    continue
+                tree = self._drop_tree()      # native failure: Python from here on
             body = particle_sim.fly(cache.bvh, start, vel, gravity, bounces, box, rng)
             out.extend(self._paint_points(cache, raycast, body, w, h, size))
             self.trails.add(now, '3D', [tuple(world @ q) for q in body.path], [tuple(world @ q) for q in body.hits])
@@ -155,6 +169,40 @@ class ParticlesTool(SpecialBrush):
             prev = (px, loc, tri, weight)
         return out
 
+    def _native_tree(self, cache):
+        """The C# BVH of ``cache``'s triangles (rebuilt when the mesh cache changes), or None."""
+        if not native.enabled():
+            return self._drop_tree()
+        if self._tree is not None and self._tree_version == cache.version:
+            return self._tree
+        self._drop_tree()
+        try:
+            self._tree = native.TriangleBVH(cache.tri_pos)
+            self._tree_version = cache.version
+        except Exception:
+            self._tree = None
+        return self._tree
+
+    def _drop_tree(self):
+        if self._tree is not None:
+            self._tree.close()
+        self._tree = None
+        self._tree_version = None
+        return None
+
+    def _flight_points(self, cache, flight, w, h, size):
+        """:meth:`_paint_points` for a native ``particle_sim.Flight``: the contacts' UVs in
+        one NumPy pass, then the same streak joining."""
+        if len(flight.tris) == 0:
+            return []
+        px = contact_pixels(cache.tri_pos, cache.tri_uv, flight.locs, flight.tris, w, h)
+        density = np.asarray(cache.density, dtype=np.float64)[flight.tris]
+        safe = np.where(density > 0.0, density, 1.0)
+        texel = np.where(density > 0.0, (1.0 / math.sqrt(w * h)) / safe, size * 0.01)
+        step = np.zeros(len(flight.tris))
+        step[1:] = np.linalg.norm(flight.locs[1:] - flight.locs[:-1], axis=1)
+        return join_streaks(px.tolist(), flight.weights.tolist(), (step / texel).tolist())
+
     # ---- visual display ------------------------------------------------------------------
 
     def _record_2d(self, impacts, bounces):
@@ -182,3 +230,52 @@ class ParticlesTool(SpecialBrush):
 def _is_view3d(context):
     space = getattr(context, 'space_data', None)
     return space is not None and space.type == 'VIEW_3D'
+
+
+def _to_world(world, points):
+    """Object-space (N, 3) points as world-space tuples."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    m = np.array(world, dtype=np.float64)
+    return [tuple(p) for p in (pts @ m[:3, :3].T + m[:3, 3])]
+
+
+def contact_pixels(tri_pos, tri_uv, locs, tris, w, h):
+    """Image pixels (N, 2) of object-space points ``locs`` on triangles ``tris``: their UV
+    (barycentric on the triangle) wrapped into 0..1, like ``raycast.hit_to_pixel``."""
+    p = np.asarray(tri_pos, dtype=np.float64)[tris]          # (N, 3, 3)
+    t = np.asarray(tri_uv, dtype=np.float64)[tris]           # (N, 3, 2)
+    v0, v1 = p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]
+    v2 = np.asarray(locs, dtype=np.float64) - p[:, 0]
+    d00 = np.einsum('ij,ij->i', v0, v0)
+    d01 = np.einsum('ij,ij->i', v0, v1)
+    d11 = np.einsum('ij,ij->i', v1, v1)
+    d20 = np.einsum('ij,ij->i', v2, v0)
+    d21 = np.einsum('ij,ij->i', v2, v1)
+    denom = d00 * d11 - d01 * d01
+    ok = np.abs(denom) > 1e-30
+    denom = np.where(ok, denom, 1.0)
+    b1 = np.where(ok, (d11 * d20 - d01 * d21) / denom, 0.0)
+    b2 = np.where(ok, (d00 * d21 - d01 * d20) / denom, 0.0)
+    uv = t[:, 0] + (t[:, 1] - t[:, 0]) * b1[:, None] + (t[:, 2] - t[:, 0]) * b2[:, None]
+    uv = np.mod(uv, 1.0)
+    x = np.minimum(w - 1, (uv[:, 0] * w).astype(np.int64))
+    y = np.minimum(h - 1, (uv[:, 1] * h).astype(np.int64))
+    return np.stack((x, y), axis=1)
+
+
+def join_streaks(pixels, weights, expected):
+    """The streak joining of ``ParticlesTool._paint_points``: ``[(x, y, weight), ...]`` of
+    the contacts ``pixels``; consecutive slide contacts (same weight) are joined by a pixel
+    line unless they lie further apart than ``expected`` (the 3D step in texels) allows."""
+    out = []
+    prev = None          # (pixel, weight)
+    for px, weight, exp in zip(pixels, weights, expected):
+        px = (int(px[0]), int(px[1]))
+        if prev is not None and weight == prev[1] and px != prev[0]:
+            gap = max(abs(px[0] - prev[0][0]), abs(px[1] - prev[0][1]))
+            if gap <= min(MAX_LINE, exp * SEAM_SLACK + 2.0):
+                for x, y in math_utils.get_line_pixels(prev[0][0], prev[0][1], px[0], px[1])[1:-1]:
+                    out.append((x, y, weight))
+        out.append((px[0], px[1], weight))
+        prev = (px, weight)
+    return out

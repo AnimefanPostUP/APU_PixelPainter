@@ -30,7 +30,7 @@ public static unsafe class Occlusion
         lock (Trees) return Trees.Remove(handle) ? 0 : -1;
     }
 
-    private static TriangleBvh? Get(int handle)
+    internal static TriangleBvh? Get(int handle)
     {
         lock (Trees) return Trees.TryGetValue(handle, out var bvh) ? bvh : null;
     }
@@ -71,6 +71,7 @@ internal sealed unsafe class TriangleBvh
     private const int LeafSize = 4;
 
     private readonly double[] _tri;      // reordered triangles, 9 doubles each
+    private readonly int[] _orig;        // original index of each reordered triangle
     private readonly double[] _box;      // per node: min xyz, max xyz
     private readonly int[] _first;       // leaf: first triangle; inner: right child (left = node + 1)
     private readonly int[] _count;       // leaf: triangle count; inner: 0
@@ -79,6 +80,7 @@ internal sealed unsafe class TriangleBvh
     public TriangleBvh(double* tris, int count)
     {
         _tri = new double[Math.Max(0, count) * 9];
+        _orig = new int[Math.Max(0, count)];
         int capacity = Math.Max(1, 2 * count);
         _box = new double[capacity * 6];
         _first = new int[capacity];
@@ -96,6 +98,7 @@ internal sealed unsafe class TriangleBvh
         BuildNode(tris, order, centroid, 0, count);
         for (int i = 0; i < count; i++)
         {
+            _orig[i] = order[i];
             double* p = tris + order[i] * 9;
             for (int a = 0; a < 9; a++) _tri[i * 9 + a] = p[a];
         }
@@ -224,6 +227,81 @@ internal sealed unsafe class TriangleBvh
         }
         return SubtreeHit(node + 1, tri, ox, oy, oz, dx, dy, dz, tmax)
             || SubtreeHit(_first[node], tri, ox, oy, oz, dx, dy, dz, tmax);
+    }
+
+    /// <summary>
+    /// Nearest hit within (0, tmax] (like BVHTree.ray_cast): the distance, the original
+    /// triangle index and the triangle's unit normal (winding order); false on a miss.
+    /// </summary>
+    public bool Nearest(double ox, double oy, double oz, double dx, double dy, double dz, double tmax,
+                        out double hitT, out int hitTri, out double nx, out double ny, out double nz)
+    {
+        hitT = tmax; hitTri = -1; nx = ny = nz = 0.0;
+        if (_nodes == 0) return false;
+        double ix = 1.0 / dx, iy = 1.0 / dy, iz = 1.0 / dz;
+        var stack = new Stack<int>(64);
+        stack.Push(0);
+        int best = -1;
+        fixed (double* box = _box)
+        fixed (double* tri = _tri)
+        {
+            while (stack.Count > 0)
+            {
+                int node = stack.Pop();
+                double* b = box + node * 6;
+                double t0 = (b[0] - ox) * ix, t1 = (b[3] - ox) * ix;
+                double tn = Math.Min(t0, t1), tf = Math.Max(t0, t1);
+                t0 = (b[1] - oy) * iy; t1 = (b[4] - oy) * iy;
+                tn = Math.Max(tn, Math.Min(t0, t1)); tf = Math.Min(tf, Math.Max(t0, t1));
+                t0 = (b[2] - oz) * iz; t1 = (b[5] - oz) * iz;
+                tn = Math.Max(tn, Math.Min(t0, t1)); tf = Math.Min(tf, Math.Max(t0, t1));
+                if (tn > tf || tf < 0.0 || tn > hitT) continue;
+                int count = _count[node];
+                if (count > 0)
+                {
+                    int first = _first[node];
+                    for (int t = first; t < first + count; t++)
+                    {
+                        double d = RayTriangle(tri + t * 9, ox, oy, oz, dx, dy, dz);
+                        if (!(d > 0.0) || d > hitT) continue;
+                        // exact ties: the lowest original index (deterministic, like a linear scan)
+                        if (best < 0 || d < hitT || _orig[t] < _orig[best]) { hitT = d; best = t; }
+                    }
+                }
+                else
+                {
+                    stack.Push(_first[node]);
+                    stack.Push(node + 1);
+                }
+            }
+            if (best < 0) return false;
+            double* p = tri + best * 9;
+            double e1x = p[3] - p[0], e1y = p[4] - p[1], e1z = p[5] - p[2];
+            double e2x = p[6] - p[0], e2y = p[7] - p[1], e2z = p[8] - p[2];
+            nx = e1y * e2z - e1z * e2y; ny = e1z * e2x - e1x * e2z; nz = e1x * e2y - e1y * e2x;
+            double len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
+            if (len > 0.0) { nx /= len; ny /= len; nz /= len; }
+        }
+        hitTri = _orig[best];
+        return true;
+    }
+
+    /// <summary>Möller–Trumbore distance along the ray, both faces; -1 on a miss.</summary>
+    private static double RayTriangle(double* p, double ox, double oy, double oz, double dx, double dy, double dz)
+    {
+        double e1x = p[3] - p[0], e1y = p[4] - p[1], e1z = p[5] - p[2];
+        double e2x = p[6] - p[0], e2y = p[7] - p[1], e2z = p[8] - p[2];
+        double px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+        double det = e1x * px + e1y * py + e1z * pz;
+        if (Math.Abs(det) < 1e-20) return -1.0;
+        double inv = 1.0 / det;
+        double sx = ox - p[0], sy = oy - p[1], sz = oz - p[2];
+        double u = (sx * px + sy * py + sz * pz) * inv;
+        if (u < 0.0 || u > 1.0) return -1.0;
+        double qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+        double v = (dx * qx + dy * qy + dz * qz) * inv;
+        if (v < 0.0 || u + v > 1.0) return -1.0;
+        return (e2x * qx + e2y * qy + e2z * qz) * inv;
     }
 
     /// <summary>Möller–Trumbore, both faces; hit when 0 &lt; t &lt;= tmax.</summary>

@@ -19,7 +19,7 @@ namespace PixelPainterNative;
 /// </summary>
 public static unsafe class Exports
 {
-    public const int ApiVersion = 6;
+    public const int ApiVersion = 7;
     private const int Failed = -1000;
 
     [UnmanagedCallersOnly(EntryPoint = "pp_api_version")]
@@ -185,6 +185,20 @@ public static unsafe class Exports
                                  int n, int m, double texture, float* outp)
     {
         try { return Special.Heal(srcInner, srcRing, dstRing, innerXY, ringXY, n, m, texture, outp); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_particle_fly")]
+    public static int ParticleFlyExport(int handle, double* start, double* velocity, double* gravity, int bounces,
+                                        double* box, double* jitter, double* prm, int prmCount,
+                                        double* contacts, int* contactTris, double* path, double* hits, int cap,
+                                        int* counts)
+    {
+        try
+        {
+            return Particles.Fly(handle, start, velocity, gravity, bounces, box, jitter, prm, prmCount,
+                                 contacts, contactTris, path, hits, cap, counts);
+        }
         catch { return Failed; }
     }
 }

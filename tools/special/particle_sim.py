@@ -228,3 +228,29 @@ def gravity_for(size, down):
 def spread_direction(forward, rng, jitter=0.12):
     return (forward + _jitter(rng, jitter)).normalized()
 
+
+# ---- C# backend ------------------------------------------------------------------------------
+
+class Flight:
+    """:func:`fly_native`'s result: :class:`Body` as arrays -- contacts ``locs`` (C, 3),
+    ``tris`` (C,), ``weights`` (C,); ``path`` (P, 3); ``hits`` (H, 3); ``end``."""
+
+    __slots__ = ('locs', 'tris', 'weights', 'path', 'hits', 'end')
+
+    def __init__(self, locs, tris, weights, path, hits, end):
+        self.locs, self.tris, self.weights = locs, tris, weights
+        self.path, self.hits, self.end = path, hits, end
+
+
+def fly_native(tree, p, vel, gravity, bounces, box, rng):
+    """:func:`fly` in the C# backend: ``tree`` is a ``utils.native.TriangleBVH`` of the
+    mesh's triangles. The constants above are passed along on every call. The bounce
+    jitter is drawn up front (one row per possible bounce). A :class:`Flight`, or None
+    when the native call failed."""
+    bounces = max(0, int(bounces))
+    jitter = rng.normal(0.0, JITTER, (bounces, 3))
+    params = [float(globals()[name]) for name in tree.PARTICLE_PARAMS]
+    center, half, size = box
+    result = tree.fly(tuple(p), tuple(vel), tuple(gravity), bounces, (tuple(center), tuple(half), float(size)),
+                      jitter, params)
+    return None if result is None else Flight(*result)
