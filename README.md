@@ -25,12 +25,14 @@ Paint in the 3D Viewport (Texture Paint mode) with pixel-exact brushes: every st
 Circle, Square, Line, Spray, Eraser, Smooth, Smear, Select (copy / paste) and Mask. Per tool falloff, strength, alpha and blend mode. Pixel or free spacing, and Alpha Lock (protects transparent pixels).
 
 <!-- Screenshot: tools / brush outline on a model -->
+<img width="307" height="231" alt="image" src="https://github.com/user-attachments/assets/78204197-4436-4759-b0dc-7952801d390b" />
 
 ## Pen Menu
 
 An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
 
 <!-- Screenshot: pen menu -->
+<img width="366" height="349" alt="image" src="https://github.com/user-attachments/assets/74e23180-088b-44e3-9cbb-024f5c95b114" />
 
 - **No hover required**: everything works with press, drag and release, because pens often cannot move the pointer without touching.
 - **Dial layout**: the Size knob in the center, with pie segments in two rings around it. Categories are separated by a wider gap and a divider line.
@@ -49,6 +51,7 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
 ### Color Selector
 
 <!-- Screenshot: color selector -->
+<img width="221" height="187" alt="image" src="https://github.com/user-attachments/assets/c260a375-53ed-4f8a-bdca-96132b7f6276" />
 
 - **Relative swipes**: press anywhere on a part and drag. The selection moves by the drag distance instead of jumping under the pen; a tap jumps.
 - **Shift** slows the movement for fine adjustments. RMB / Esc restores the previous color.
@@ -58,6 +61,7 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
 ### Color Dragging
 
 <!-- Screenshot / GIF: dragging a color onto a palette slot -->
+<img width="205" height="116" alt="image" src="https://github.com/user-attachments/assets/3b5f104e-93e4-4efd-ba81-1765be8e001d" />
 
 Colors can be dragged between the pen menu's widgets (setting: *Drag Colors*). A short press still counts as a tap.
 
