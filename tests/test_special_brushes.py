@@ -207,7 +207,7 @@ class ParticlesTest(unittest.TestCase):
 
 class GroupTest(unittest.TestCase):
     def test_special_tools_listed_in_window_order(self):
-        self.assertEqual(brushes_actions.SPECIAL_TOOLS, ('RUST', 'PARTICLES', 'NOISE_BLUR', 'PULL', 'REPAIR'))
+        self.assertEqual(brushes_actions.SPECIAL_TOOLS, ('PARTICLES', 'RUST', 'NOISE_BLUR', 'PULL', 'REPAIR'))
 
 
 if __name__ == '__main__':

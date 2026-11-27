@@ -1,5 +1,5 @@
 """The Extras window: a circle menu in the pen menu's style -- the source in the center,
-two rings around it. Colors by category: the tools (and All) in the pen menu's tool blue,
+two rings around it. Colors by category: the tools in the pen menu's tool blue, All red,
 the source purple, the edge choices orange, the options yellow (Fade stronger), the
 sliders green (Fill's fade yellow).
 
@@ -18,7 +18,7 @@ sliders green (Fill's fade yellow).
 
 *Curve* folds the armed tool's curve out under the circle (Edges: its falloff, AO: the
 occlusion curve), with Move / Add / Draw / Reset and the presets. Under that the result
-of the last run.
+of the last run (shown, like the help, only while '?' is on).
 
 Tapping a tool arms it (tools/extras/tool.py): the island / part under the cursor is
 outlined, a canvas tap runs the tool on it; *All* runs it on every island / part.
@@ -36,7 +36,7 @@ from ..icons.extras import (icon_all_edges, icon_angle, icon_curve, icon_fade, i
 from ..icons.menu import captioned
 from ..icons.windows import paint_source_name, source_options
 from .mask import sharp_angle_slider
-from ..metrics import (CUSTOM_TINT_AMOUNT, TINT_CUSTOM, TINT_EXTRAS, TINT_EXTRAS_EDGES, TINT_EXTRAS_OPTIONS, TINT_EXTRAS_SOURCE,
+from ..metrics import (CUSTOM_TINT_AMOUNT, TINT_CUSTOM, TINT_EXTRAS, TINT_EXTRAS_ALL, TINT_EXTRAS_EDGES, TINT_EXTRAS_OPTIONS, TINT_EXTRAS_SOURCE,
                        TINT_EXTRAS_TOOLS, TINT_EXTRAS_VALUES)
 from .parts import (DIAL_GAP, GAP, HELP_SIZE, ROW_GAP, TITLE_INDENT, ArcSlider, DialCenter, WindowButton,
                     WindowGroup, _Shown, help_lines)
@@ -200,7 +200,7 @@ def build_extras_window(bar):
                                      selected=lambda m=mode: a.extras_selected(m),
                                      on_click=lambda m=mode: a.toggle_extras_mode(m)),
                          *INNER_RING, *TOOL_ARCS[mode])
-    dial.add_segment(RingSegment("", painter=paint_all, key='EXTRAS_ALL', tint=TINT_EXTRAS_TOOLS,
+    dial.add_segment(RingSegment("", painter=paint_all, key='EXTRAS_ALL', tint=TINT_EXTRAS_ALL,
                                  on_click=a.extras_run_all), *INNER_RING, *ALL_ARC)
 
     # ---- inner ring, bottom left: Fade (yellow), Curve -- the same slots for every tool.
@@ -314,7 +314,8 @@ def build_extras_window(bar):
             return ["Choose a tool on top."]
         return ["Tap an island / part on the canvas."]
 
-    status = ShownText(status_lines, size=HELP_SIZE, width=width, shown=lambda: True)
+    status = ShownText(status_lines, size=HELP_SIZE, width=width,
+                       shown=lambda: bar.help_shown('extras'))   # only with '?' on
     content = Column([dial, curve_section('fill', 'FILL'), curve_section('edge', 'EDGES'), curve_section('ao', 'AO'), status,
                       help_lines(bar, 'extras', EXTRAS_HELP, width)], gap=ROW_GAP)
-    return WindowGroup("Extras", content, tint=tint, painter=paint_extras_title(colors), title_indent=TITLE_INDENT)
+    return WindowGroup("Filling", content, tint=tint, painter=paint_extras_title(colors), title_indent=TITLE_INDENT)

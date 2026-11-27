@@ -98,7 +98,7 @@ def paint_extras_menu(colors):
     """The Windows ring entry."""
     def paint(dc, x, y, size, alpha):
         paint_ao(colors, caption=False)(dc, x, y + size * 0.12, size * 0.8, alpha)
-        draw_caption(dc, x, y - size * 0.36, "Extras", alpha)
+        draw_caption(dc, x, y - size * 0.36, "Filling", alpha)
     return paint
 
 

@@ -1,7 +1,8 @@
 """Actions of the Brushes window (the special brushes, tools/special/).
 """
 
-SPECIAL_TOOLS = ('RUST', 'PARTICLES', 'NOISE_BLUR', 'PULL', 'REPAIR')
+SPECIAL_TOOLS = ('PARTICLES', 'RUST', 'NOISE_BLUR', 'PULL', 'REPAIR')   # the window's order, left to right
+DEFAULT_SPECIAL = 'RUST'
 
 
 class BrushesActions:
@@ -16,7 +17,7 @@ class BrushesActions:
         if self.special_active():
             return self.active_tool()
         last = self._c().state.get('brushes_last')
-        return last if last in SPECIAL_TOOLS else SPECIAL_TOOLS[0]
+        return last if last in SPECIAL_TOOLS else DEFAULT_SPECIAL
 
     def special_selected(self, tool_id):
         return self.active_tool() == tool_id

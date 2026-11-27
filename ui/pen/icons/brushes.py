@@ -78,7 +78,7 @@ def paint_noise_blur(caption=True):
         for i, (ox, oy) in enumerate(_NOISE_DOTS):
             fade = 1.0 - 0.6 * math.hypot(ox, oy) / 1.3
             draw.rect(Rect.from_center(x + ox * s, cy + oy * s, dot, dot), with_alpha(c, fade * c[3]))
-        _caption(dc, x, y, size, alpha, caption, "Noise Blur")
+        _caption(dc, x, y, size, alpha, caption, "Noise")
     return paint
 
 
@@ -141,7 +141,7 @@ def paint_brushes_menu(colors):
     """The Windows ring entry (outer ring)."""
     def paint(dc, x, y, size, alpha):
         paint_rust(colors, caption=False)(dc, x, y + size * 0.12, size * 0.8, alpha)
-        draw_caption(dc, x, y - size * 0.36, "Brushes", alpha)
+        draw_caption(dc, x, y - size * 0.36, "Special", alpha)
     return paint
 
 

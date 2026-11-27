@@ -72,7 +72,7 @@ def run(ctx, mode, label, secondary=False):
 class ExtrasTool(ToolFrame):
     """Global tool: runs the armed Extras tool on the element under the cursor."""
 
-    label = "Extras"
+    label = "Filling"
     is_global = True
     priority = 140              # after the pen bar and the mask picker, before tool shortcuts
 

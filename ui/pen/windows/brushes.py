@@ -3,7 +3,7 @@ menu's style, opened from the Windows ring's outer ring.
 
 * center: the shown brush -- a tap selects it, tapping it while selected goes back to
   the tool used before;
-* inner ring, top, left to right: Rust, Particles, Noise Blur, Pull, Repair (a tap
+* inner ring, top, left to right: Particles, Rust, Noise Blur, Pull, Repair (a tap
   selects one; tapping the selected one goes back);
 * inner ring, bottom: the shown brush's two settings -- Rust: Scale / Coverage;
   Particles: Count / Bounces; Noise Blur: Scatter / Grain; Pull: Pixel <-> Smooth /
@@ -12,7 +12,8 @@ menu's style, opened from the Windows ring's outer ring.
   beside the window gives the full name and value.
 
 Size, strength, alpha, the modifier and the falloff stay on the pen menu (they are
-per tool, like for every other tool). Under the circle a one-line hint for the brush.
+per tool, like for every other tool). Under the circle a one-line hint for the brush,
+shown with the help only while the window's '?' is on.
 """
 
 from ...kit import Column, Dial, RingSegment
@@ -153,7 +154,8 @@ def build_brushes_window(bar):
             return ["Right click on the canvas: set the source."]
         return [HINTS.get(tool_id, "")]
 
-    status = ShownText(status_lines, size=HELP_SIZE, width=width, shown=lambda: True)
+    status = ShownText(status_lines, size=HELP_SIZE, width=width,
+                       shown=lambda: bar.help_shown('brushes'))   # only with '?' on
     content = Column([dial, status, help_lines(bar, 'brushes', BRUSHES_HELP, width)], gap=ROW_GAP)
-    return WindowGroup("Brushes", content, tint=TINT_BRUSHES, painter=paint_brushes_title(colors),
+    return WindowGroup("Special", content, tint=TINT_BRUSHES, painter=paint_brushes_title(colors),
                        title_indent=TITLE_INDENT)

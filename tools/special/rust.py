@@ -21,7 +21,7 @@ RUST_SEED = 1931
 class RustBrushTool(SpecialBrush):
     tool_id = 'RUST'
     label = "Rust"
-    description = "Mottled rust patches mixing the primary and secondary color (Brushes window: Scale, Coverage)"
+    description = "Mottled rust patches mixing the primary and secondary color (Special window: Scale, Coverage)"
     outline_color = (0.85, 0.42, 0.15, 0.9)
     defaults = SettingDefaults(size=False, modifier=False, strength=False, alpha=False)
     falloff_property = 'pixel_painter_rust_falloff'

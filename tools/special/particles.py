@@ -33,7 +33,7 @@ MAX_DENT = 4.0              # dent radius at M = 100 %, texels
 class ParticlesTool(SpecialBrush):
     tool_id = 'PARTICLES'
     label = "Particles"
-    description = "Throw particles that bounce off the model and dent it (Brushes window: Count, Bounces)"
+    description = "Throw particles that bounce off the model and dent it (Special window: Count, Bounces)"
     outline_color = (0.95, 0.85, 0.30, 0.9)
     defaults = SettingDefaults(size=False, modifier=False, strength=False, alpha=False)
     paints_color = True

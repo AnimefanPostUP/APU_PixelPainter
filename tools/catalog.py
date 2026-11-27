@@ -41,8 +41,8 @@ TOOLS = ToolRegistry(
         SelectionTool(),
         # The Brushes window's tools (group 'SPECIAL': not in the pen menu's tool ring /
         # the tool pie; past Shift+9).
-        RustBrushTool(),
         ParticlesTool(),
+        RustBrushTool(),
         NoiseBlurTool(),
         PullTool(),
         RepairTool(),

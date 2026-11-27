@@ -215,13 +215,13 @@ class DialControls:
             RingSegment("Palettes", key='RING_PALETTES', painter=captioned(paint_library, "Palettes"),
                         tint=TINT_WINDOWS, selected=lambda: a.panel_open('library'),
                         on_click=self._flyout_action(lambda: self.toggle_window('library'))),
-            RingSegment("Extras", key='RING_EXTRAS', painter=paint_extras_menu(a.colors), tint=TINT_EXTRAS,
+            RingSegment("Filling", key='RING_EXTRAS', painter=paint_extras_menu(a.colors), tint=TINT_EXTRAS,
                         selected=lambda: a.panel_open('extras'),
                         on_click=self._flyout_action(lambda: self.toggle_window('extras'))),
         ], WINDOW_RING_START)
         # Its outer ring: Brushes (the special brushes), right outside Extras.
         self.window_ring.add_outer_entries(dial, [
-            RingSegment("Brushes", key='RING_BRUSHES', painter=paint_brushes_menu(a.colors), tint=TINT_BRUSHES,
+            RingSegment("Special", key='RING_BRUSHES', painter=paint_brushes_menu(a.colors), tint=TINT_BRUSHES,
                         selected=lambda: a.panel_open('brushes'),
                         on_click=self._flyout_action(lambda: self.toggle_window('brushes'))),
         ], *WINDOW_OUTER_RING, WINDOW_OUTER_START, WINDOW_OUTER_STEP)

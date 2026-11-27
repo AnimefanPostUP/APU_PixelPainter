@@ -44,7 +44,7 @@ tools/                 all tool behaviour
                        (enforcement during strokes), overlay (drawing), tool (MaskTool)
   extras/              the Extras window's tools: tool (ExtrasTool, global), operations (Fill /
                        Edges / Ambient Occlusion), ao (per-texel ray casting)
-  special/             the Brushes window's tools (group 'SPECIAL'): rust, particles, noise_blur,
+  special/             the Brushes window's tools (group 'SPECIAL'): particles, rust, noise_blur,
                        pull, repair; common (SpecialBrush base, island clip of pixel arrays)
   pen/                 tool (PenBarTool: lifecycle, events, drawing), actions/ (its actions by
                        concern: colors, settings, palettes, falloff, windows, mask, extras,
@@ -442,7 +442,7 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
   before tool overlays) and `mask.overlay.draw_3d` (POST_VIEW, triangles whose UV
   center is blocked).
 
-## Extras window (`tools/extras/`, `ui/pen/windows/extras.py`)
+## Filling window ("Extras" in code: `tools/extras/`, `ui/pen/windows/extras.py`)
 
 Tools that act on a whole *element* -- a UV island or a connected mesh part
 (`pixel_painter_extras_source`) -- opened from the Windows ring.
@@ -489,13 +489,13 @@ Tools that act on a whole *element* -- a UV island or a connected mesh part
   a pill beside the window, like the pen menu's S / A / M; the left one `reverse=True`,
   so both grow upward), Edges' Placement (one button swapping
   Symmetric / Pixel line) / Fade / Curve below. Tints by category (`TINT_EXTRAS_*` in
-  `ui/pen/metrics.py`): tools = the pen menu's tool blue, source, edge choices, options,
+  `ui/pen/metrics.py`): tools = the pen menu's tool blue, All red (`TINT_EXTRAS_ALL`), source, edge choices, options,
   sliders. Mode-specific parts are `ShownSegment`s; `TrimmedDial` reserves height only
   for the visible parts. *Curve* (state `pen_extras_curve`) folds out the tool's
   `CurveEditor` with presets.
 * Tests: `tests/test_extras.py` (curve, edge math, texel blending, AO placement).
 
-## Brushes window (`tools/special/`, `ui/pen/windows/brushes.py`)
+## Special window ("Brushes" in code: `tools/special/`, `ui/pen/windows/brushes.py`)
 
 Special brushes, opened from the Windows ring's outer ring. They are ordinary
 `StrokeTool`s in `TOOLS` (per-tool size / strength / alpha / M, falloff, pen pressure,
@@ -527,7 +527,7 @@ whole pixel arrays to the UV island (`island_keep`). The pixel math is pure NumP
   `repair_offset` (aligned), read from the stroke snapshot; `overlays/special.py` marks
   the source (Image Editor).
 * Window: a `Dial` -- center = the shown brush (tap: select / back), inner ring top the
-  five brushes (`BrushesActions.toggle_special`: tapping the selected one returns to
+  five brushes (Particles, Rust, Noise Blur, Pull, Repair; `BrushesActions.toggle_special`: tapping the selected one returns to
   state `brushes_return`), bottom the shown brush's two settings (`ShownArcSlider` /
   option buttons). Edge mode: the brushes work in image space (no seam crossing).
 

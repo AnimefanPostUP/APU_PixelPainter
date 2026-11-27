@@ -114,7 +114,7 @@ def fill(ctx, emap, label, secondary=False):
         idx = np.concatenate((idx, fade_idx))
         opacity = np.concatenate((opacity, fade_opacity))
     color = _colors(ctx, secondary)[0]
-    n = _paint(ctx, img, idx, color, opacity, secondary, "Extras: Fill")
+    n = _paint(ctx, img, idx, color, opacity, secondary, "Filling: Fill")
     return f"Fill: {n} texels" + (f" ({faded} in the fade)" if faded else "")
 
 
@@ -162,7 +162,7 @@ def edges(ctx, emap, label, secondary=False):
                                 curve=lambda x: value_curve.sample(points, x))
     edge_color, inner_color = _colors(ctx, secondary)
     rgb = region_paint.gradient(edge_color, inner_color, t)
-    n = _paint(ctx, img, idx, rgb, opacity, secondary, "Extras: Edges")
+    n = _paint(ctx, img, idx, rgb, opacity, secondary, "Filling: Edges")
     return f"Edges: {n} texels"
 
 
@@ -204,7 +204,7 @@ def ambient_occlusion(ctx, emap, label, secondary=False):
     occluded, open_color = _colors(ctx, secondary)
     rgb = region_paint.gradient(open_color, occluded, weight)
     opacity = weight if bool(_wm(ctx, 'ao_fade', True)) else 1.0
-    n = _paint(ctx, img, idx, rgb, opacity, secondary, "Extras: Ambient Occlusion")
+    n = _paint(ctx, img, idx, rgb, opacity, secondary, "Filling: Ambient Occlusion")
     return f"AO: {n} texels, {samples} rays, {time.perf_counter() - began:.1f} s"
 
 

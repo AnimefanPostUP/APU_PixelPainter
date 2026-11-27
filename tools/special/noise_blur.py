@@ -14,7 +14,7 @@ from .common import (SpecialBrush, commit, falloff_lut, image_view, island_keep,
 class NoiseBlurTool(SpecialBrush):
     tool_id = 'NOISE_BLUR'
     label = "Noise Blur"
-    description = "Grainy blur: pixels take random neighbours (Brushes window: Scatter, Grain)"
+    description = "Grainy blur: pixels take random neighbours (Special window: Scatter, Grain)"
     outline_color = (0.55, 0.75, 1.0, 0.9)
     defaults = SettingDefaults(size=True, modifier=False, strength=False, alpha=False)
     falloff_property = 'pixel_painter_noise_blur_falloff'

@@ -150,6 +150,7 @@ TINT_EXTRAS_SOURCE = TINT_MASK        # UV Islands / Mesh Parts (what the mask c
 TINT_EXTRAS_EDGES = TINT_MODES        # which model edges: Angle / All / Marked
 TINT_EXTRAS_OPTIONS = TINT_CUSTOM     # placement, Fade, Curve
 TINT_EXTRAS_VALUES = TINT_EXTRAS      # the sliders
+TINT_EXTRAS_ALL = (0.95, 0.30, 0.30)  # All (every island / part at once): red, like the Mask window's Clear
 TINT_BRUSHES = (0.95, 0.55, 0.30)   # the Brushes window (special brushes): rust orange
 MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)

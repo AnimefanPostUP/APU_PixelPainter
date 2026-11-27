@@ -207,7 +207,7 @@
   "pixel_painter_extras_fill_curve": "[[0.0, 1.0], [0.1776, 0.4331], [0.75, 0.06], [1.0, 0.0]]",
   "pixel_painter_extras_fill_fade": true,
   "pixel_painter_extras_fill_width": 1,
-  "pixel_painter_extras_source": "MESH_PART",
+  "pixel_painter_extras_source": "UV_ISLAND",
   "pixel_painter_falloff_hardness": 0.0,
   "pixel_painter_falloff_sharpness": 0.0,
   "pixel_painter_global_alpha": 1.0,
