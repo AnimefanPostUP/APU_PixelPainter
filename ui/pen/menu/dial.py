@@ -11,7 +11,7 @@ from ..widgets.color import ColorCorner, GradientSlider, PaletteSlot, Swatch, Te
 from ..widgets.falloff_field import FalloffField
 from ..widgets.grid_corner import GridCorner
 from ..icons.menu import captioned, paint_alpha_lock, paint_arrow, paint_color_wheel, paint_curve, paint_gear, paint_mask_menu, paint_save, paint_swap, paint_target_picker, paint_view, paint_windows
-from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, SPACING_ARC, SPACING_VALUE_RING, SPACING_WEIGHTS, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_EXTRAS, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL, TINT_BRUSHES, WINDOW_OUTER_RING, WINDOW_OUTER_START, WINDOW_OUTER_STEP
+from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, SPACING_ARC, SPACING_RING, SPACING_WEIGHTS, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_EXTRAS, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_SPACING, TINT_ALPHA_LOCK, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL, TINT_BRUSHES, WINDOW_OUTER_RING, WINDOW_OUTER_START, WINDOW_OUTER_STEP
 from ..widgets.window_ring import WindowRing
 from ..widgets.spacing import SpacingModeButton, SpacingSlider
 from ..icons.extras import paint_extras_menu
@@ -138,16 +138,16 @@ class DialControls:
         _add_capsule(dial, [
             RingSegment("Alphalock", key='ALPHA_LOCK', painter=paint_alpha_lock,
                         selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
-        ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
+        ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_ALPHA_LOCK)
 
-        # Bottom right, outside the palette: the spacing, one capsule along the circle -- the
-        # mode button (Once / Fixed / Time, a tap steps) on the left, the value slider (just
-        # "4 px" / "100 ms"; grows left to right) right of it.
-        self.spacing_slider = SpacingSlider(a, key='SPACING_VALUE', fill_color=(*TINT_MODES, 1.0),
+        # Bottom right, outside the palette: the spacing as one capsule along the circle, as deep
+        # as Alphalock -- the mode button (Once / Fixed / Time, a tap steps) on the left, the
+        # value slider (just "4 px" / "100 ms"; grows left to right) right of it.
+        self.spacing_slider = SpacingSlider(a, key='SPACING_VALUE', fill_color=(*TINT_SPACING, 1.0),
                                             enabled=a.spacing_uses_value)
         spacing_mode = SpacingModeButton(a, key='SPACING')
-        _add_capsule(dial, [spacing_mode, self.spacing_slider], *SPACING_VALUE_RING, *SPACING_ARC,
-                     weights=SPACING_WEIGHTS, tint=TINT_MODES)
+        _add_capsule(dial, [spacing_mode, self.spacing_slider], *SPACING_RING, *SPACING_ARC,
+                     weights=SPACING_WEIGHTS, tint=TINT_SPACING)
         for seg in (spacing_mode, self.spacing_slider):
             seg.half = BRUSH_MODE_RING[1]   # the dial's measure: no larger than before
         # Top left along the circle: the gradient primary (left) -> secondary (top).

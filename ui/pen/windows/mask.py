@@ -17,7 +17,8 @@ MASK_RING = (MASK_CENTER + 2.5, 66.0)
 MASK_BAND = (MASK_RING[1] + 3.0, MASK_RING[1] + 22.0)
 MASK_BAND_ROUND = (MASK_BAND[1] - MASK_BAND[0]) * 0.5   # capsules
 ANGLE_ARC = (140.0, 220.0)   # Sharp Angle, left side of the band (only with Sharp Areas)
-OPACITY_ARC = (235.0, 305.0)  # the stripes' opacity, bottom of the band (always; grayed out while not shown)
+SHOW_END = 230.0             # inner ring, bottom left: Show 180 .. here, the stripes' Opacity here .. 270
+OPACITY_KNEE = (0.5, 0.10)   # the first half of the Opacity slider covers 0 .. 10 %
 SOURCE_ARC = (52.0, 128.0)
 GROW_END = 325.0             # inner ring, bottom right: Grow 270 .. here, Clear (smaller) here .. 360
 # per-button colors
@@ -32,10 +33,10 @@ MASK_HELP = ("Mask: only chosen islands / parts get paint.",
              "islands, connected mesh parts and sharp areas",
              "(split at edges sharper than the S arc, left).",
              "Invert: protect the chosen ones instead.",
-             "Show: red stripes over protected pixels.",
+             "Show: red stripes over protected pixels; O (next",
+             "to it): their opacity (first half: 0 .. 10 %).",
              "Grow (ring, bottom right): extra pixels around",
-             "each island. Clear (red): forget all chosen ones.",
-             "Opacity (arc, bottom): how strong the stripes are.")
+             "each island. Clear (red): forget all chosen ones.")
 
 
 class ShownArcSlider(_Shown, ArcSlider):
@@ -68,13 +69,22 @@ def build_mask_window(bar):
                       on_value=lambda v: a.wm_set('mask_grow', int(round(v))),
                       value_range=lambda: a.wm_range('mask_grow')[:2], fill_color=(*TINT_MASK, 1.0),
                       key='MASKWIN_GROW', tint=tint)
+    # The stripes' opacity, beside Show (grayed out while they are hidden); the readout beside
+    # the window gives its full name while dragged.
+    opacity = ArcSlider("Opacity", value=lambda: a.wm_get('mask_opacity', 0.15),
+                        on_value=lambda v: a.wm_set('mask_opacity', round(float(v), 3)),
+                        value_range=(0.0, 1.0), knee=OPACITY_KNEE, fill_color=(*TINT_MASK_SHOW, 1.0),
+                        fmt=lambda v: f"{v * 100:.0f}%" if v >= 0.1 else f"{v * 100:.1f}%",
+                        short=True, enabled=lambda: bool(a.wm_get('mask_show')), key='MASKWIN_OPACITY',
+                        tint=TINT_MASK_SHOW)
     ring = [   # (segment, a0, a1), counter-clockwise from the right
         (segment('INVERT', paint_mask_invert, selected=a.mask_inverted, on_click=a.toggle_mask_invert,
                  tint=TINT_MASK_INVERT), 0.0, 90.0),
         (segment('MASK', paint_mask, selected=a.mask_enabled, on_click=a.toggle_mask), 90.0, 180.0),
         (segment('SHOW', captioned(icon_eye, "Show"), selected=lambda: bool(a.wm_get('mask_show')),
                  on_click=lambda: a.wm_set('mask_show', not a.wm_get('mask_show')), tint=TINT_MASK_SHOW),
-         180.0, 270.0),
+         180.0, SHOW_END),
+        (opacity, SHOW_END, 270.0),
         (grow, 270.0, GROW_END),
         (segment('CLEAR', icon_reset, tint=TINT_MASK_CLEAR,
                  on_click=lambda: bar.confirm(["Forget all chosen islands / parts?"], a.clear_mask, "Clear")),
@@ -87,14 +97,8 @@ def build_mask_window(bar):
                            options=lambda: source_options(a.mask_source()))
     angle = sharp_angle_slider(a, 'MASKWIN_SHARP_ANGLE', lambda: a.mask_picking() and a.mask_source() == 'SHARP',
                                tint, TINT_MASK, round=MASK_BAND_ROUND, short=True, reverse=True)
-    opacity = ArcSlider("Opacity", value=lambda: a.wm_get('mask_opacity', 0.15),
-                        on_value=lambda v: a.wm_set('mask_opacity', round(float(v), 2)),
-                        value_range=(0.0, 1.0), fill_color=(*TINT_MASK_SHOW, 1.0), fmt=lambda v: f"{v * 100:.0f}%",
-                        enabled=lambda: bool(a.wm_get('mask_show')), key='MASKWIN_OPACITY', tint=TINT_MASK_SHOW,
-                        round=MASK_BAND_ROUND)
     dial.add_band([source], *MASK_BAND, *SOURCE_ARC)
     dial.add_band([angle], *MASK_BAND, *ANGLE_ARC)
-    dial.add_band([opacity], *MASK_BAND, *OPACITY_ARC)
     width = 2.0 * MASK_BAND[1]
     content = Column([dial, help_lines(bar, 'mask', MASK_HELP, width)], gap=ROW_GAP)
     return WindowGroup("Mask", content, tint=TINT_MASK, painter=icon_mask_title, title_indent=TITLE_INDENT)

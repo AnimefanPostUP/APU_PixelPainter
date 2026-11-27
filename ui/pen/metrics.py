@@ -70,12 +70,14 @@ FAVORITES_ARC = HISTORY_ARC    # the favorite blend modes (outer ring)
 FAVORITE_ROWS = 2              # the favorites split into this many rings (the outer one takes the odd one)
 # Top-right corner, past the color history: Alphalock as a capsule (an arc band with
 # round ends; radii: BRUSH_MODE_RING, below). The spacing: bottom right.
-BRUSH_MODE_ARC = (25.0, 65.0)
+BRUSH_MODE_ARC = (33.0, 57.0)          # Alphalock alone (the spacing moved bottom right)
 BLEND_GRADIENT = ((0.16, 0.16, 0.16), (0.78, 0.78, 0.78))   # the Blend button: dark gray -> light gray
 INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
 # Category tints (mixed lightly into the segment fills).
 TINT_TOOLS = (0.35, 0.58, 1.00)
 TINT_MODES = (1.00, 0.62, 0.25)
+TINT_SPACING = (0.70, 0.45, 1.00)   # the spacing group (mode button + slider): purple
+TINT_ALPHA_LOCK = (0.60, 0.60, 0.60) # Alphalock: gray
 TINT_HISTORY = (0.95, 0.40, 0.45)
 TINT_FALLOFF = (1.00, 0.55, 0.15)    # orange
 TINT_CUSTOM = (1.00, 0.80, 0.20)     # the Custom falloff and its curve button stand out
@@ -118,12 +120,14 @@ COLOR_WHEEL_ARC = (270.0, 350.0)     # bottom right: the palette (2 bands along 
 PALETTE_BUTTON_ARC = (350.0, 370.0)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 BRUSH_MODE_RING = (COLOR_CORNER_INNER, COLOR_CORNER_INNER + 26.0)
-# Bottom right, outside the palette bands: the spacing as one capsule along the circle --
-# on the left the mode button (Once / Fixed / Time), right of it the mode's value slider
-# (px / ms). The arc keeps the band inside the menu's square.
-SPACING_VALUE_RING = (CORNER_INNER + PALETTE_DEPTH + DIAL_GAP, CORNER_INNER + PALETTE_DEPTH + DIAL_GAP + 16.0)
-SPACING_ARC = (297.0, 333.0)
-SPACING_WEIGHTS = (1.0, 2.3)         # mode button : slider
+# Bottom right, outside the palette bands: the spacing as one capsule along the circle (a
+# group like Windows / Save / Grid / Blend), as deep as the Alphalock capsule -- on the left
+# the mode button (Once / Fixed / Time), right of it the mode's value slider (px / ms). At
+# that depth the arc around the diagonal keeps it inside the menu's square.
+SPACING_INNER = CORNER_INNER + PALETTE_DEPTH + DIAL_GAP
+SPACING_RING = (SPACING_INNER, SPACING_INNER + (BRUSH_MODE_RING[1] - BRUSH_MODE_RING[0]))
+SPACING_ARC = (301.5, 328.5)
+SPACING_WEIGHTS = (1.0, 1.6)         # mode button : slider
 # Bottom left, a capsule along the circle: Windows, Save, Grid, Blend (Blend ends at the
 # bottom, where the palette band starts; the band stays inside the square there).
 BOTTOM_LEFT_INNER = CORNER_INNER

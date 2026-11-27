@@ -429,9 +429,9 @@ global `pixel_painter_spacing` / ... instead). `SettingsService.get_tool_spacing
 * Shown as *Once* (`PIXEL`), *Fixed* (`FREE`), *Time* (`TIME`): `spacing.MODE_LABELS`; the
   ids stay (saved settings).
 * Pen menu, bottom right outside the palette bands, one capsule along the circle
-  (`SPACING_VALUE_RING`, `SPACING_ARC`, kept inside the square; `SPACING_WEIGHTS`): on the
-  left `ui/pen/widgets/spacing.SpacingModeButton` (the mode's name along the arc, a tap
-  steps), right of it `SpacingSlider` (only the value, "4 px" / "100 ms", along the arc;
+  (`SPACING_RING` -- as deep as the Alphalock capsule --, `SPACING_ARC`, kept inside the
+  square; `SPACING_WEIGHTS`): on the left `ui/pen/widgets/spacing.SpacingModeButton` (the
+  mode's name along the arc, a tap steps), right of it `SpacingSlider` (only the value, "4 px" / "100 ms", along the arc;
   range and scale follow the mode, Time two-part via `spacing.slider_value` /
   `slider_fraction`; the readout in `Readouts` gives the full name).
 
@@ -464,7 +464,7 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
   canvas press toggles the element under the cursor, a drag sets the ones it
   passes to the same state; Esc / RMB end it. The pen bar does not remap the
   RMB lock while picking.
-* Overlay: `mask.overlay.draw_2d` (red / light red stripes at `pixel_painter_mask_opacity`, default 15%, via `stripe_colors`; Mask window: the arc slider at the bottom of its band; a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
+* Overlay: `mask.overlay.draw_2d` (red / light red stripes at `pixel_painter_mask_opacity`, default 15%, via `stripe_colors`; Mask window: a short arc slider in the ring beside Show, `ArcSlider(knee=(0.5, 0.1))`: its first half covers 0 .. 10 %; a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
   before tool overlays) and `mask.overlay.draw_3d` (POST_VIEW, triangles whose UV
   center is blocked).
 

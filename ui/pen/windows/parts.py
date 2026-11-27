@@ -296,6 +296,32 @@ class FlexWindowButton(WindowButton):
         super().draw_self(dc)
 
 
+def knee_value(f, lo, hi, knee=None):
+    """The value at slider fraction ``f`` (0..1) between ``lo`` and ``hi``; with ``knee``
+    ``(kf, kv)`` two linear parts: ``0 .. kf`` of the slider covers ``lo .. kv``, the rest
+    ``kv .. hi`` (finer control over small values)."""
+    f = max(0.0, min(1.0, float(f)))
+    if not knee:
+        return lo + f * (hi - lo)
+    kf, kv = knee
+    if f <= kf:
+        return lo + f / kf * (kv - lo)
+    return kv + (f - kf) / (1.0 - kf) * (hi - kv)
+
+
+def knee_fraction(v, lo, hi, knee=None):
+    """Inverse of :func:`knee_value`."""
+    if hi <= lo:
+        return 0.0
+    v = max(lo, min(hi, float(v)))
+    if not knee:
+        return (v - lo) / (hi - lo)
+    kf, kv = knee
+    if v <= kv:
+        return kf * (v - lo) / max(1e-12, kv - lo)
+    return kf + (1.0 - kf) * (v - kv) / max(1e-12, hi - kv)
+
+
 class ArcSlider(RingSegment):
     """A slider along an arc (an outer band of a dial): the value runs with the angle,
     from the ``a0`` end to the ``a1`` end. A press sets it from the pointer's angle,
@@ -306,14 +332,16 @@ class ArcSlider(RingSegment):
     level text would cross the band) -- :meth:`readout` gives the full name and value for
     a readout beside the window while dragging (like the pen menu's S / A / M);
     ``reverse``: the value grows from the ``a1`` end. ``tag``: a short name written
-    instead of the first letter (``short`` sliders; e.g. "Dist")."""
+    instead of the first letter (``short`` sliders; e.g. "Dist"). ``knee`` ``(kf, kv)``: a
+    two-part scale, the first ``kf`` of the slider up to the value ``kv`` (:func:`knee_value`)."""
 
     draggable = True
 
     def __init__(self, label="", *, value, on_value, value_range=(0.0, 1.0), fill_color=None, fmt=None,
-                 short=False, reverse=False, tag=None, **kwargs):
+                 short=False, reverse=False, tag=None, knee=None, **kwargs):
         super().__init__(label, **kwargs)
         self.tag = tag
+        self.knee = knee
         self.fmt = fmt              # value -> text (default: "<n> px")
         self.short = short
         self.reverse = reverse
@@ -345,7 +373,7 @@ class ArcSlider(RingSegment):
     def _fraction(self):
         lo, hi = self._range()
         v = float(_resolve(self.value, lo) or lo)
-        return 0.0 if hi <= lo else max(0.0, min(1.0, (v - lo) / (hi - lo)))
+        return knee_fraction(v, lo, hi, self.knee)
 
     @property
     def dragging(self):
@@ -365,7 +393,7 @@ class ArcSlider(RingSegment):
 
     def drag_update(self, x, y):
         lo, hi = self._range()
-        self.on_value(lo + self.fraction_at(x, y) * (hi - lo))
+        self.on_value(knee_value(self.fraction_at(x, y), lo, hi, self.knee))
 
     def drag_end(self, x, y, cancelled=False):
         if cancelled and self._original is not None:
