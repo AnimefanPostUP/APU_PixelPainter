@@ -4,7 +4,7 @@ gradient) and the color history.
 
 
 
-from ....model import color_history, tertiary_color
+from ....model import color_history, spacing as spacing_model, tertiary_color
 
 
 class ColorActions:
@@ -79,12 +79,43 @@ class ColorActions:
         ctx.settings.set_brush_rgb(ctx.context, *secondary)
         ctx.settings.set_brush_secondary_rgb(ctx.context, *primary)
 
+    # ---- spacing (model/spacing.py): the active tool's, per tool by default ----------------
+
     def spacing(self):
-        return getattr(self._c().wm, 'pixel_painter_spacing', 'FREE')
+        """The active tool's spacing mode: 'PIXEL' / 'FREE' / 'TIME'."""
+        ctx = self._c()
+        return ctx.settings.get_tool_spacing(ctx.context, self.active_tool())[0]
 
     def toggle_spacing(self):
-        wm = self._c().wm
-        wm.pixel_painter_spacing = 'FREE' if self.spacing() == 'PIXEL' else 'PIXEL'
+        """Pixel -> Free -> Time -> Pixel."""
+        ctx = self._c()
+        ctx.settings.set_tool_spacing(ctx.context, self.active_tool(), mode=spacing_model.next_mode(self.spacing()))
+
+    def spacing_value(self):
+        """The current mode's value: Pixel step / Free spacing (px), Time interval (ms)."""
+        ctx = self._c()
+        return ctx.settings.get_tool_spacing(ctx.context, self.active_tool())[1]
+
+    def set_spacing_value(self, value):
+        ctx = self._c()
+        ctx.settings.set_tool_spacing(ctx.context, self.active_tool(), value=value)
+
+    def spacing_range(self):
+        return spacing_model.RANGES.get(self.spacing(), (1, 64))
+
+    def spacing_label(self):
+        return spacing_model.LABELS.get(self.spacing(), "Spacing")
+
+    def spacing_text(self, value=None):
+        mode = self.spacing()
+        return spacing_model.value_text(mode, self.spacing_value() if value is None else value)
+
+    def spacing_uses_value(self):
+        """The active tool follows the spacing (Line stamps on release: it ignores it)."""
+        try:
+            return bool(getattr(self.registry.get(self.active_tool()), 'respects_pixel_spacing', True))
+        except Exception:
+            return True
 
     def alpha_lock(self):
         return bool(getattr(self._c().wm, 'pixel_painter_protect_transparent', False))

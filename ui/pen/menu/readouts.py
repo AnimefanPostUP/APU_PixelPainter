@@ -45,6 +45,10 @@ class Readouts:
             if window.visible and getattr(slider, 'dragging', False) and hasattr(slider, 'readout'):
                 self._pill(slider.readout(), window.rect, slider.middle()[1], 16.0, theme.accent)
                 return
+        slider = getattr(self, 'spacing_slider', None)   # the menu's spacing value
+        if slider is not None and slider.dragging:
+            self._pill(slider.readout(), self.menu.rect, slider.middle()[1], 16.0, theme.accent)
+            return
         field = getattr(self, 'falloff_field', None)
         if field is not None and field.dragging:
             self._draw_falloff_readout(field)

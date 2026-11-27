@@ -59,6 +59,10 @@ class TemporaryToolSwitch(HoldTool):
         if self.stand_in is not None:
             self.stand_in.interrupt(ctx)
 
+    def on_tick(self, ctx):
+        if self.stand_in is not None:
+            self.stand_in.tick(ctx)
+
     def on_deactivate(self, ctx):
         if self.stand_in is not None:
             self.stand_in.deactivate(ctx)

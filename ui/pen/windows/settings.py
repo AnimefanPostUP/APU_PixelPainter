@@ -280,6 +280,9 @@ class SettingsMenu:
                                   step=1 if channel == 'size' else None, key=f"SET_VALUE_{channel}".upper())
             rows.append(Row([toggle, slider], gap=6.0))
         rows.append(self._hint(("Global: the tool uses the shared value.",)))
+        rows.append(self._toggle('spacing_per_tool', "Spacing per tool", size=(140.0, 26.0)))
+        rows.append(self._hint(("Spacing (Pixel / Free / Time and its value): next to",
+                                "Alphalock on the menu; per tool, or shared when off.")))
         per_tool = Column(rows, gap=5.0)
         reset = PenButton("Reset Tool Settings", painter=icon_reset, layout='row', size=(200.0, 28.0),
                            key='SET_RESET_TOOLS', on_click=a.reset_tool_settings)

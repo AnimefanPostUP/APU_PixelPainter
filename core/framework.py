@@ -262,6 +262,10 @@ class ToolFrame:
     def draw_overlay(self, ctx) -> None:
         """Draw this tool's canvas overlay (POST_PIXEL)."""
 
+    def on_tick(self, ctx) -> None:
+        """Called on every timer tick of the session while active (time-based work, e.g.
+        the Time spacing of strokes). Keep it cheap: it runs ~60 times a second."""
+
     def on_session_end(self, ctx) -> None:
         """The core stopped running (every registered root tool is told)."""
 
@@ -341,6 +345,13 @@ class ToolFrame:
                 if event.consumed or (sub.is_active and sub.exclusive):
                     return
         self.on_event(ctx, event)
+
+    def tick(self, ctx) -> None:
+        """The session's timer fired (~60 Hz): ``on_tick`` here, then in the active subtools."""
+        self.on_tick(ctx)
+        for sub in list(self._active_subtools):
+            if sub.is_active:
+                sub.tick(ctx)
 
     def draw_chain(self, ctx) -> None:
         self.draw_overlay(ctx)
@@ -575,6 +586,12 @@ class ToolManager:
     def interrupt(self, ctx) -> None:
         for tool in self.root_tools():
             tool.interrupt(ctx)
+
+    def tick(self, ctx) -> None:
+        """The session's timer fired: every active root tool's :meth:`ToolFrame.tick`."""
+        self.sync(ctx)
+        for tool in self.root_tools():
+            tool.tick(ctx)
 
     def is_capturing(self) -> bool:
         return any(t.is_capturing() for t in self.root_tools())

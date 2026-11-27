@@ -17,11 +17,23 @@ def _draw_tool_mode_buttons(layout, current_mode):
         ).mode = tool.tool_id
 
 
-def _draw_spacing_buttons(layout, wm):
-    layout.label(text="Spacing")
+def _spacing_props(wm):
+    """The active tool's spacing ``(mode_property, value_property)`` (per tool or global)."""
+    from ...core.state import SETTINGS
+    return SETTINGS.spacing_props(wm, wm.pixel_painter_mode)
+
+
+def _draw_spacing_row(layout, wm, value_text=None):
+    mode_prop, value_prop = _spacing_props(wm)
     row = layout.row(align=True)
-    row.prop_enum(wm, "pixel_painter_spacing", 'FREE', text="Free")
-    row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
+    for mode, label in (('PIXEL', "Pixel"), ('FREE', "Free"), ('TIME', "Time")):
+        row.prop_enum(wm, mode_prop, mode, text=label)
+    row.prop(wm, value_prop, text=value_text)
+
+
+def _draw_spacing_buttons(layout, wm):
+    layout.label(text="Spacing" + (" (this tool)" if getattr(wm, 'pixel_painter_spacing_per_tool', True) else ""))
+    _draw_spacing_row(layout, wm, value_text="")
 
 
 def _is_view3d(context):
@@ -147,9 +159,7 @@ def draw_tool_settings(context, layout):
             draw_falloff_section(layout, context, tool.falloff_property)
 
     if in_header:
-        row = layout.row(align=True)
-        row.prop_enum(wm, "pixel_painter_spacing", 'FREE', text="Free")
-        row.prop_enum(wm, "pixel_painter_spacing", 'PIXEL', text="Pixel")
+        _draw_spacing_row(layout, wm, value_text="")
         if _is_view3d(context):
             _draw_view3d_mode_buttons(layout, wm, label=False)
         _draw_settings_button(layout, text="")

@@ -332,6 +332,48 @@ class PixelPainterSettingsService:
         except Exception:
             pass
 
+    # ---- spacing (model/spacing.py): per tool unless pixel_painter_spacing_per_tool is off ----
+
+    @staticmethod
+    def spacing_prefix(wm, tool_mode):
+        """Property prefix holding ``tool_mode``'s spacing: its own or the global one."""
+        if tool_mode and getattr(wm, 'pixel_painter_spacing_per_tool', True) \
+                and hasattr(wm, f'pixel_painter_{tool_mode}_spacing'):
+            return f'pixel_painter_{tool_mode}_'
+        return 'pixel_painter_'
+
+    def spacing_props(self, wm, tool_mode):
+        """``(mode_property, value_property)`` names of the tool's spacing (the value of
+        its current mode)."""
+        from ..model import spacing as spacing_model
+        prefix = self.spacing_prefix(wm, tool_mode)
+        mode = getattr(wm, f'{prefix}spacing', spacing_model.DEFAULT_MODE)
+        return f'{prefix}spacing', f'{prefix}{spacing_model.VALUE_PROP.get(mode, "spacing_distance")}'
+
+    def get_tool_spacing(self, context, tool_mode):
+        """``(mode, value)``: 'PIXEL' / 'FREE' / 'TIME' and its step / distance / interval."""
+        from ..model import spacing as spacing_model
+        try:
+            wm = context.window_manager
+            mode_prop, value_prop = self.spacing_props(wm, tool_mode)
+            mode = getattr(wm, mode_prop, spacing_model.DEFAULT_MODE)
+            return mode, spacing_model.clamp_value(mode, getattr(wm, value_prop, spacing_model.DEFAULTS.get(mode, 1)))
+        except Exception:
+            return spacing_model.DEFAULT_MODE, 1
+
+    def set_tool_spacing(self, context, tool_mode, mode=None, value=None):
+        """Set the tool's spacing mode and / or the current mode's value."""
+        from ..model import spacing as spacing_model
+        try:
+            wm = context.window_manager
+            if mode is not None:
+                set_if_changed(wm, self.spacing_props(wm, tool_mode)[0], mode)
+            if value is not None:
+                current, _old = self.get_tool_spacing(context, tool_mode)
+                set_if_changed(wm, self.spacing_props(wm, tool_mode)[1], spacing_model.clamp_value(current, value))
+        except Exception:
+            pass
+
     def apply_tool_runtime_settings(self, context, tool_mode, force_global=False):
         """Load effective tool settings into runtime globals used by drawing paths."""
         try:

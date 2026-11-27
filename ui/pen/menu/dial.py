@@ -11,8 +11,9 @@ from ..widgets.color import ColorCorner, GradientSlider, PaletteSlot, Swatch, Te
 from ..widgets.falloff_field import FalloffField
 from ..widgets.grid_corner import GridCorner
 from ..icons.menu import captioned, paint_alpha_lock, paint_arrow, paint_color_wheel, paint_curve, paint_gear, paint_mask_menu, paint_save, paint_spacing, paint_swap, paint_target_picker, paint_view, paint_windows
-from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_EXTRAS, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL, TINT_BRUSHES, WINDOW_OUTER_RING, WINDOW_OUTER_START, WINDOW_OUTER_STEP
+from ..metrics import BOTTOM_LEFT_ARC, BOTTOM_LEFT_RING, BRUSH_MODE_ARC, BRUSH_MODE_RING, SPACING_BUTTON_ARC, SPACING_BUTTON_INNER, SPACING_VALUE_ARC, SPACING_VALUE_RING, CORNER_CHAMFER, COLORS_ARC, COLORS_WEIGHTS, COLOR_CORNER_INNER, COLOR_ROUND, COLOR_WHEEL_ARC, CORNER_INNER, CUSTOM_TINT_AMOUNT, DIAL_GAP, FALLOFF_FIELD_ARC, FALLOFF_SPLIT, FAVORITES_ARC, FAVORITE_FONT, GROUP_GAP, HISTORY_ARC, HISTORY_BAND_ARC, HISTORY_DEPTH, INNER_RING, MAX_SIZE, OUTER_RING, PALETTE_BUTTON_ARC, PALETTE_DEPTH, PALETTE_ROWS, SIZE_RADIUS, SIZE_STEP_PX, SLIDERS, SLIDER_ARC, SQUARE_HALF, SWAP_DEPTH, TINT_CUSTOM, TINT_EXTRAS, TINT_FALLOFF, TINT_GRID, TINT_HISTORY, TINT_MASK, TINT_MODES, TINT_SAVE, TINT_TOOLS, TINT_VIEW, TINT_WINDOWS, TOOL_ARC, WINDOW_RING, WINDOW_RING_COVER, WINDOW_RING_START, INNER_FILL, TINT_BRUSHES, WINDOW_OUTER_RING, WINDOW_OUTER_START, WINDOW_OUTER_STEP
 from ..widgets.window_ring import WindowRing
+from ..widgets.spacing import SpacingSlider
 from ..icons.extras import paint_extras_menu
 from ..icons.brushes import paint_brushes_menu
 from ..icons.palettes import paint_library, paint_palettes
@@ -133,13 +134,25 @@ class DialControls:
         swatches = [Swatch(self, lambda i=i: self._history(i), a.use_history_color, key=f"HISTORY_{i}")
                     for i in range(color_history.HISTORY_SIZE)]
         dial.add_band(reversed(swatches), CORNER_INNER, CORNER_INNER + HISTORY_DEPTH, *HISTORY_BAND_ARC)
-        # Past it, around the diagonal: Pixel / Free (spacing) and Alphalock, one capsule.
+        # Past it, around the diagonal: Alphalock as a capsule.
         _add_capsule(dial, [
-            RingSegment("Spacing", key='SPACING', painter=paint_spacing(a.spacing), on_click=a.toggle_spacing,
-                        options=lambda: (2, 0 if a.spacing() == 'PIXEL' else 1)),
             RingSegment("Alphalock", key='ALPHA_LOCK', painter=paint_alpha_lock,
                         selected=a.alpha_lock, on_click=a.toggle_alpha_lock),
         ], *BRUSH_MODE_RING, *BRUSH_MODE_ARC, tint=TINT_MODES)
+
+        # Bottom right, outside the palette: the spacing value as a long capsule slider along
+        # the circle (grows left to right, like its text), behind it in the corner the
+        # Pixel / Free / Time button (a tap steps, dots show which).
+        self.spacing_slider = SpacingSlider(a, key='SPACING_VALUE', fill_color=(*TINT_MODES, 1.0), tint=TINT_MODES,
+                                            enabled=a.spacing_uses_value)
+        _add_capsule(dial, [self.spacing_slider], *SPACING_VALUE_RING, *SPACING_VALUE_ARC)
+        self.spacing_slider.half = BRUSH_MODE_RING[1]   # the dial's measure: no larger than before
+        modes = ('PIXEL', 'FREE', 'TIME')
+        dial.add_corner([CornerSegment("Spacing", key='SPACING', painter=paint_spacing(a.spacing),
+                                       on_click=a.toggle_spacing,
+                                       options=lambda: (len(modes), modes.index(a.spacing()) if a.spacing() in modes
+                                                        else 1))],
+                        SPACING_BUTTON_INNER, SQUARE_HALF, *SPACING_BUTTON_ARC, chamfer=CORNER_CHAMFER, tint=TINT_MODES)
         # Top left along the circle: the gradient primary (left) -> secondary (top).
         self.gradient_slider = GradientSlider("Tertiary", key='GRADIENT', colors=a.colors, value=a.tertiary_t,
                                                active=a.tertiary_active, on_value=a.set_tertiary_t)

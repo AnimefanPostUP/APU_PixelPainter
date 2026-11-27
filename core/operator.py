@@ -540,6 +540,7 @@ class PixelPainterOperator(Operator):
             apply_active_tool_settings(context)
 
             if event.type == 'TIMER':
+                MANAGER.tick(ToolContext(context, MANAGER))   # time-based tools (Time spacing)
                 # Redraw only while an animation (outline tween, hover fades) runs.
                 if anim.take_frame_request() and context.area:
                     context.area.tag_redraw()

@@ -286,20 +286,28 @@ def paint_alpha_lock(dc, x, y, size, alpha):
 
 
 def paint_spacing(mode):
-    """Pixel / Free: the initial with a small square (solid for Pixel, fading for Free)."""
+    """Pixel / Free / Time: the initial with a small mark (a solid square for Pixel, a
+    fading one for Free, a clock for Time)."""
     def paint(dc, x, y, size, alpha):
         theme = dc.theme
-        pixel = _resolve(mode, 'FREE') == 'PIXEL'
+        kind = _resolve(mode, 'FREE')
         letter = theme.px(15.0)
-        draw.text_centered("P" if pixel else "F", x - letter * 0.12, y + size * 0.12, letter,
+        initial = {'PIXEL': "P", 'TIME': "T"}.get(kind, "F")
+        draw.text_centered(initial, x - letter * 0.12, y + size * 0.12, letter,
                            with_alpha(theme.text, alpha), theme.font_id)
         sq = letter * 0.32
         box = Rect.from_size(x + letter * 0.22, y + size * 0.12 - letter * 0.42, sq, sq)
-        if pixel:
+        if kind == 'PIXEL':
             draw.rect(box, (1.0, 1.0, 1.0, alpha))
+        elif kind == 'TIME':
+            r = sq * 0.6
+            cx, cy = box.cx, box.cy
+            draw.circle_outline(cx, cy, r, (1.0, 1.0, 1.0, alpha), width=max(1.0, theme.px(1.0)), segments=16)
+            draw.polyline([(cx, cy + r * 0.7), (cx, cy), (cx + r * 0.55, cy)], (1.0, 1.0, 1.0, alpha),
+                          max(1.0, theme.px(1.0)))
         else:
             draw.gradient_quad(box, (1.0, 1.0, 1.0, alpha), (1.0, 1.0, 1.0, 0.1 * alpha),
                                (1.0, 1.0, 1.0, 0.1 * alpha), (1.0, 1.0, 1.0, alpha))
-        draw.text_centered("Pixel" if pixel else "Free", x, y - size * 0.3, theme.px(7.5),
-                           with_alpha(theme.text_muted, alpha), theme.font_id)
+        label = {'PIXEL': "Pixel", 'TIME': "Time"}.get(kind, "Free")
+        draw.text_centered(label, x, y - size * 0.3, theme.px(7.5), with_alpha(theme.text_muted, alpha), theme.font_id)
     return paint

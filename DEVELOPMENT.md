@@ -273,7 +273,7 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   corners (`RingSegment(round=...)`, `kit.geometry.round_strip`, `COLOR_ROUND`);
   top right, outside S / A / M, the color history band (`HISTORY_BAND_ARC`,
   `model/color_history.py`, recorded by `StrokeTool.begin_stroke` for tools with `paints_color`)
-  and past it Pixel-Free / Alphalock as a capsule (`BRUSH_MODE_RING` / `_ARC`;
+  and past it Alphalock as a capsule (`BRUSH_MODE_RING` / `_ARC`;
   `_add_capsule`: a band whose two outer ends are half circles, via
   `RingSegment(round=..., round_ends=...)` and `kit.geometry.round_strip(ends=...)`).
   The optional tertiary color (`model/tertiary_color.py`, pure) is a point `t` on
@@ -408,6 +408,29 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   (`tools/pen/eyedropper.py`) for the next canvas press; the RMB lock rewrites
   pen-tip LMB events to RMB for every tool after the bar.
   Each element renders at `BAR_SCALE` x the UI scale x its own scale.
+
+## Stroke spacing (`model/spacing.py`)
+
+When a stroke stamps, per tool (`pixel_painter_<TOOL>_spacing` + `_spacing_step` /
+`_spacing_distance` / `_spacing_interval`; with `pixel_painter_spacing_per_tool` off the
+global `pixel_painter_spacing` / ... instead). `SettingsService.get_tool_spacing` /
+`set_tool_spacing` / `spacing_props` resolve which properties apply.
+
+* `PIXEL`: once per new pixel, no build-up (the brushes' `env.spacing == 'PIXEL'` paths);
+  value = pixels per stamp. `FREE`: builds up; value = pixels between stamps. Defaults:
+  Free, 1 px (the old behaviour). Values above 1: `StrokeTool.paint` thins the step's
+  path with `spacing.thin` (Pixel: path pixels walked, Free: true distance; the walked
+  rest carries over in state `spacing_carry`); no stamp due: only `mark_painted`.
+* `TIME`: `continue_stroke` does not paint; `StrokeTool.on_tick` (the session timer,
+  ~60 Hz: the operator's TIMER -> `ToolManager.tick` -> `ToolFrame.tick` /
+  `on_tick`, forwarded to stand-ins by `TemporaryToolSwitch`) stamps at the cursor
+  whenever `spacing.due` (state `spacing_last_time`), no path between stamps.
+* Tools with `respects_pixel_spacing = False` (Line) ignore step / spacing / time.
+* Pen menu, bottom right outside the palette bands: `ui/pen/widgets/spacing.SpacingSlider`
+  (`SPACING_VALUE_RING` / `_ARC`, a long capsule along the circle; name, range and unit
+  follow the mode, text along the arc; its readout in `Readouts`) and behind it in the
+  corner the Spacing button (`CornerSegment`, `SPACING_BUTTON_INNER` / `_ARC`, cut by
+  `CORNER_CHAMFER` for the resize triangle), a tap steps the modes.
 
 ## Paint mask (`tools/mask/`, `tools/mask/geometry.py`)
 

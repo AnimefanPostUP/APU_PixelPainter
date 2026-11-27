@@ -9,6 +9,7 @@ import bpy
 
 from .model import blend_modes
 from .model import falloff
+from .model import spacing as spacing_model
 from .tools.catalog import TOOLS
 from .tools.registry import SETTING_CHANNELS
 from .utils import persistence_settings
@@ -131,6 +132,31 @@ def _factor(name, default, **kwargs):
     return bpy.props.FloatProperty(name=name, min=0.0, max=1.0, default=default, subtype='FACTOR', **kwargs)
 
 
+SPACING_ITEMS = [
+    ('PIXEL', "Pixel", "Once per new pixel, no build-up within a stroke; Step = pixels per stamp"),
+    ('FREE', "Free", "Every stamp builds up; Spacing = pixels between stamps"),
+    ('TIME', "Time", "A stamp every Interval milliseconds while held, also standing still (airbrush)"),
+]
+
+
+def _spacing_mode_property(name):
+    return bpy.props.EnumProperty(name=name, description="When a stroke stamps", items=SPACING_ITEMS,
+                                  default=spacing_model.DEFAULT_MODE, update=_persist)
+
+
+def _spacing_value_properties(prefix, name):
+    """``{prefix}spacing_step`` / ``_distance`` / ``_interval`` (model/spacing.py)."""
+    out = {}
+    for mode, suffix in spacing_model.VALUE_PROP.items():
+        lo, hi = spacing_model.RANGES[mode]
+        out[f'{prefix}{suffix}'] = bpy.props.IntProperty(
+            name=f"{name} {spacing_model.LABELS[mode]}",
+            description=f"{spacing_model.MODE_LABELS[mode]} spacing: {spacing_model.LABELS[mode].lower()} "
+                        f"({spacing_model.UNITS[mode]})",
+            min=lo, max=hi, default=spacing_model.DEFAULTS[mode], update=_persist)
+    return out
+
+
 def _static_properties():
     size_get, size_set = _active_proxy('size', int, lambda wm: int(getattr(wm, 'pixel_painter_radius', 1)))
     strength_get, strength_set = _active_proxy('strength', float, lambda wm: 1.0)
@@ -178,14 +204,12 @@ def _static_properties():
             name="Spray Density",
             description="Fraction of the circle area painted per frame (0 = sparse, 1 = full fill)",
             min=0.01, max=1.0, default=0.1, subtype='FACTOR', update=_persist),
-        'spacing': bpy.props.EnumProperty(
-            name="Spacing",
-            description="When to paint: continuously (Free) or once per unique pixel position (Pixel)",
-            items=[
-                ('FREE', "Free", "Paint continuously as the mouse moves, with stroke interpolation"),
-                ('PIXEL', "Pixel", "Paint only when the cursor moves to a new pixel — no repeated stamps"),
-            ],
-            default='FREE', update=_persist),
+        'spacing': _spacing_mode_property("Spacing"),
+        **_spacing_value_properties('', "Spacing"),
+        'spacing_per_tool': bpy.props.BoolProperty(
+            name="Spacing per Tool",
+            description="Every tool keeps its own spacing mode and values (off: all tools share one)",
+            default=True, update=_persist),
         'modifier': _factor("Modifier", 0.5, description="Generic modifier value (currently used as Spread)",
                             update=_persist),
         'global_modifier': _factor("Global Modifier", 0.5, options={'HIDDEN'}, update=_persist),
@@ -473,6 +497,9 @@ def _tool_properties(tool):
             props[short] = bpy.props.IntProperty(name=nice, min=0, max=64, default=default, update=_persist)
         else:
             props[short] = _factor(nice, default, update=_persist)
+    # Spacing: its own mode and values per tool (unless 'spacing_per_tool' is off).
+    props[f'{tool.tool_id}_spacing'] = _spacing_mode_property(f"{tool.label} Spacing")
+    props.update(_spacing_value_properties(f'{tool.tool_id}_', f"{tool.label}"))
     return props
 
 
@@ -557,7 +584,8 @@ def reset_tool_settings(wm):
     wm.pixel_painter_repair_falloff = 'PLATEAU'
     wm.pixel_painter_falloff_hardness, wm.pixel_painter_falloff_sharpness = falloff.SHAPE_DEFAULT
     wm.pixel_painter_spray_strength = 0.1
-    wm.pixel_painter_spacing = 'FREE'
+    wm.pixel_painter_spacing = spacing_model.DEFAULT_MODE
+    wm.pixel_painter_spacing_per_tool = True
     wm.pixel_painter_modifier = 0.5
     wm.pixel_painter_global_modifier = 0.5
     wm.pixel_painter_global_strength = 1.0
@@ -576,3 +604,7 @@ def reset_tool_settings(wm):
     for tool in TOOLS:
         for name, default in tool_property_defaults(tool.tool_id).items():
             setattr(wm, name, default)
+    for prefix in [''] + [f'{tool.tool_id}_' for tool in TOOLS]:
+        setattr(wm, f'pixel_painter_{prefix}spacing', spacing_model.DEFAULT_MODE)
+        for mode, suffix in spacing_model.VALUE_PROP.items():
+            setattr(wm, f'pixel_painter_{prefix}{suffix}', spacing_model.DEFAULTS[mode])

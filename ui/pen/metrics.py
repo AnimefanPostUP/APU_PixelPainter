@@ -68,8 +68,8 @@ TOOL_ARC = (90.0, 210.0)       # tools, half in each ring
 HISTORY_ARC = (210.0, 322.5)   # Undo / Redo (inner ring)
 FAVORITES_ARC = HISTORY_ARC    # the favorite blend modes (outer ring)
 FAVORITE_ROWS = 2              # the favorites split into this many rings (the outer one takes the odd one)
-# Top-right corner, past the color history: Pixel / Free (spacing) and Alphalock as
-# one capsule (an arc band with round ends; radii: BRUSH_MODE_RING, below).
+# Top-right corner, past the color history: Alphalock as a capsule (an arc band with
+# round ends; radii: BRUSH_MODE_RING, below). The spacing: bottom right.
 BRUSH_MODE_ARC = (25.0, 65.0)
 BLEND_GRADIENT = ((0.16, 0.16, 0.16), (0.78, 0.78, 0.78))   # the Blend button: dark gray -> light gray
 INNER_FILL = (0.26, 0.26, 0.26, 0.95)   # the inner ring is a bit lighter than the outer
@@ -118,6 +118,13 @@ COLOR_WHEEL_ARC = (270.0, 350.0)     # bottom right: the palette (2 bands along 
 PALETTE_BUTTON_ARC = (350.0, 370.0)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 BRUSH_MODE_RING = (COLOR_CORNER_INNER, COLOR_CORNER_INNER + 26.0)
+# Bottom right, outside the palette bands: the spacing -- its value (Pixel: Step, Free:
+# Spacing, Time: Interval) as a long capsule slider along the circle, and behind it, in the
+# corner (cut for the resize triangle), the Pixel / Free / Time button.
+SPACING_VALUE_RING = (CORNER_INNER + PALETTE_DEPTH + DIAL_GAP, CORNER_INNER + PALETTE_DEPTH + DIAL_GAP + 16.0)
+SPACING_VALUE_ARC = (290.0, 340.0)
+SPACING_BUTTON_INNER = SPACING_VALUE_RING[1] + DIAL_GAP
+SPACING_BUTTON_ARC = (303.0, 327.0)
 # Bottom left, a capsule along the circle: Windows, Save, Grid, Blend (Blend ends at the
 # bottom, where the palette band starts; the band stays inside the square there).
 BOTTOM_LEFT_INNER = CORNER_INNER

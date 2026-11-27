@@ -1,11 +1,13 @@
 """Stroke tools: press-drag-release painting plus the standard modifier subtools."""
 
+import time
+
 from ..core import history
 from ..core.view3d import footprint, islands as v3d_islands, patch, stroke_path
 from ..core.framework import Shortcut
 from ..utils import blender_utils, math_utils, pixel_io
 from ..utils.settings_service import set_if_changed
-from ..model import color_history, tertiary_color
+from ..model import color_history, spacing as spacing_model, tertiary_color
 from .mask import data as mask_data
 from .mask import guard as mask_guard
 from .pen import pressure as pen_pressure
@@ -35,6 +37,19 @@ def _memoize_steps(env):
     return steps
 
 
+def _refresh_viewport_texture(img):
+    """3D Viewport: make it re-render with the changed texture. A plain redraw only shows
+    its last render (Workbench / EEVEE keep their accumulated samples until something in
+    the depsgraph changes) -- while the cursor moves, other updates do that anyway, a timed
+    stamp with the pen standing still has none: tag the image."""
+    if img is None:
+        return
+    try:
+        img.update_tag()
+    except Exception:
+        pass
+
+
 class StrokeTool(ToolBase):
     """A tool that paints while LMB (primary color) or RMB (secondary) is held.
 
@@ -54,6 +69,8 @@ class StrokeTool(ToolBase):
         'native_stroke_grid':   None,  # C# path: w*h max-weight grid of the stroke (paint/native_paths.py)
         'use_secondary':      False,  # True while painting with the secondary color (RMB)
         'outline_immediate':  False,  # outline follows the cursor without tweening
+        'spacing_carry':      0.0,    # px walked since the last stamp (Pixel step / Free spacing > 1)
+        'spacing_last_time':  None,   # Time spacing: perf_counter() of the last stamp
         color_history.HISTORY_KEY: (),  # recently painted colors, newest first
     }
     persistent_state = ('last_shape', color_history.HISTORY_KEY)
@@ -111,6 +128,8 @@ class StrokeTool(ToolBase):
     def begin_stroke(self, ctx, event, button):
         self._buttons.add(button)
         state = ctx.state
+        state['spacing_carry'] = 0.0
+        state['spacing_last_time'] = None
         state['use_secondary'] = button == 'RMB'
         state['last_paint_cx'] = None
         state['last_paint_cy'] = None
@@ -143,9 +162,34 @@ class StrokeTool(ToolBase):
     def continue_stroke(self, ctx, event):
         if not self.is_stroking:
             return False
-        if ctx.can_paint:
+        if ctx.can_paint and not self.time_spacing(ctx):   # Time: stamps come from on_tick
             self.paint(ctx)
         ctx.redraw()
+
+    # ---- Time spacing ----------------------------------------------------------------
+
+    def time_spacing(self, ctx):
+        """``(interval_ms)`` while this tool's spacing is Time, else None."""
+        if not self.respects_pixel_spacing:
+            return None
+        mode, value = ctx.settings.get_tool_spacing(ctx.context, self.tool_id)
+        return value if mode == 'TIME' else None
+
+    def on_tick(self, ctx):
+        """Time spacing: stamp at the cursor whenever the interval has passed (also while the
+        cursor stands still)."""
+        if not self.is_stroking:
+            return
+        interval = self.time_spacing(ctx)
+        if interval is None or not spacing_model.due(time.perf_counter(), ctx.state.get('spacing_last_time'),
+                                                     interval):
+            return
+        if ctx.can_paint:
+            self.paint(ctx)
+            ctx.redraw()
+            if ctx.is_3d:
+                _refresh_viewport_texture(ctx.image)
+
 
     def end_stroke(self, ctx, button):
         if button not in self._buttons:
@@ -240,7 +284,9 @@ class StrokeTool(ToolBase):
         modifier = settings.get_tool_modifier(context, mode, force_global=force_global, button=button)
         alpha_opacity = settings.get_tool_alpha(context, mode, force_global=force_global, button=button)
         radius = settings.get_tool_size(context, mode, force_global=force_global)
-        spacing = wm.pixel_painter_spacing
+        spacing, spacing_value = settings.get_tool_spacing(context, mode)
+        if not self.respects_pixel_spacing and spacing == 'TIME':
+            spacing = 'FREE'     # tools that stamp on release (Line) ignore the timing
         # Apply the button-specific modifier so tools reading wm.pixel_painter_modifier see it.
         set_if_changed(wm, 'pixel_painter_modifier', float(modifier))
         if self.uses_pen_pressure:
@@ -293,6 +339,21 @@ class StrokeTool(ToolBase):
                 and cx == state['last_paint_cx']
                 and cy == state['last_paint_cy']):
             return
+
+        if self.respects_pixel_spacing:
+            if spacing == 'TIME':
+                # One stamp at the cursor per tick that is due -- no path between them.
+                env.interpolation_steps = lambda: [(cx, cy)]
+                state['spacing_last_time'] = time.perf_counter()
+            elif spacing_value > 1:
+                # Pixel step / Free spacing: only every N px along the path stamps.
+                start = None if state['last_paint_cx'] is None else (state['last_paint_cx'], state['last_paint_cy'])
+                stamps, state['spacing_carry'] = spacing_model.thin(
+                    spacing, env.interpolation_steps(), start, state.get('spacing_carry', 0.0), spacing_value)
+                if not stamps:
+                    env.mark_painted()      # nothing due yet: the path goes on from here
+                    return
+                env.interpolation_steps = lambda: list(stamps)
 
         # Paint mask: protected pixels are put back after the draw step (every tool alike),
         # only inside the region the step can have written (tools/mask/guard.py).

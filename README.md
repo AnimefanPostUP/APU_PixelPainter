@@ -22,7 +22,7 @@ Paint in the 3D Viewport (Texture Paint mode) with pixel-exact brushes: every st
 
 ## Tools
 
-Circle, Square, Line, Spray, Eraser, Smooth, Smear, Select (copy / paste) and Mask. Per tool falloff, strength, alpha and blend mode. Pixel or free spacing, and Alpha Lock (protects transparent pixels).
+Circle, Square, Line, Spray, Eraser, Smooth, Smear, Select (copy / paste) and Mask. Per tool falloff, strength, alpha and blend mode. Pixel, Free or Time spacing per tool, and Alpha Lock (protects transparent pixels).
 
 <!-- Screenshot: tools / brush outline on a model -->
 <img width="307" height="231" alt="image" src="https://github.com/user-attachments/assets/78204197-4436-4759-b0dc-7952801d390b" />
@@ -108,7 +108,7 @@ In Selection mode:
 
 The N-panel and the settings popup contain:
 
-- **Spacing**: paint while moving, or once per pixel.
+- **Spacing** (per tool; *Spacing per tool* off in the settings: one for all): *Pixel* paints once per pixel without building up, the slider (bottom right, along the circle, the button behind it in the corner) sets the pixels per step; *Free* builds up, the slider sets the pixels between stamps (1 = every pixel); *Time* stamps every few milliseconds while held, also when standing still (airbrush), the slider sets the interval. A tap on the button steps Pixel → Free → Time.
 - **Shared settings**: whether tools share global Size, Strength, Alpha and Modifier, or keep their own.
 - **Pen UI**: menu side, Reset Pen UI, color preview, Drag Colors, pressure mapping.
 - **Saving**: Auto / Pack / File, optionally saving the .blend afterwards.

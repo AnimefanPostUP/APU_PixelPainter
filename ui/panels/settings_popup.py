@@ -104,6 +104,20 @@ def _draw_tools(layout, context):
     _hints(layout, ("Global: the tool uses the shared value.",))
 
     layout.separator()
+    layout.label(text="Spacing")
+    box = layout.box().column(align=True)
+    box.prop(wm, "pixel_painter_spacing_per_tool", toggle=True)
+    from ...core.state import SETTINGS
+    mode_prop, value_prop = SETTINGS.spacing_props(wm, mode)
+    row = box.row(align=True)
+    row.prop(wm, mode_prop, expand=True)
+    box.prop(wm, value_prop)
+    _hints(layout, ("Pixel: once per pixel, Step = pixels per stamp.",
+                    "Free: builds up, Spacing = pixels between stamps.",
+                    "Time: a stamp every Interval ms while held.",
+                    "Per tool: every tool keeps its own spacing."))
+
+    layout.separator()
     layout.operator("image.pixel_painter_reset_tool_settings", text="Reset Tool Settings", icon='LOOP_BACK')
 
     layout.separator()

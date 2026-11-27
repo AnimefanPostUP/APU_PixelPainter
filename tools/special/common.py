@@ -89,6 +89,11 @@ class SpecialBrush(StrokeTool):
         if state.get('last_paint_cx') is None:
             state['special_last_stamp'] = None
         steps = list(env.interpolation_steps())
+        if env.spacing == 'TIME':
+            # Time spacing already decides when to stamp (one per due tick, at the cursor):
+            # spacing by distance would drop every stamp while the pen stands still.
+            state['special_last_stamp'] = steps[-1] if steps else state.get('special_last_stamp')
+            return steps
         kept, last = special.spaced(steps, state.get('special_last_stamp'), self.stamp_spacing(env))
         state['special_last_stamp'] = last
         return kept
