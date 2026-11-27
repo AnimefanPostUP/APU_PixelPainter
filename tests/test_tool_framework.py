@@ -280,6 +280,56 @@ class ManagerTest(unittest.TestCase):
         self.assertFalse(any(t.is_active for t in manager.tools))
 
 
+
+class SelectListenerTest(unittest.TestCase):
+    """ToolManager.select_listeners: told whenever the user picks a tool (stops secondary tools)."""
+
+    def _build(self):
+        manager, ctx, log, tools = build()
+        picked = []
+        manager.select_listeners.append(lambda c, tool_id: picked.append(tool_id))
+        return manager, ctx, tools, picked
+
+    def test_select_notifies_also_for_the_selected_tool(self):
+        manager, ctx, _tools, picked = self._build()
+        manager.select(ctx, 'LINE')
+        manager.select(ctx, 'LINE')          # picking it again still ends a secondary tool
+        self.assertEqual(picked, ['LINE', 'LINE'])
+
+    def test_shift_number_notifies(self):
+        manager, ctx, _tools, picked = self._build()
+        manager.dispatch(ctx, ev('THREE', shift=True))
+        self.assertEqual(picked, ['LINE'])
+
+    def test_external_mode_change_notifies(self):
+        manager, ctx, _tools, picked = self._build()
+        ctx.set_mode('ERASER')               # e.g. picked in a pie menu
+        manager.dispatch(ctx, ev('LEFTMOUSE'))
+        self.assertEqual(picked, ['ERASER'])
+
+    def test_temporary_overrides_and_plain_events_do_not_notify(self):
+        manager, ctx, _tools, picked = self._build()
+        manager.dispatch(ctx, ev('LEFTMOUSE'))
+        manager.dispatch(ctx, ev('LEFT_SHIFT', shift=True))    # Shift: SMOOTH stand-in
+        manager.dispatch(ctx, ev('LEFTMOUSE', shift=True))
+        manager.dispatch(ctx, ev('LEFT_SHIFT', 'RELEASE'))     # back to SQUARE
+        manager.dispatch(ctx, ev('LEFTMOUSE'))
+        self.assertEqual(picked, [])
+
+    def test_failing_listener_does_not_block_selection(self):
+        manager, ctx, tools, picked = self._build()
+        def broken(c, tool_id):
+            raise RuntimeError("boom")
+        manager.select_listeners.insert(0, broken)
+        import io
+        stderr, sys.stderr = sys.stderr, io.StringIO()
+        try:
+            manager.select(ctx, 'SMOOTH')
+        finally:
+            sys.stderr = stderr
+        self.assertIs(manager.base_tool, tools['SMOOTH'])
+        self.assertEqual(picked, ['SMOOTH'])
+
 class SecondaryToolTest(unittest.TestCase):
     """ToolManager.secondary_tool: the temporary tool holding the mouse (selected tool dotted)."""
 

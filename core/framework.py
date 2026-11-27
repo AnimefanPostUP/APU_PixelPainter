@@ -465,6 +465,10 @@ class ToolManager:
         self.base_tool: Optional[ToolFrame] = None
         self.effective_mode: Optional[str] = None
         self.running = False
+        # ``fn(ctx, tool_id)`` called whenever the user picks a tool (:meth:`select`, or a
+        # mode change made outside the manager, see :meth:`sync`) -- e.g. to stop the
+        # secondary tools (tools/pickers.py), so picking a tool always gets it back.
+        self.select_listeners: List[Callable] = []
 
     # ---- registration --------------------------------------------------------
 
@@ -526,12 +530,25 @@ class ToolManager:
         mode = ctx.mode
         if self.base_tool is not None and mode == self.effective_mode:
             return
+        picked = self.base_tool is not None and self.base_tool.tool_id != mode   # not the session start
         self._switch_base(ctx, mode)
+        if picked:
+            self._notify_select(ctx, mode)
 
     def select(self, ctx, tool_id) -> None:
-        """Make ``tool_id`` the selected tool (ends temporary overrides)."""
+        """Make ``tool_id`` the selected tool (ends temporary overrides and, through
+        :attr:`select_listeners`, the secondary tools -- also when it was selected already)."""
         ctx.set_mode(tool_id)
         self._switch_base(ctx, tool_id)
+        self._notify_select(ctx, tool_id)
+
+    def _notify_select(self, ctx, tool_id) -> None:
+        for fn in list(self.select_listeners):
+            try:
+                fn(ctx, tool_id)
+            except Exception:
+                import traceback
+                traceback.print_exc()
 
     def set_effective_mode(self, ctx, tool_id) -> None:
         """Temporarily show/use ``tool_id`` without changing the selected tool."""

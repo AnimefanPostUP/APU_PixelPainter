@@ -35,6 +35,11 @@ class PickersTest(unittest.TestCase):
         pickers.claim(state, 'B')
         self.assertEqual(state, {'a': False, 'b': True, 'c': False})
 
+    def test_release_all_stops_every_picker(self):
+        state = {'a': True, 'b': True, 'c': True}
+        pickers.release_all(state)
+        self.assertEqual(state, {'a': False, 'b': False, 'c': False})
+
     def test_failing_release_does_not_block_the_rest(self):
         def broken(state):
             raise RuntimeError("boom")

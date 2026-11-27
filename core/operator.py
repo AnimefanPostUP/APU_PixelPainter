@@ -22,6 +22,7 @@ from ..overlays import brush_outline, cursor as cursor_overlays, handler as draw
 from ..overlays import grid as draw_gridoverlay
 from ..overlays import element_outline
 from ..tools.mask import overlay as mask_overlay
+from ..tools import pickers
 from ..tools.catalog import TOOLS, falloff_property_for, global_tools
 from . import history
 from .view3d import mesh as v3d_mesh, raycast
@@ -76,6 +77,9 @@ def _supported_space(context):
 MANAGER = ToolManager(declare_state=declare_state)
 MANAGER.register_all(TOOLS)
 MANAGER.register_all(global_tools())
+# Picking a tool (pen menu, Special window, Shift+number, pies) stops the secondary
+# tools: an armed Filling tool, mask editing, the eyedroppers.
+MANAGER.select_listeners.append(lambda ctx, _tool_id: pickers.release_all(ctx.state))
 
 
 # ---------------------------------------------------------------------------

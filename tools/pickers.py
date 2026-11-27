@@ -18,6 +18,11 @@ def register(name, release):
     _RELEASE[name] = release
 
 
+def release_all(state):
+    """Stop every picker (a tool was picked: it gets the mouse back)."""
+    claim(state, None)
+
+
 def claim(state, name):
     """``name`` starts: stop every other picker."""
     for other, release in list(_RELEASE.items()):
