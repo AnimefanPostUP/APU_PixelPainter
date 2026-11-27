@@ -1,4 +1,5 @@
-"""Stroke spacing (pure, no Blender): when a stroke stamps.
+"""Stroke spacing (pure, no Blender): when a stroke stamps. Shown as "Once" (PIXEL),
+"Fixed" (FREE) and "Time" (TIME); the ids stay as they were (saved settings).
 
 * ``PIXEL``: once per new pixel, no build-up within a stroke (the brushes keep the
   strongest weight per pixel); value = pixels per step (1 = every pixel).
@@ -22,11 +23,11 @@ DEFAULTS = {'PIXEL': 1, 'FREE': 1, 'TIME': 100}
 RANGES = {'PIXEL': (1, 32), 'FREE': (1, 64), 'TIME': (16, 1000)}
 LABELS = {'PIXEL': "Step", 'FREE': "Spacing", 'TIME': "Interval"}
 UNITS = {'PIXEL': "px", 'FREE': "px", 'TIME': "ms"}
-MODE_LABELS = {'PIXEL': "Pixel", 'FREE': "Free", 'TIME': "Time"}
+MODE_LABELS = {'PIXEL': "Once", 'FREE': "Fixed", 'TIME': "Time"}
 
 
 def next_mode(mode):
-    """Pixel -> Free -> Time -> Pixel."""
+    """Once -> Fixed -> Time -> Once."""
     return MODES[(MODES.index(mode) + 1) % len(MODES)] if mode in MODES else DEFAULT_MODE
 
 

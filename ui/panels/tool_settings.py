@@ -26,7 +26,7 @@ def _spacing_props(wm):
 def _draw_spacing_row(layout, wm, value_text=None):
     mode_prop, value_prop = _spacing_props(wm)
     row = layout.row(align=True)
-    for mode, label in (('PIXEL', "Pixel"), ('FREE', "Free"), ('TIME', "Time")):
+    for mode, label in (('PIXEL', "Once"), ('FREE', "Fixed"), ('TIME', "Time")):
         row.prop_enum(wm, mode_prop, mode, text=label)
     row.prop(wm, value_prop, text=value_text)
 

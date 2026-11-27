@@ -112,8 +112,8 @@ def _draw_tools(layout, context):
     row = box.row(align=True)
     row.prop(wm, mode_prop, expand=True)
     box.prop(wm, value_prop)
-    _hints(layout, ("Pixel: once per pixel, Step = pixels per stamp.",
-                    "Free: builds up, Spacing = pixels between stamps.",
+    _hints(layout, ("Once: every pixel once, no build-up; px per stamp.",
+                    "Fixed: builds up, a stamp every N px.",
                     "Time: a stamp every Interval ms while held.",
                     "Per tool: every tool keeps its own spacing."))
 
@@ -132,6 +132,9 @@ def _draw_mask(layout, context):
     row.prop(wm, "pixel_painter_mask_enabled", text="Mask", toggle=True)
     row.prop(wm, "pixel_painter_mask_invert", text="Invert", toggle=True, icon='ARROW_LEFTRIGHT')
     row.prop(wm, "pixel_painter_mask_show", text="Show", toggle=True, icon='HIDE_OFF')
+    sub = layout.row()
+    sub.enabled = wm.pixel_painter_mask_show
+    sub.prop(wm, "pixel_painter_mask_opacity", text="Mask Opacity", slider=True)
     row = layout.row(align=True)
     row.prop(wm, "pixel_painter_mask_source", expand=True)
     if wm.pixel_painter_mask_source == 'SHARP':

@@ -133,8 +133,8 @@ def _factor(name, default, **kwargs):
 
 
 SPACING_ITEMS = [
-    ('PIXEL', "Pixel", "Once per new pixel, no build-up within a stroke; Step = pixels per stamp"),
-    ('FREE', "Free", "Every stamp builds up; Spacing = pixels between stamps"),
+    ('PIXEL', "Once", "Every pixel once per stroke, no build-up; the value = pixels per stamp"),
+    ('FREE', "Fixed", "A stamp every fixed number of pixels, building up; the value = pixels between stamps"),
     ('TIME', "Time", "A stamp every Interval milliseconds while held, also standing still (airbrush)"),
 ]
 
@@ -345,6 +345,9 @@ def _static_properties():
             min=0, max=8, default=0, update=_redraw_mask),
         'mask_show': bpy.props.BoolProperty(
             name="Show Mask", description="Show red stripes over the protected area", default=True, update=_redraw_mask),
+        'mask_opacity': bpy.props.FloatProperty(
+            name="Mask Opacity", description="How strongly the red stripes cover the protected area",
+            min=0.0, max=1.0, default=0.15, subtype='FACTOR', update=_redraw_mask),
         # ---- Extras window (tools/extras/) ----
         'extras_source': bpy.props.EnumProperty(
             name="Filling Source", description="What the Filling tools act on",

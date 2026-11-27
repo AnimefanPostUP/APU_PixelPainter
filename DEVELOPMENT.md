@@ -416,9 +416,9 @@ When a stroke stamps, per tool (`pixel_painter_<TOOL>_spacing` + `_spacing_step`
 global `pixel_painter_spacing` / ... instead). `SettingsService.get_tool_spacing` /
 `set_tool_spacing` / `spacing_props` resolve which properties apply.
 
-* `PIXEL`: once per new pixel, no build-up (the brushes' `env.spacing == 'PIXEL'` paths);
-  value = pixels per stamp. `FREE`: builds up; value = pixels between stamps. Defaults:
-  Free, 1 px (the old behaviour). Values above 1: `StrokeTool.paint` thins the step's
+* `PIXEL` (Once): once per new pixel, no build-up (the brushes' `env.spacing == 'PIXEL'` paths);
+  value = pixels per stamp. `FREE` (Fixed): builds up; value = pixels between stamps. Defaults:
+  Fixed, 1 px (the old behaviour). Values above 1: `StrokeTool.paint` thins the step's
   path with `spacing.thin` (Pixel: path pixels walked, Free: true distance; the walked
   rest carries over in state `spacing_carry`); no stamp due: only `mark_painted`.
 * `TIME`: `continue_stroke` does not paint; `StrokeTool.on_tick` (the session timer,
@@ -426,16 +426,19 @@ global `pixel_painter_spacing` / ... instead). `SettingsService.get_tool_spacing
   `on_tick`, forwarded to stand-ins by `TemporaryToolSwitch`) stamps at the cursor
   whenever `spacing.due` (state `spacing_last_time`), no path between stamps.
 * Tools with `respects_pixel_spacing = False` (Line) ignore step / spacing / time.
-* Pen menu, bottom right outside the palette bands: `ui/pen/widgets/spacing.SpacingSlider`
-  (`SPACING_VALUE_RING` / `_ARC`, a long capsule along the circle; name, range and unit
-  follow the mode, text along the arc; its readout in `Readouts`) and behind it in the
-  corner the Spacing button (`CornerSegment`, `SPACING_BUTTON_INNER` / `_ARC`, cut by
-  `CORNER_CHAMFER` for the resize triangle), a tap steps the modes.
+* Shown as *Once* (`PIXEL`), *Fixed* (`FREE`), *Time* (`TIME`): `spacing.MODE_LABELS`; the
+  ids stay (saved settings).
+* Pen menu, bottom right outside the palette bands, one capsule along the circle
+  (`SPACING_VALUE_RING`, `SPACING_ARC`, kept inside the square; `SPACING_WEIGHTS`): on the
+  left `ui/pen/widgets/spacing.SpacingModeButton` (the mode's name along the arc, a tap
+  steps), right of it `SpacingSlider` (only the value, "4 px" / "100 ms", along the arc;
+  range and scale follow the mode, Time two-part via `spacing.slider_value` /
+  `slider_fraction`; the readout in `Readouts` gives the full name).
 
 ## Paint mask (`tools/mask/`, `tools/mask/geometry.py`)
 
 Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
-/ `_source` `UV_ISLAND` | `MESH_PART` / `_invert` / `_grow` / `_show`).
+/ `_source` `UV_ISLAND` | `MESH_PART` / `_invert` / `_grow` / `_show` / `_opacity`).
 
 * `mask_geometry` (pure numpy, `tests/test_mask.py`): faces -> islands (edge
   with equal UVs on both sides) or parts (vertex-connected), rasterized by
@@ -461,7 +464,7 @@ Limits painting to chosen UV islands or mesh parts (`pixel_painter_mask_enabled`
   canvas press toggles the element under the cursor, a drag sets the ones it
   passes to the same state; Esc / RMB end it. The pen bar does not remap the
   RMB lock while picking.
-* Overlay: `mask.overlay.draw_2d` (red / light red stripes at 15% opacity, a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
+* Overlay: `mask.overlay.draw_2d` (red / light red stripes at `pixel_painter_mask_opacity`, default 15%, via `stripe_colors`; Mask window: the arc slider at the bottom of its band; a small GPU shader; Image Editor: blocked pixel runs, drawn by the core
   before tool overlays) and `mask.overlay.draw_3d` (POST_VIEW, triangles whose UV
   center is blocked).
 

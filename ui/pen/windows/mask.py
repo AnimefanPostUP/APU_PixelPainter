@@ -17,6 +17,7 @@ MASK_RING = (MASK_CENTER + 2.5, 66.0)
 MASK_BAND = (MASK_RING[1] + 3.0, MASK_RING[1] + 22.0)
 MASK_BAND_ROUND = (MASK_BAND[1] - MASK_BAND[0]) * 0.5   # capsules
 ANGLE_ARC = (140.0, 220.0)   # Sharp Angle, left side of the band (only with Sharp Areas)
+OPACITY_ARC = (235.0, 305.0)  # the stripes' opacity, bottom of the band (always; grayed out while not shown)
 SOURCE_ARC = (52.0, 128.0)
 GROW_END = 325.0             # inner ring, bottom right: Grow 270 .. here, Clear (smaller) here .. 360
 # per-button colors
@@ -33,7 +34,8 @@ MASK_HELP = ("Mask: only chosen islands / parts get paint.",
              "Invert: protect the chosen ones instead.",
              "Show: red stripes over protected pixels.",
              "Grow (ring, bottom right): extra pixels around",
-             "each island. Clear (red): forget all chosen ones.")
+             "each island. Clear (red): forget all chosen ones.",
+             "Opacity (arc, bottom): how strong the stripes are.")
 
 
 class ShownArcSlider(_Shown, ArcSlider):
@@ -85,8 +87,14 @@ def build_mask_window(bar):
                            options=lambda: source_options(a.mask_source()))
     angle = sharp_angle_slider(a, 'MASKWIN_SHARP_ANGLE', lambda: a.mask_picking() and a.mask_source() == 'SHARP',
                                tint, TINT_MASK, round=MASK_BAND_ROUND, short=True, reverse=True)
+    opacity = ArcSlider("Opacity", value=lambda: a.wm_get('mask_opacity', 0.15),
+                        on_value=lambda v: a.wm_set('mask_opacity', round(float(v), 2)),
+                        value_range=(0.0, 1.0), fill_color=(*TINT_MASK_SHOW, 1.0), fmt=lambda v: f"{v * 100:.0f}%",
+                        enabled=lambda: bool(a.wm_get('mask_show')), key='MASKWIN_OPACITY', tint=TINT_MASK_SHOW,
+                        round=MASK_BAND_ROUND)
     dial.add_band([source], *MASK_BAND, *SOURCE_ARC)
     dial.add_band([angle], *MASK_BAND, *ANGLE_ARC)
+    dial.add_band([opacity], *MASK_BAND, *OPACITY_ARC)
     width = 2.0 * MASK_BAND[1]
     content = Column([dial, help_lines(bar, 'mask', MASK_HELP, width)], gap=ROW_GAP)
     return WindowGroup("Mask", content, tint=TINT_MASK, painter=icon_mask_title, title_indent=TITLE_INDENT)

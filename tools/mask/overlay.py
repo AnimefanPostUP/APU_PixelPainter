@@ -16,6 +16,17 @@ from .data import active, allowed
 # Protected area: diagonal stripes of red and lighter red, 15% visible.
 STRIPE_DARK = (0.85, 0.08, 0.08, 0.15)
 STRIPE_LIGHT = (1.00, 0.50, 0.50, 0.15)
+DEFAULT_OPACITY = 0.15          # pixel_painter_mask_opacity's default (the stripes' alpha)
+
+
+def stripe_colors(context):
+    """``(dark, light)`` stripe colors with the alpha of ``pixel_painter_mask_opacity``."""
+    try:
+        alpha = float(getattr(context.window_manager, 'pixel_painter_mask_opacity', DEFAULT_OPACITY))
+    except Exception:
+        alpha = DEFAULT_OPACITY
+    alpha = max(0.0, min(1.0, alpha))
+    return (*STRIPE_DARK[:3], alpha), (*STRIPE_LIGHT[:3], alpha)
 STRIPE_WIDTH = 8.0             # screen px per stripe (times the UI scale)
 PICK_HINT = "Mask: tap islands / parts to toggle them  ·  Esc: done"
 VIEW_OFFSET = 0.002            # 3D overlay pulled towards the viewer (fraction of view distance)
@@ -94,8 +105,9 @@ def _stripes_3d():
 
 def _stripe_uniforms(shader, context):
     scale = getattr(context.preferences.system, 'ui_scale', 1.0)
-    shader.uniform_float("color_a", STRIPE_DARK)
-    shader.uniform_float("color_b", STRIPE_LIGHT)
+    dark, light = stripe_colors(context)
+    shader.uniform_float("color_a", dark)
+    shader.uniform_float("color_b", light)
     shader.uniform_float("stripe", STRIPE_WIDTH * scale)
 
 
@@ -111,7 +123,7 @@ def _draw_flat(batch, shader, context):
         shader.uniform_float("mvp", gpu.matrix.get_projection_matrix() @ gpu.matrix.get_model_view_matrix())
         _stripe_uniforms(shader, context)
     else:
-        shader.uniform_float("color", STRIPE_DARK)
+        shader.uniform_float("color", stripe_colors(context)[0])
     batch.draw(shader)
 
 
@@ -183,7 +195,7 @@ def draw_3d(context, image):
     w, h = image.size
     shader = _stripes_3d()
     if shader is None:
-        _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d)
+        _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d, stripe_colors(context)[0])
         return
     key = (cache.version, data.allowed_key())
     if _batch3d[0] != key:
@@ -211,7 +223,7 @@ def draw_3d(context, image):
         gpu.state.blend_set('NONE')
 
 
-def _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d):
+def _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d, color=STRIPE_DARK):
     """No custom shaders: plain red, offset towards the viewer on the CPU every frame."""
     from ...overlays.view3d_outline import _to_world_towards_view
     local = _blocked_triangles(cache, allowed_pixels, w, h)
@@ -224,7 +236,7 @@ def _draw_3d_fallback(cache, allowed_pixels, w, h, obj, rv3d):
     gpu.state.depth_test_set('LESS_EQUAL')
     try:
         shader.bind()
-        shader.uniform_float("color", STRIPE_DARK)
+        shader.uniform_float("color", color)
         batch.draw(shader)
     finally:
         gpu.state.depth_test_set('NONE')

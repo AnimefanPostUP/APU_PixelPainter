@@ -22,7 +22,7 @@ Paint in the 3D Viewport (Texture Paint mode) with pixel-exact brushes: every st
 
 ## Tools
 
-Circle, Square, Line, Spray, Eraser, Smooth, Smear, Select (copy / paste) and Mask. Per tool falloff, strength, alpha and blend mode. Pixel, Free or Time spacing per tool, and Alpha Lock (protects transparent pixels).
+Circle, Square, Line, Spray, Eraser, Smooth, Smear, Select (copy / paste) and Mask. Per tool falloff, strength, alpha and blend mode. Once, Fixed or Time spacing per tool, and Alpha Lock (protects transparent pixels).
 
 <!-- Screenshot: tools / brush outline on a model -->
 <img width="307" height="231" alt="image" src="https://github.com/user-attachments/assets/78204197-4436-4759-b0dc-7952801d390b" />
@@ -52,7 +52,7 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
   - **Edges**: a band along the model's edges (edges sharper than an angle, all edges, or edges marked sharp; not the UV borders). It runs from the primary color on the edge to the secondary color and can fade out. *Symmetric* gives the same width on both sides of every edge; *Pixel line* snaps the edge onto a one-pixel line and spreads the band evenly from it. Settings: edge type, angle, placement, width per side, and a falloff curve with presets (Linear, Constant, Smooth, Sphere, Root, Plateau, Stepped, Ring, Inverted).
   - **Ambient Occlusion**: casts rays from every texel of the mesh. The result is a ramp from the secondary color (open) to the primary color (occluded), shaped by an AO curve with presets (Linear, Smooth, Strong, Contact, Hard, Stepped, Inverted). Settings: samples and distance. With *Fade*, open areas keep their pixels.
   - The settings of the armed tool sit around the window's circle like the pen menu: choices as icon buttons in the rings, the sliders on the outer ring's sides, colored by kind (tools blue as in the pen menu). *Placement* swaps between Symmetric and Pixel line; *Curve* folds the tool's curve editor out under the circle.
-- **Mask editing** outlines the island / part under the cursor as well.
+- **Mask editing** outlines the island / part under the cursor as well. The Mask window's *Opacity* arc (bottom) sets how strong the red stripes over protected areas are.
 - **Special window** (Windows ring, outer ring): special brushes. Tap one to paint with it; tap it again to go back to the tool you used before. Size, strength, alpha, M and the falloff are set on the pen menu as for every tool; the window holds each brush's own two settings. All of them respect the mask, Alpha Lock and undo.
   - **Rust**: mottled patches mixing the primary and secondary color (right button: swapped). The pattern is anchored to the texture, so going over a spot again keeps the same rust. *Scale*: patch size; *Coverage*: how patchy.
   - **Particles**: in the 3D Viewport, small bodies are thrown at the model, fall under gravity, bounce off it and leave a dent wherever they hit -- chipped edges and wear and tear, also on faces the brush never touched. In the Image Editor they land in the brush and hop downward. *Count* per stamp, *Bounces* per body; M sets the dent size.
@@ -108,7 +108,7 @@ In Selection mode:
 
 The N-panel and the settings popup contain:
 
-- **Spacing** (per tool; *Spacing per tool* off in the settings: one for all): *Pixel* paints once per pixel without building up, the slider (bottom right, along the circle, the button behind it in the corner) sets the pixels per step; *Free* builds up, the slider sets the pixels between stamps (1 = every pixel); *Time* stamps every few milliseconds while held, also when standing still (airbrush), the slider sets the interval. A tap on the button steps Pixel → Free → Time.
+- **Spacing** (bottom right, per tool; *Spacing per tool* off in the settings: one for all): the button on the left steps *Once* → *Fixed* → *Time*, the slider right of it shows its value. *Once* paints every pixel once per stroke, no build-up (value: pixels per stamp); *Fixed* builds up with a stamp every N pixels (1 = every pixel); *Time* stamps every N ms while held, also standing still (airbrush; the first 60 % of the slider cover up to 100 ms).
 - **Shared settings**: whether tools share global Size, Strength, Alpha and Modifier, or keep their own.
 - **Pen UI**: menu side, Reset Pen UI, color preview, Drag Colors, pressure mapping.
 - **Saving**: Auto / Pack / File, optionally saving the .blend afterwards.

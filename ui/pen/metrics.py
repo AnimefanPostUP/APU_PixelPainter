@@ -118,13 +118,12 @@ COLOR_WHEEL_ARC = (270.0, 350.0)     # bottom right: the palette (2 bands along 
 PALETTE_BUTTON_ARC = (350.0, 370.0)
 COLOR_CORNER_INNER = CORNER_INNER + HISTORY_DEPTH + DIAL_GAP
 BRUSH_MODE_RING = (COLOR_CORNER_INNER, COLOR_CORNER_INNER + 26.0)
-# Bottom right, outside the palette bands: the spacing -- its value (Pixel: Step, Free:
-# Spacing, Time: Interval) as a long capsule slider along the circle, and behind it, in the
-# corner (cut for the resize triangle), the Pixel / Free / Time button.
+# Bottom right, outside the palette bands: the spacing as one capsule along the circle --
+# on the left the mode button (Once / Fixed / Time), right of it the mode's value slider
+# (px / ms). The arc keeps the band inside the menu's square.
 SPACING_VALUE_RING = (CORNER_INNER + PALETTE_DEPTH + DIAL_GAP, CORNER_INNER + PALETTE_DEPTH + DIAL_GAP + 16.0)
-SPACING_VALUE_ARC = (290.0, 340.0)
-SPACING_BUTTON_INNER = SPACING_VALUE_RING[1] + DIAL_GAP
-SPACING_BUTTON_ARC = (303.0, 327.0)
+SPACING_ARC = (297.0, 333.0)
+SPACING_WEIGHTS = (1.0, 2.3)         # mode button : slider
 # Bottom left, a capsule along the circle: Windows, Save, Grid, Blend (Blend ends at the
 # bottom, where the palette band starts; the band stays inside the square there).
 BOTTOM_LEFT_INNER = CORNER_INNER
