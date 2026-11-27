@@ -30,6 +30,7 @@ from ...ui.pen.bar import PenBar
 from ...ui.pen.metrics import LAYOUT_STATE
 from .. import pickers
 from ...model import tertiary_color
+from .actions.backup import BackupActions
 from .actions.brushes import BrushesActions
 from .actions.colors import ColorActions
 from .actions.extras import ExtrasActions
@@ -68,7 +69,7 @@ def _side_insets(area, region):
 
 
 class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, WindowActions, MaskActions,
-                 ExtrasActions, BrushesActions,
+                 ExtrasActions, BrushesActions, BackupActions,
                  ToolFrame):
     label = "Pen Bar"
     is_global = True
@@ -109,6 +110,11 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
         'pen_mask_help':     False,  # the window's '?' help text is shown
         'pen_view_help':     False,
         'pen_palette_view':  False,  # the palette band shows the project's palettes (else the active one's colors)
+        'pen_backup_panel':    False,  # the Backup window (texture backup, backup/) is shown
+        'pen_backup_locked':   False,
+        'pen_backup_save':     None,   # Backup window: the save whose images are listed (None = newest)
+        'pen_backup_page':     0,      # Backup window: page of that image list
+        'pen_backup_status':   None,   # Backup window: last message (also set by ui/operators/backup.py)
         'pen_palette_status': None,  # last message of the palette library window (also set by palette_ops)
         'pen_hsv':           None,   # (rgb, hsv) last written by the color pad
         'pen_color_original': None,  # (target, hsv) before the pad edits: bubble + cross compare to it
@@ -121,7 +127,8 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
                         'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help',
                         'pen_settings_panel', 'pen_settings_locked', 'pen_library_panel', 'pen_library_locked',
                         'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help', 'pen_extras_curve',
-                        'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help', 'brushes_last')
+                        'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help', 'brushes_last',
+                        'pen_backup_panel', 'pen_backup_locked')
     # Saved per project (scene property, tools/pen/layout.py): the windows' open / collapsed
     # state, position, scale, lock and help.
     layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
@@ -131,7 +138,8 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
                    'pen_view_compact', 'pen_settings_panel', 'pen_settings_locked',
                    'pen_library_panel', 'pen_library_locked',
                    'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help',
-                   'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help')
+                   'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help',
+                   'pen_backup_panel', 'pen_backup_locked')
 
     def __init__(self, registry):
         super().__init__()

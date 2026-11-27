@@ -63,6 +63,16 @@ def _update_mode(self, context):
     _persist(self, context)
 
 
+def _backup_config(self, context):
+    """Keep / days changed: the helper learns them, old backups go now."""
+    try:
+        from .backup.service import SERVICE
+        SERVICE.config_changed()
+    except Exception:
+        pass
+    _persist(self, context)
+
+
 def _update_pen_color_preview(self, context):
     """Switching Preview discards a pad color that was not applied yet."""
     try:
@@ -319,6 +329,25 @@ def _static_properties():
         'save_image_blend': bpy.props.BoolProperty(
             name="Also Save .blend",
             description="Save the .blend file after the image (packed pixels only reach the disk with the .blend)",
+            default=False, update=_persist),
+        # ---- texture backup (backup/: a helper process keeps unsaved textures in RAM) ----
+        'backup_enabled': bpy.props.BoolProperty(
+            name="Texture Backup",
+            description="Run the backup program beside Blender: it keeps the unsaved textures in RAM "
+                        "and writes them to disk only when Blender closes or crashes",
+            default=False, update=_persist),
+        'backup_keep': bpy.props.IntProperty(
+            name="Keep Backups", description="How many backups (one per closed / crashed session) are kept",
+            min=1, max=5, default=3, update=_backup_config),
+        'backup_days': bpy.props.IntProperty(
+            name="Delete After (Days)", description="Delete backups older than this many days (0 = never)",
+            min=0, max=365, soft_max=60, default=7, update=_backup_config),
+        'backup_interval': bpy.props.IntProperty(
+            name="Sync Every (s)", description="Seconds between sending changed textures to the backup program",
+            min=5, max=600, soft_max=300, default=30, update=_persist),
+        'backup_restore_copy': bpy.props.BoolProperty(
+            name="Restore As Copy",
+            description="Restore into new images instead of replacing the pixels of the image with the same name",
             default=False, update=_persist),
         # ---- paint mask (tools/mask/) ----
         'mask_enabled': bpy.props.BoolProperty(

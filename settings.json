@@ -233,6 +233,11 @@
   "pixel_painter_SQUARE_use_global_size": true,
   "pixel_painter_SQUARE_use_global_strength": true,
   "pixel_painter_SQUARE_use_global_strength_rmb": true,
+  "pixel_painter_backup_days": 7,
+  "pixel_painter_backup_enabled": false,
+  "pixel_painter_backup_interval": 8,
+  "pixel_painter_backup_keep": 3,
+  "pixel_painter_backup_restore_copy": false,
   "pixel_painter_blend_favorites": [
     "ADD",
     "COLOR",

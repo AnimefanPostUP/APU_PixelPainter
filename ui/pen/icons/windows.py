@@ -222,3 +222,18 @@ def icon_mask_title(dc, x, y, size, alpha):
 
 def paint_view_title(dc, x, y, size, alpha):
     paint_view(dc, x, y - size * 0.15, size * 1.6, alpha)
+
+
+def paint_backup(dc, x, y, size, alpha):
+    """The Backup window: a stack of three disks (a cache) with a green restore arrow."""
+    s = size * 0.24
+    ink = with_alpha(dc.theme.text, 0.92 * alpha)
+    for i in range(3):
+        cy = y - s * 0.9 + i * s * 0.8
+        draw.rounded_rect(Rect(x - s * 1.05, cy - s * 0.3, x + s * 0.55, cy + s * 0.3), s * 0.3, ink)
+    green = (0.45, 0.85, 0.5, alpha)
+    cx, cy, r = x + s * 0.85, y + s * 0.75, s * 0.6
+    draw.arc(cx, cy, r, math.radians(-60.0), math.radians(200.0), green, width=max(1.0, s * 0.28))
+    tip = (cx + r * math.cos(math.radians(-60.0)), cy + r * math.sin(math.radians(-60.0)))
+    draw.triangle((tip[0] + s * 0.35, tip[1] + s * 0.05), (tip[0] - s * 0.25, tip[1] + s * 0.3),
+                  (tip[0] - s * 0.05, tip[1] - s * 0.35), green)

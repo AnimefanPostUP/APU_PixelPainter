@@ -27,6 +27,7 @@ SETTINGS_TABS = (
     ('PEN', "Pen", 'GREASEPENCIL'),
     ('DISPLAY', "Display", 'HIDE_OFF'),
     ('PERFORMANCE', "Performance", 'MEMORY'),
+    ('BACKUP', "Backup", 'FILE_BACKUP'),
     ('SHORTCUTS', "Shortcuts", 'INFO'),
 )
 
@@ -278,6 +279,52 @@ def _draw_performance(layout, context):
                     "and large brushes. Rebuild with native/build.ps1, then restart Blender."))
 
 
+
+def _draw_backup(layout, context):
+    """The texture backup (backup/); the pen menu's Backup window has the same controls."""
+    import time
+    from ...backup.service import SERVICE
+    wm = context.window_manager
+    layout.prop(wm, "pixel_painter_backup_enabled", toggle=True, icon='FILE_BACKUP')
+    st = SERVICE.status()
+    box = layout.box()
+    if st['running']:
+        row = box.row()
+        row.label(text=f"Running (pid {st['pid']}): {st['images']} texture(s), "
+                       f"{st['bytes'] / 1048576.0:.1f} MB in RAM", icon='CHECKMARK')
+        row.operator("image.pixel_painter_backup_sync", text="", icon='FILE_REFRESH')
+    elif wm.pixel_painter_backup_enabled:
+        box.label(text=st['error'] or "Starting...", icon='TIME')
+    else:
+        box.label(text="Off: textures are not backed up.", icon='INFO')
+        if st['error']:
+            box.label(text=st['error'], icon='ERROR')
+    col = layout.column(align=True)
+    col.prop(wm, "pixel_painter_backup_keep")
+    col.prop(wm, "pixel_painter_backup_days")
+    col.prop(wm, "pixel_painter_backup_interval")
+    layout.prop(wm, "pixel_painter_backup_restore_copy")
+    saves = SERVICE.saves()
+    box = layout.box()
+    if not saves:
+        box.label(text="No backups in the cache.")
+    for save in saves:
+        when = time.strftime("%b %d %H:%M", time.localtime(float(save.get('timestamp', 0.0))))
+        reason = {'crash': "crashed", 'closed': "closed"}.get(save.get('reason'), save.get('reason', ""))
+        blend = bpy.path.basename(save.get('blend') or "") or "(unsaved file)"
+        row = box.row(align=True)
+        row.label(text=f"{when}  {reason}  {blend}  ({len(save.get('images', []))} textures)")
+        op = row.operator("image.pixel_painter_backup_restore", text="Restore", icon='RECOVER_LAST')
+        op.save_id = save['id']
+        op.as_copy = wm.pixel_painter_backup_restore_copy
+        row.operator("image.pixel_painter_backup_delete", text="", icon='TRASH').save_id = save['id']
+    row = layout.row()
+    row.operator("image.pixel_painter_backup_clear", text="Clear Cache", icon='TRASH')
+    row.operator("wm.path_open", text="Open Folder", icon='FILE_FOLDER').filepath = SERVICE.root()
+    _hints(layout, ("A separate program keeps unsaved textures in RAM and writes them to disk only",
+                    "when Blender closes or crashes, then quits. Restore them here after a restart."))
+
+
 _SHORTCUTS = (
     ("LMB", "Paint with primary color"),
     ("RMB", "Paint with secondary color"),
@@ -315,6 +362,7 @@ _TAB_DRAWERS = {
     'PEN': _draw_pen,
     'DISPLAY': _draw_display,
     'PERFORMANCE': _draw_performance,
+    'BACKUP': _draw_backup,
     'SHORTCUTS': _draw_shortcuts,
 }
 

@@ -46,7 +46,7 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
 - **Undo / Redo** as buttons on the dial.
 - **Grid button**: tap turns the pixel grid on or off; drag up / down sets its opacity.
 - **Floating**: drag the background to move the menu, drag the corner triangle to resize it (0.2x–2x), and use the padlock to lock it. The X collapses it to a small *Pen* tab. Position, size and the open windows are stored per project.
-- **Windows ring**: opens floating windows (Mask, View, Filling; its outer ring: Special). They are movable, resizable and lockable like the menu.
+- **Windows ring**: opens floating windows (Mask, View, Filling; its outer ring: Special, Backup). They are movable, resizable and lockable like the menu.
 - **Filling window**: tools that work on a whole UV island or a whole connected mesh part (the arc on top switches between the two). Tap a tool, and the island / part under the cursor gets an outline (in the 3D Viewport on the mesh, in the Image Editor around its pixels). Tap the canvas to run the tool on that island / part, or tap *All* to run it on every one. The left button uses the primary color first, the right button the secondary color. All tools use the brush's blend mode, strength and alpha, and respect the mask and Alpha Lock.
   - **Fill**: fills the island / part with one color.
   - **Edges**: a band along the model's edges (edges sharper than an angle, all edges, or edges marked sharp; not the UV borders). It runs from the primary color on the edge to the secondary color and can fade out. *Symmetric* gives the same width on both sides of every edge; *Pixel line* snaps the edge onto a one-pixel line and spreads the band evenly from it. Settings: edge type, angle, placement, width per side, and a falloff curve with presets (Linear, Constant, Smooth, Sphere, Root, Plateau, Stepped, Ring, Inverted).
@@ -59,6 +59,9 @@ An on-canvas dial for pens and tablets (enable **Pen Bar** in the tool header).
   - **Noise Blur**: a grainy blur -- pixels take random neighbours. *Scatter*: how far; *Grain*: fewer samples, noisier.
   - **Pull**: liquify. *Drag* moves pixels along with the cursor without smearing; *Pinch* sucks them into the brush's center, *Push* pushes them away from it (the right button does the opposite). *Pixel* keeps pixels crisp, *Smooth* blends between them.
   - **Repair**: a healing brush. *Auto* finds a matching patch around each stamp (spot healing). *Source*: right-click sets the source, then strokes copy from it (aligned) while the colors are matched to the surroundings. *Texture* 0 gives only a smooth fill.
+- **Backup window** (Windows ring, outer ring, beside Settings): an optional texture backup. *Run backup program* starts a small program next to Blender (Blender's own Python, no extra install). It keeps every texture with unsaved changes in RAM -- nothing is written while you work -- and only when Blender closes or crashes does it write them to disk, then it quits itself. Textures you saved are dropped from it, so closing with everything saved leaves no backup.
+  - **Backups**: the last 1-5 backups (*Keep backups*), each with date, *crashed* / *closed*, the .blend and its textures. *Images* lists a backup's textures, *Restore* restores one or all of them: an image with the same name and size gets its pixels back (undoable), otherwise a new image is created (*Restore as copy*: always a new image).
+  - **Options**: *Delete after* N days (0 = never), *Sync every* N seconds, *Clear cache*, *Open folder*. The cache lives in Blender's config folder (`config/apu_pixel_painter/backup`), documented by `index.json`. The same controls are in the settings popup's *Backup* tab.
 
 ### Color Selector
 
@@ -113,6 +116,7 @@ The N-panel and the settings popup contain:
 - **Pen UI**: menu side, Reset Pen UI, color preview, Drag Colors, pressure mapping.
 - **Saving**: Auto / Pack / File, optionally saving the .blend afterwards.
 - **Performance**: an optional C# backend (Windows, `native/`) for pixel-heavy operations. The NumPy fallback produces the same results.
+- **Backup**: the texture backup program (see the Backup window above).
 
 ## Requirements
 

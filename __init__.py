@@ -56,6 +56,12 @@ def _cleanup_runtime():
     except Exception:
         pass
     try:
+        # The texture backup: stop the old timer, detach its helper process.
+        if f"{__package__}.backup.service" in sys.modules:
+            _module('backup.service').unregister()
+    except Exception:
+        pass
+    try:
         # Reloading creates a new handler function; drop the old one first.
         _module('utils.persistence_settings').unregister_startup_load()
     except Exception:
@@ -84,6 +90,7 @@ def _classes():
         *_module('ui.operators.palette').classes,
         *_module('ui.operators.image_save').classes,
         *_module('ui.operators.mask').classes,
+        *_module('ui.operators.backup').classes,
     )
 
 
@@ -114,6 +121,10 @@ def register():
             pass
     try:
         persistence.register_startup_load()
+    except Exception:
+        pass
+    try:
+        _module('backup.service').register()   # starts the helper once the setting is on
     except Exception:
         pass
 

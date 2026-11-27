@@ -73,6 +73,8 @@ ui/
 utils/                 blender_utils, math_utils, native (C# loader), pixel_io, settings_service,
                        persistence_settings, palette_library, palette_image
 native/                the C# backend (see below)
+backup/                texture backup: helper (separate process), protocol, store (stdlib only),
+                       service (Blender side), restore -- see below
 tests/                 pure-Python unit tests (python -m unittest discover -s tests)
 ```
 
@@ -583,6 +585,45 @@ panel (`IMAGE_PT_pixel_painter_settings`) with a header bar of categories
 the N-panel / header; the pen menu has its own version of it (`ui/pen/windows/settings.py`):
 a setting added here should be added there too.
 To add a category, add an entry to `SETTINGS_TABS` and a drawer to `_TAB_DRAWERS`.
+
+## Texture backup (`backup/`, `ui/pen/windows/backup.py`, `ui/operators/backup.py`)
+
+An optional helper process keeps the project's unsaved textures in RAM and writes them
+to disk only when Blender closes or crashes (`pixel_painter_backup_enabled`, default off).
+
+* **Helper** (`backup/helper.py`, stdlib only, started as `python -I helper.py --root
+  <cache> --pid <blender>` with Blender's Python, `service.python_executable`; Windows:
+  no console, out of Blender's job object): holds the textures zlib-compressed in RAM.
+  Blender is gone when its stdin pipe ends or the pid stops (`ParentWatch`); then it
+  writes one save, prunes and exits. `detach` (sent by `service.unregister`, which
+  Blender also runs on a normal exit) marks the save `closed`, otherwise `crash`; after
+  `detach` / end of the pipe with Blender still alive for `GRACE` s (Reload Scripts,
+  add-on disabled) it quits without saving. `quit` (backup switched off): no save.
+* **Protocol** (`backup/protocol.py`): a JSON header line + `nbytes` raw bytes; ops
+  `config`, `image`, `forget`, `detach`, `quit`.
+* **Store** (`backup/store.py`): `<Blender config>/apu_pixel_painter/backup/` with
+  `index.json` (every save and its files: name, size, dtype, crc, colorspace, ...;
+  newest first), `saves/<id>/NNN.bin` (zlib float32 RGBA), `helper.log`. Index writes
+  are atomic and go through a lock file (several Blender instances share the cache).
+  `prune(keep, days)`: newest `keep` (1..5), none older than `days` (0 = no limit),
+  unlisted folders older than `ORPHAN_AGE`.
+* **Service** (`backup/service.py`, `SERVICE`): a persistent 1 s timer follows the
+  setting (starts / restarts / stops the helper) and every `pixel_painter_backup_interval`
+  s syncs: images `wants()` (type IMAGE / UV_TEST, `is_dirty`, or packed while the
+  .blend is dirty) whose history stamp (`core.history.STAMP_KEY`) or size changed are
+  read (`pixel_io.read`) and queued; every `RECHECK_EVERY`-th sync compares the crc of
+  the rest (Blender's own brushes). Saved / removed images are `forget`-ed. A `_Sender`
+  thread writes the pipe (latest message per image wins); no sync during a stroke.
+  Keep / days changes prune after `PRUNE_DELAY` (a dragged slider passes smaller values).
+* **Restore** (`backup/restore.py`): same name + size (and not *as copy*): pixels
+  replaced through `history.begin` / `commit` (undoable); otherwise a new image (the
+  saved name, or `<name> (backup <time>)`). Operators `image.pixel_painter_backup_restore`
+  / `_delete` / `_clear` / `_sync`.
+* **UI**: the Backup window (Windows ring, outer ring after Brushes; `BackupMenu`, a body
+  window like Palettes; actions in `tools/pen/actions/backup.py`) and the settings
+  popup's *Backup* tab.
+* Tests: `tests/test_backup.py` (protocol, store, the helper end to end with a stand-in
+  parent process).
 
 ## Native backend (C#)
 

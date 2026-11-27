@@ -68,6 +68,8 @@ class WindowLayout:
         if opening and name == 'library':
             self.library_menu.opened()
             self.actions.set_palette_view(True)
+        if opening and name == 'backup':
+            self.backup_menu.opened()
         self._relayout()
 
     def set_collapsed(self, collapsed):

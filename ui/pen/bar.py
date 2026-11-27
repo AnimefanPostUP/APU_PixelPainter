@@ -132,6 +132,8 @@ from .menu.window_layout import WindowLayout
 from .windows.dialog import ConfirmDialog
 from .windows.extras import build_extras_window
 from .windows.brushes import build_brushes_window
+from .windows.backup import BackupMenu
+from .icons.windows import paint_backup
 from .windows.mask import build_mask_window
 from .icons.palettes import paint_library
 from .windows.palettes import PaletteLibrary
@@ -180,6 +182,7 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
         self.shape_flyout.visible = False
         self.settings_menu = SettingsMenu(self)
         self.library_menu = PaletteLibrary(self)
+        self.backup_menu = BackupMenu(self)
         self.confirm_dialog = ConfirmDialog(self)
         tab = RoundButton("Pen", radius=17.0, key='PEN_TAB', on_click=lambda: self.set_collapsed(False))
         self.menu = self._window('bar', self._build_dial(),
@@ -216,6 +219,8 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
                         body_shapes, False),
             'extras': (build_extras_window, window_shapes, True),
             'brushes': (build_brushes_window, window_shapes, True),
+            'backup': (lambda bar: build_body_window("Backup", self.backup_menu.content, paint_backup),
+                       body_shapes, False),
         }
         self.tool_windows = {}
         for name in TOOL_WINDOWS:

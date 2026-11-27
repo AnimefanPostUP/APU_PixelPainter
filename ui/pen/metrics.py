@@ -9,7 +9,7 @@ BAR_SCALE = 1.5          # everything (menu, color selector, flyouts) is this mu
 # Each element's own size (resize triangle), relative to BAR_SCALE.
 SCALE_LIMITS = {'bar': (0.2, 2.0), 'color': (0.5, 2.0), 'mask': (0.4, 2.0), 'view': (0.4, 2.0),
                 'settings': (0.4, 2.0), 'library': (0.4, 2.0), 'extras': (0.4, 2.0),
-                'brushes': (0.4, 2.0)}
+                'brushes': (0.4, 2.0), 'backup': (0.4, 2.0)}
 # Tool state keys holding the elements' size and position; Reset Pen UI restores these.
 LAYOUT_STATE = {
     'pen_bar_scale': 1.0, 'pen_bar_pos': None,       # pos: (x0, y1) top-left in region px, None = default
@@ -20,11 +20,12 @@ LAYOUT_STATE = {
     'pen_library_scale': 0.8, 'pen_library_pos': None,
     'pen_extras_scale': 0.8, 'pen_extras_pos': None,
     'pen_brushes_scale': 0.8, 'pen_brushes_pos': None,
+    'pen_backup_scale': 0.8, 'pen_backup_pos': None,
 }
 # Windows besides the menu and the color selector, opened from the Windows ring
 # (content: ui/pen/windows/, ui/pen/windows/settings.py, ui/pen/windows/palettes.py); shown while
 # the state 'pen_<name>_panel' is set. Movable, resizable, lockable; kept per project.
-TOOL_WINDOWS = ('mask', 'view', 'settings', 'library', 'extras', 'brushes')
+TOOL_WINDOWS = ('mask', 'view', 'settings', 'library', 'extras', 'brushes', 'backup')
 POINTER_TYPES = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFTMOUSE', 'MIDDLEMOUSE', 'RIGHTMOUSE',
                   'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TIMER'}
 COLOR_SHAPES = (('SHEET', "Sheet"), ('SQUARE', "Square"), ('TRIANGLE', "Triangle"), ('WHEEL', "Wheel"))
@@ -143,7 +144,7 @@ WINDOW_RING_COVER = OUTER_RING[1]    # the backdrop reaches this far: hides both
 WINDOW_RING_START = 165.0            # Settings at the bottom left, by the Windows button
 WINDOW_RING_BACKDROP = (0.16, 0.16, 0.16, 0.97)
 # Its outer ring (over the dial's outer ring): further windows, WINDOW_OUTER_STEP degrees
-# each from WINDOW_OUTER_START -- Brushes right outside Extras.
+# each from WINDOW_OUTER_START -- Brushes right outside Extras, Backup outside Settings.
 WINDOW_OUTER_RING = OUTER_RING
 WINDOW_OUTER_START = 105.0
 WINDOW_OUTER_STEP = 60.0
@@ -162,6 +163,7 @@ TINT_EXTRAS_OPTIONS = TINT_CUSTOM     # placement, Fade, Curve
 TINT_EXTRAS_VALUES = TINT_EXTRAS      # the sliders
 TINT_EXTRAS_ALL = (0.95, 0.30, 0.30)  # All (every island / part at once): red, like the Mask window's Clear
 TINT_BRUSHES = (0.95, 0.55, 0.30)   # the Brushes window (special brushes): rust orange
+TINT_BACKUP = (0.45, 0.80, 0.55)    # the Backup window (texture backup): green
 MASK_PICK_HINT = "Tap islands / parts to toggle them (Edit again: done)"
 DRAG_THRESHOLD = 6.0                 # unscaled px a color must be dragged before it counts as a drag (else: tap)
 CURVE_EDITOR_SIZE = (220.0, 150.0)
