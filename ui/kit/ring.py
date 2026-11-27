@@ -37,13 +37,19 @@ class RingSegment(Widget):
     it by ``tint_amount``. Selected segments get an accent tint and an accent
     band along the outer edge. ``round`` (unscaled px): corner radius of the
     drawn shape (0: sharp corners; hit-testing is unaffected).
+
+    ``suspended`` (bool or ``() -> bool``): a selected segment that is set aside for
+    the moment (e.g. something else uses the pointer) -- drawn with a dotted outline
+    instead of the band until it is back.
     """
 
     interactive = True
 
     def __init__(self, label="", *, icon=None, icons=None, painter=None, fill=None,
-                 tint=None, tint_amount=0.16, font_size=10.0, round=0.0, round_ends=(True, True), **kwargs):
+                 tint=None, tint_amount=0.16, font_size=10.0, round=0.0, round_ends=(True, True),
+                 suspended=None, **kwargs):
         super().__init__(**kwargs)
+        self.suspended = suspended
         self.label = label
         self.round = round
         self.round_ends = round_ends   # which side edges (a0, a1) ``round`` applies to
@@ -139,7 +145,12 @@ class RingSegment(Widget):
         return alpha
 
     def draw_selection(self, dc, alpha):
-        """Accent band along the outer edge."""
+        """Accent band along the outer edge; a dotted outline while ``suspended``."""
+        theme = dc.theme
+        if _resolve(self.suspended, False):
+            draw.ring_segment_dashed_outline(*self.points(), with_alpha(theme.accent_light, alpha),
+                                             width=theme.px(2.0), dash=theme.px(3.0), gap=theme.px(3.0))
+            return
         band = dc.theme.px(3.0)
         draw.ring_segment(*self.points(self.pr1 - band, self.pr1), with_alpha(dc.theme.accent, alpha))
 

@@ -64,6 +64,7 @@ class StrengthTool(ToolFrame):
 
     label = "Strength"
     mode_name = 'STRENGTH'
+    secondary = True   # uses the mouse: the selected tool's outline is dotted
     exclusive = True
     captures_input = True
     triggers = (Shortcut('E', shift=True, ctrl=False, alt=False),)

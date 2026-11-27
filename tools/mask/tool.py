@@ -7,6 +7,7 @@
 from ...core.framework import Shortcut, ToolFrame
 from ...core.view3d import elements
 from ...overlays import element_outline
+from ...overlays.cursor import draw_pick_cursor
 from .data import active, element_at, is_chosen, refresh, selection, set_chosen
 from .overlay import draw_edit_frame, draw_hint
 
@@ -75,6 +76,9 @@ class MaskTool(ToolFrame):
         self.bind(Shortcut('LEFTMOUSE', 'RELEASE'), self._release)
         self.bind(Shortcut(('ESC', 'RIGHTMOUSE')), self._stop)
 
+    def holds_mouse(self, ctx):
+        return _picking(ctx.state)     # secondary tool while editing the mask
+
     def on_interrupt(self, ctx):
         ctx.state['mask_pick_value'] = None
 
@@ -131,6 +135,7 @@ class MaskTool(ToolFrame):
         # The shading itself is drawn by the core under all tool overlays (draw_2d / draw_3d).
         if not ctx.state.get('mask_picking'):
             return
+        draw_pick_cursor(ctx.context, ctx.state, HOVER_COLOR)   # its own cursor (secondary tool)
         draw_edit_frame(ctx.context)
         if not getattr(ctx.wm, 'pixel_painter_pen_bar', False):
             draw_hint(ctx.context)

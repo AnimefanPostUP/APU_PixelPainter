@@ -9,6 +9,7 @@ import traceback
 from ...core.framework import Shortcut, ToolFrame
 from ...core.view3d import elements
 from ...overlays import element_outline
+from ...overlays.cursor import draw_pick_cursor
 from . import operations
 
 
@@ -76,6 +77,9 @@ class ExtrasTool(ToolFrame):
         self.bind(Shortcut(('LEFTMOUSE', 'RIGHTMOUSE'), 'RELEASE'), self._release)
         self.bind(Shortcut('ESC'), self._stop)
 
+    def holds_mouse(self, ctx):
+        return armed(ctx.state)        # secondary tool while an Extras tool is armed
+
     def on_session_end(self, ctx):
         set_mode(ctx.state, None)
 
@@ -108,7 +112,10 @@ class ExtrasTool(ToolFrame):
 
     def draw_overlay(self, ctx):
         mode = ctx.state.get('extras_mode')
-        if mode not in operations.MODES or getattr(ctx.wm, 'pixel_painter_pen_bar', False):
+        if mode not in operations.MODES:
+            return
+        draw_pick_cursor(ctx.context, ctx.state, HOVER_COLOR)   # its own cursor (secondary tool)
+        if getattr(ctx.wm, 'pixel_painter_pen_bar', False):
             return
         from ..mask.overlay import draw_hint
         draw_hint(ctx.context, f"{HINTS[mode]}: tap an island / part (RMB: secondary color)  ·  Esc: done")

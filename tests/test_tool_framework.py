@@ -280,5 +280,53 @@ class ManagerTest(unittest.TestCase):
         self.assertFalse(any(t.is_active for t in manager.tools))
 
 
+class SecondaryToolTest(unittest.TestCase):
+    """ToolManager.secondary_tool: the temporary tool holding the mouse (selected tool dotted)."""
+
+    class Picker(ToolFrame):          # like E / the Ctrl eyedropper: secondary while active
+        secondary = True
+
+    class ArmedGlobal(ToolFrame):     # like MaskTool / ExtrasTool: always active, armed by state
+        is_global = True
+
+        def holds_mouse(self, ctx):
+            return bool(ctx.state.get('armed'))
+
+    def test_empty_by_default(self):
+        manager, ctx, _log, _tools = build()
+        self.assertIsNone(manager.secondary_tool(ctx))
+
+    def test_active_secondary_subtool(self):
+        picker = self.Picker()
+        picker.triggers = (Shortcut('E'),)
+        manager, ctx, _log, _tools = build(extra_subtools={'SQUARE': (picker,)})
+        manager.dispatch(ctx, ev('E'))
+        self.assertIs(manager.secondary_tool(ctx), picker)
+        picker.deactivate(ctx)
+        self.assertIsNone(manager.secondary_tool(ctx))
+
+    def test_tool_switch_is_not_secondary(self):
+        manager, ctx, _log, _tools = build()
+        manager.dispatch(ctx, ev('LEFT_ALT', alt=True))
+        self.assertEqual(ctx.mode, 'LINE')
+        self.assertIsNone(manager.secondary_tool(ctx))
+
+    def test_secondary_inside_stand_in(self):
+        picker = self.Picker()
+        picker.triggers = (Shortcut('E', alt=None),)
+        manager, ctx, _log, _tools = build(extra_subtools={'LINE': (picker,)})
+        manager.dispatch(ctx, ev('LEFT_ALT', alt=True))
+        manager.dispatch(ctx, ev('E', alt=True))
+        self.assertIs(manager.secondary_tool(ctx), picker)
+
+    def test_global_armed_by_state(self):
+        manager, ctx, _log, _tools = build()
+        tool = manager.register(self.ArmedGlobal())
+        tool.activate(ctx)
+        self.assertIsNone(manager.secondary_tool(ctx))
+        ctx.state['armed'] = True
+        self.assertIs(manager.secondary_tool(ctx), tool)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -75,6 +75,7 @@ class DialControls:
             RingSegment(tool.label, key=f"TOOL_{tool.tool_id}", icon=tool.tool_id if tool.icon else None,
                         icons=self.icons, font_size=8.0, fill=INNER_FILL if i >= half else None,
                         selected=lambda t=tool.tool_id: a.active_tool() == t,
+                        suspended=a.tool_suspended,   # dotted while a secondary tool holds the mouse
                         on_click=lambda t=tool.tool_id: a.select_tool(t))
             for i, tool in enumerate(all_tools)
         ]

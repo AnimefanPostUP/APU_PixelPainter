@@ -113,6 +113,17 @@ Flags: `exclusive` (block the parent while active), `captures_input` (core
 skips its cursor-over-image gating, e.g. the color picker), `is_global` +
 `priority` (root tools active for the whole session).
 
+**Secondary tool.** A tool that uses the mouse *instead of* the selected tool
+(mask editing, an armed Extras tool, E / Shift+E, the eyedroppers) sets
+`secondary = True` (active subtools) or overrides `holds_mouse(ctx)` (global
+tools armed by state). `ToolManager.secondary_tool(ctx)` returns it (usually
+None). While it is set, the selected tool's brush outline is not drawn (2D, 3D
+surface, off-mesh ring) -- the secondary tool draws its own cursor in
+`draw_overlay` (the pickers: `overlays.cursor.draw_pick_cursor` plus the element
+outline) -- and the selected tool's pen menu button shows a dotted outline
+instead of its band (`RingSegment(suspended=...)`). Alt / Shift tool switches
+are not secondary tools: the stand-in really paints with its own outline.
+
 Building blocks:
 
 ```python

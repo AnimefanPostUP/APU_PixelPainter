@@ -121,6 +121,12 @@ class ColorActions:
             return True
         return tool is None or channel in getattr(tool, 'uses_values', (channel,))
 
+    def tool_suspended(self):
+        """A secondary tool (mask editing, Extras, E / Shift+E, eyedroppers) uses the mouse
+        instead of the selected tool (``ToolManager.secondary_tool``)."""
+        ctx = self._c()
+        return self.manager.secondary_tool(ctx) is not None
+
     def select_tool(self, tool_id):
         ctx = self._c()
         self.manager.select(ctx, tool_id)

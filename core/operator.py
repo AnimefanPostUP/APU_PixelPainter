@@ -181,17 +181,22 @@ def _register_draw_handler(space, context):
         try:
             if not _in_session_area(ctx):
                 return
+            tctx = ToolContext(ctx, MANAGER)
+            # A secondary tool (mask editing, Extras, E / Shift+E, eyedroppers) holds the
+            # mouse: the selected tool's cursor is hidden, the secondary tool draws its own.
+            main_cursor = MANAGER.secondary_tool(tctx) is None
             if raycast.is_view3d(ctx):
-                cursor_overlays.draw_view3d_offmesh_cursor(ctx, _state)
+                if main_cursor:
+                    cursor_overlays.draw_view3d_offmesh_cursor(ctx, _state)
             else:
-                tctx = ToolContext(ctx, MANAGER)
                 mask_overlay.draw_2d(ctx, tctx.v2d, tctx.image)
                 element_outline.draw_2d(ctx, tctx.v2d, tctx.image, _state)
                 wm = ctx.window_manager
                 if wm.pixel_painter_grid_show:
                     draw_gridoverlay.draw_pixel_grid_overlay(ctx, wm.pixel_painter_grid_opacity)
-                brush_outline.draw_brush_outline(ctx, _state)
-            MANAGER.draw(ToolContext(ctx, MANAGER))
+                if main_cursor:
+                    brush_outline.draw_brush_outline(ctx, _state)
+            MANAGER.draw(tctx)
         except Exception:
             traceback.print_exc()
     def _view_callback(ctx):
@@ -203,7 +208,8 @@ def _register_draw_handler(space, context):
                     draw_gridoverlay.draw_pixel_grid_overlay_3d(ctx, image, wm.pixel_painter_grid_opacity)
                 mask_overlay.draw_3d(ctx, image)
                 element_outline.draw_3d(ctx, _state)
-                overlays_view3d.draw_brush_outline_3d(ctx, _state)
+                if MANAGER.secondary_tool(ToolContext(ctx, MANAGER)) is None:
+                    overlays_view3d.draw_brush_outline_3d(ctx, _state)
         except Exception:
             traceback.print_exc()
 

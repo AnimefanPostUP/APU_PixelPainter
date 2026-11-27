@@ -71,6 +71,10 @@ class TemporaryToolSwitch(HoldTool):
         self._restore_id = None
         ctx.redraw()
 
+    def active_children(self):
+        children = super().active_children()
+        return children + (self.stand_in,) if self.stand_in is not None else children
+
     def draw_chain(self, ctx):
         super().draw_chain(ctx)
         if self.stand_in is not None:

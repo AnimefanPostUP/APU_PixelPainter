@@ -45,6 +45,7 @@ class ColorPickTool(ToolFrame):
 
     label = "Color Pick"
     mode_name = 'COLOR_PICK'
+    secondary = True   # uses the mouse: the selected tool's outline is dotted
     exclusive = True
     captures_input = True
     triggers = (Shortcut('E', shift=False, ctrl=False, alt=False),)

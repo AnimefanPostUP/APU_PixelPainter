@@ -1,12 +1,12 @@
 """Cursors drawn on the canvas: the 3D Viewport's off-mesh ring, a single-pixel
-outline.
+outline, the element pickers' cursor (secondary tools: mask editing, Extras).
 """
 
 
 import gpu
 
 from ..utils import blender_utils
-from .gpu_prims import draw_wide_circle_outline, draw_lines
+from .gpu_prims import draw_wide_circle_outline, draw_lines, draw_precision_pixel_guide
 
 
 # ---------------------------------------------------------------------------
@@ -55,5 +55,25 @@ def draw_view3d_offmesh_cursor(context, state):
     gpu.state.blend_set('ALPHA')
     draw_wide_circle_outline(mouse[0], mouse[1], 10.0, (0.0, 0.0, 0.0, rgba[3] * 0.8), width=3.0, steps=32)
     draw_wide_circle_outline(mouse[0], mouse[1], 10.0, rgba, width=1.5, steps=32)
+    gpu.state.blend_set('NONE')
+    gpu.state.line_width_set(1.0)
+
+
+def draw_pick_cursor(context, state, color):
+    """Cursor of an element picker (a secondary tool -- the selected tool's outline is
+    hidden meanwhile): a small ring in the picker's ``color`` at the mouse and, in the
+    Image Editor, brackets around the pixel it reads. The element itself is outlined
+    by ``overlays.element_outline``."""
+    mouse = state.get('mouse_region')
+    if mouse is None:
+        return
+    space = getattr(context, 'space_data', None)
+    if getattr(space, 'type', None) != 'VIEW_3D':
+        px, py = state.get('current_cx'), state.get('current_cy')
+        if px is not None and py is not None:
+            draw_precision_pixel_guide(context, px, py, color=color)
+    gpu.state.blend_set('ALPHA')
+    draw_wide_circle_outline(mouse[0], mouse[1], 7.0, (0.0, 0.0, 0.0, 0.8), width=3.0, steps=28)
+    draw_wide_circle_outline(mouse[0], mouse[1], 7.0, color, width=1.5, steps=28)
     gpu.state.blend_set('NONE')
     gpu.state.line_width_set(1.0)

@@ -9,6 +9,7 @@ class EyedropperTool(HoldTool):
     label = "Eyedropper"
     modifier = 'CTRL'
     exclusive = True  # no painting while Ctrl is held
+    secondary = True   # uses the mouse: the selected tool's outline is dotted
 
     state_defaults = {
         'ctrl_pick_active':   False,

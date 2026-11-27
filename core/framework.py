@@ -192,6 +192,9 @@ class ToolFrame:
     exclusive: bool = False        # while active as subtool, the parent gets no events
     captures_input: bool = False    # while active, the core skips its cursor/bounds gating
     consume_trigger: bool = True    # consume the event that activated this subtool
+    secondary: bool = False         # while active, this tool owns the mouse: it is the
+                                    # manager's secondary tool (ToolManager.secondary_tool)
+                                    # and the selected tool's cursor is drawn dotted
     triggers: Sequence[Shortcut] = ()  # shortcuts that activate this tool as a subtool
 
     # ---- shared state owned by this tool (declared when registered) -----------
@@ -273,6 +276,16 @@ class ToolFrame:
 
     def wants_activation(self, ctx, event) -> bool:
         return any(sc.matches(event) for sc in self.triggers)
+
+    def holds_mouse(self, ctx) -> bool:
+        """True while this tool is the secondary tool (uses the mouse instead of the
+        selected tool). Default: a ``secondary`` tool while active; global tools that are
+        always active override this with their own armed state."""
+        return self.secondary and self.is_active
+
+    def active_children(self):
+        """Tools running under this one (active subtools; a stand-in for tool switches)."""
+        return tuple(self._active_subtools)
 
     # ---- activation ------------------------------------------------------------
 
@@ -565,6 +578,23 @@ class ToolManager:
 
     def is_capturing(self) -> bool:
         return any(t.is_capturing() for t in self.root_tools())
+
+    def secondary_tool(self, ctx) -> Optional[ToolFrame]:
+        """The temporary tool that currently uses the mouse instead of the selected tool
+        (mask editing, an armed Extras tool, E / Shift+E, the eyedroppers), or None.
+        Derived from the running tools every call, so it can never go stale; the most
+        deeply nested / latest one wins."""
+        found = None
+        stack = list(reversed(self.root_tools()))
+        while stack:
+            tool = stack.pop()
+            try:
+                if tool.holds_mouse(ctx):
+                    found = tool
+            except Exception:
+                pass
+            stack.extend(reversed(tool.active_children()))
+        return found
 
     def draw(self, ctx) -> None:
         for tool in self.root_tools():

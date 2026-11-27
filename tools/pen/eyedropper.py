@@ -28,6 +28,7 @@ class PenEyedropperTool(ToolFrame):
     label = "Pen Eyedropper"
     exclusive = True
     captures_input = True
+    secondary = True   # uses the mouse: the selected tool's outline is dotted
     triggers = ()  # started by the pen bar
 
     state_defaults = dict(EyedropperTool.state_defaults)  # shares the Ctrl-eyedropper overlay
