@@ -64,12 +64,22 @@ def ray_hit(context, region_x, region_y):
     if loc is None or tri is None:
         return None
 
+    return hit_at(cache, loc, tri)
+
+
+def hit_at(cache, loc, tri):
+    """A :class:`Hit` for the object-space point ``loc`` on loop triangle ``tri``."""
     vi = cache.tri_verts[tri]
     li = cache.tri_loops[tri]
     p0, p1, p2 = (Vector(cache.verts[i]) for i in vi)
     t0, t1, t2 = (Vector((cache.uvs[i][0], cache.uvs[i][1], 0.0)) for i in li)
     uv = barycentric_transform(loc, p0, p1, p2, t0, t1, t2)
     return Hit((uv.x, uv.y), int(tri), loc)
+
+
+def view_frame(context):
+    """``(region, rv3d)`` of the 3D Viewport's main region, or ``(None, None)``."""
+    return _window_region(context)
 
 
 def texel_screen_size(context, hit, image):

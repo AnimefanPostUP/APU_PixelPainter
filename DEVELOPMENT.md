@@ -24,7 +24,8 @@ core/                  manages tools, knows nothing about what they do
                        stroke_path, frames, surface_path, footprint, patch (Edge mode)
 model/                 pure domain data (no bpy): falloff, blend_modes, color_history,
                        color_palette, tertiary_color, value_curve (AO curve + presets)
-paint/                 pixel kernels, no tool logic: pixels (write / alpha), blending, smooth,
+paint/                 pixel kernels, no tool logic: pixels (write / alpha), blending, smooth, special
+                       (the special brushes: rust noise, noise blur, pull warp, heal, particle dents),
                        native_paths (C# fast paths of whole draw steps), region_paint (per-texel
                        colors), edge_ramp (Edges band math)
 overlays/              canvas drawing in the draw handlers: handler (add / remove), gpu_prims
@@ -43,8 +44,11 @@ tools/                 all tool behaviour
                        (enforcement during strokes), overlay (drawing), tool (MaskTool)
   extras/              the Extras window's tools: tool (ExtrasTool, global), operations (Fill /
                        Edges / Ambient Occlusion), ao (per-texel ray casting)
+  special/             the Brushes window's tools (group 'SPECIAL'): rust, particles, noise_blur,
+                       pull, repair; common (SpecialBrush base, island clip of pixel arrays)
   pen/                 tool (PenBarTool: lifecycle, events, drawing), actions/ (its actions by
-                       concern: colors, settings, palettes, falloff, windows, mask), layout
+                       concern: colors, settings, palettes, falloff, windows, mask, extras,
+                       brushes), layout
                        (per-project window layout), pressure, view_nav, eyedropper
   subtools/            color_pick (E), strength (Shift+E), eyedropper (hold Ctrl),
                        tool_switch (hold Alt -> Line, hold Shift -> Smooth/Eraser, Shift+1..9)
@@ -57,8 +61,8 @@ ui/
     menu/              PenBar's concerns: dial, flyouts, drag_drop, window_layout, readouts
     widgets/           the dial's widgets: color, blend, falloff_field, grid_corner, window_ring
     windows/           frame (Window: move / lock / resize / help), parts, mask, view, settings,
-                       palettes, extras, dialog (ConfirmDialog), shapes (window backgrounds)
-    icons/             icon painters: menu, settings, palettes, windows, extras
+                       palettes, extras, brushes, dialog (ConfirmDialog), shapes (window backgrounds)
+    icons/             icon painters: menu, settings, palettes, windows, extras, brushes
   panels/              tool_settings (header / N-panel), settings_popup (tabbed settings popup)
   menus/               pie_menu (ToolPie / FalloffPie / FalloffPicker), native_menus (blend / mode
                        pies), selection_actions (buttons under the selection box)
@@ -319,7 +323,9 @@ confirms; ESC/RMB cancel; actions run after the close animation.
   from `WINDOW_RING_START`. The ring is the dial's last child (drawn on top, picked
   first), paints an opaque backdrop from the inner ring out to `WINDOW_RING_COVER`
   (the outer ring's edge: the tools are hidden too) and blocks the pointer there;
-  these are the only buttons for Settings / Mask / View / Color / Library; it is handled as the open flyout (`toggle_flyout` / `close_flyout`),
+  these are the only buttons for Settings / Mask / View / Color / Library. Its outer ring
+  (`WindowRing.add_outer_entries`, `WINDOW_OUTER_RING` / `_START` / `_STEP`) holds further
+  windows at fixed angles (the rest is backdrop): Brushes, right outside Extras; it is handled as the open flyout (`toggle_flyout` / `close_flyout`),
   so a tap outside, ESC / RMB or Windows again close it. The field sets the
   *Shape* falloff (`falloff.SHAPE_*`, `math_utils.shape_falloff`): global
   `pixel_painter_falloff_hardness` (radial: inner edge = 1 = constant, outer = 0)
@@ -488,6 +494,42 @@ Tools that act on a whole *element* -- a UV island or a connected mesh part
   for the visible parts. *Curve* (state `pen_extras_curve`) folds out the tool's
   `CurveEditor` with presets.
 * Tests: `tests/test_extras.py` (curve, edge math, texel blending, AO placement).
+
+## Brushes window (`tools/special/`, `ui/pen/windows/brushes.py`)
+
+Special brushes, opened from the Windows ring's outer ring. They are ordinary
+`StrokeTool`s in `TOOLS` (per-tool size / strength / alpha / M, falloff, pen pressure,
+mask, undo all as usual) with `group = 'SPECIAL'`: the pen menu's tool ring and the tool
+pie list only `group == 'MAIN'` (`ToolRegistry.in_group`), they sit past Shift+9.
+`SpecialBrush` (`tools/special/common.py`) spaces stamps (`stamp_spacing`) and clips
+whole pixel arrays to the UV island (`island_keep`). The pixel math is pure NumPy in
+`paint/special.py` (`tests/test_special_brushes.py`).
+
+* **Rust**: fractal value noise anchored to the texture (`rust_texels`: color mix `t`
+  plus a patchy `presence`); per stroke a max-weight buffer, repainted from the stroke
+  snapshot (no pile-up). LMB primary cores, RMB swapped. `rust_scale`, `rust_coverage`.
+* **Particles**: 3D -- bodies launched from in front of the brush along the view ray,
+  integrated under world gravity, collisions by `cache.bvh.ray_cast` per time step,
+  reflected with `RESTITUTION`, a dent (`chips`) at every impact (UV via
+  `raycast.hit_at`); Image Editor -- `scatter_2d`. M = dent size. `step_region` = the
+  dents' box. `particle_count`, `particle_bounces`.
+* **Noise Blur**: `noise_blur`: each pixel = mean of `noise_samples(grain)` random
+  pixels within `noise_scatter`.
+* **Pull**: liquify. A (H, W, 2) displacement field per stroke; `pull_mode` DRAG:
+  `pull_field_step` (the cursor move), PINCH / PUSH: `pinch_field_step` per spaced stamp
+  (radial, `PINCH_RATE` x the distance to the center; RMB the opposite); both compose with
+  the earlier field (`_compose`), `warp` resamples the stroke snapshot (nearest;
+  `pull_smooth`: bilinear).
+* **Repair**: healing. `heal` adds the Shepard-interpolated border difference
+  (destination - source) to the source patch; `repair_texture` blends toward the pure
+  membrane fill. `repair_mode` AUTO: `best_offset` per stamp (border SSD over
+  `candidate_offsets`); SOURCE: RMB sets state `repair_source`, the next stroke fixes
+  `repair_offset` (aligned), read from the stroke snapshot; `overlays/special.py` marks
+  the source (Image Editor).
+* Window: a `Dial` -- center = the shown brush (tap: select / back), inner ring top the
+  five brushes (`BrushesActions.toggle_special`: tapping the selected one returns to
+  state `brushes_return`), bottom the shown brush's two settings (`ShownArcSlider` /
+  option buttons). Edge mode: the brushes work in image space (no seam crossing).
 
 ## Settings popup (`ui/panels/settings_popup.py`)
 

@@ -49,6 +49,10 @@ class ToolRegistry:
     def index_of(self, tool_id) -> int:
         return self.ids().index(tool_id)
 
+    def in_group(self, group: str) -> List[ToolBase]:
+        """The tools of ``group`` ('MAIN' / 'SPECIAL', ``ToolBase.group``) in order."""
+        return [t for t in self if getattr(t, 'group', 'MAIN') == group]
+
     def by_shortcut_index(self, index: int) -> Optional[ToolBase]:
         """Tool for a 0-based number-key index (Shift+1 -> 0)."""
         ids = self.ids()

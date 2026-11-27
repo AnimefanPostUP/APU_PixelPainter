@@ -67,7 +67,7 @@ class ToolPie(RadialMenu):
 
     def __init__(self, **kwargs):
         super().__init__(arc=(180.0, 0.0), **kwargs)
-        for tool in TOOLS:
+        for tool in TOOLS.in_group('MAIN'):    # the special brushes: pen menu > Brushes
             self.add_item(BubbleButton(
                 tool.label,
                 key=tool.tool_id,

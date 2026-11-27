@@ -30,6 +30,7 @@ from ...ui.pen.bar import PenBar
 from ...ui.pen.metrics import LAYOUT_STATE
 from .. import pickers
 from ...model import tertiary_color
+from .actions.brushes import BrushesActions
 from .actions.colors import ColorActions
 from .actions.extras import ExtrasActions
 from .actions.falloff import FalloffActions
@@ -67,7 +68,7 @@ def _side_insets(area, region):
 
 
 class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, WindowActions, MaskActions,
-                 ExtrasActions,
+                 ExtrasActions, BrushesActions,
                  ToolFrame):
     label = "Pen Bar"
     is_global = True
@@ -100,6 +101,11 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
         'pen_extras_locked':   False,
         'pen_extras_help':     False,
         'pen_extras_curve':    False,  # Extras window: the curve section is folded out
+        'pen_brushes_panel':   False,  # the Brushes window (special brushes) is shown
+        'pen_brushes_locked':  False,
+        'pen_brushes_help':    False,
+        'brushes_last':        None,   # the special brush the Brushes window shows (last selected)
+        'brushes_return':      None,   # the main tool to go back to when the special brush is tapped again
         'pen_mask_help':     False,  # the window's '?' help text is shown
         'pen_view_help':     False,
         'pen_palette_view':  False,  # the palette band shows the project's palettes (else the active one's colors)
@@ -114,7 +120,8 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
                         'pen_mask_panel', 'pen_mask_locked', 'pen_view_panel', 'pen_view_locked',
                         'pen_view_autofit', 'pen_view_compact', 'pen_mask_help', 'pen_view_help',
                         'pen_settings_panel', 'pen_settings_locked', 'pen_library_panel', 'pen_library_locked',
-                        'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help', 'pen_extras_curve')
+                        'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help', 'pen_extras_curve',
+                        'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help', 'brushes_last')
     # Saved per project (scene property, tools/pen/layout.py): the windows' open / collapsed
     # state, position, scale, lock and help.
     layout_keys = (*LAYOUT_STATE, 'pen_bar_collapsed', 'pen_bar_locked',
@@ -123,7 +130,8 @@ class PenBarTool(ColorActions, SettingsActions, PaletteActions, FalloffActions, 
                    'pen_view_panel', 'pen_view_locked', 'pen_view_help', 'pen_view_autofit',
                    'pen_view_compact', 'pen_settings_panel', 'pen_settings_locked',
                    'pen_library_panel', 'pen_library_locked',
-                   'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help')
+                   'pen_extras_panel', 'pen_extras_locked', 'pen_extras_help',
+                   'pen_brushes_panel', 'pen_brushes_locked', 'pen_brushes_help')
 
     def __init__(self, registry):
         super().__init__()

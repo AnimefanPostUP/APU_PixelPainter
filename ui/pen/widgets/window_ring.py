@@ -1,4 +1,5 @@
-"""The Windows ring: Settings / Mask / View / Color / Palettes over the dial's inner ring.
+"""The Windows ring: Settings / Mask / View / Color / Palettes / Extras over the dial's
+inner ring, further windows (Brushes) in its outer ring.
 """
 
 import math
@@ -36,6 +37,20 @@ class WindowRing(Widget):
         step = 360.0 / max(1, len(entries))
         for i, entry in enumerate(entries):
             entry.r0, entry.r1 = self.r0, self.r1
+            entry.a0, entry.a1 = start + i * step, start + (i + 1) * step
+            entry.drag_release = True
+            self.add(entry)
+            dial.corners.append(entry)
+        dial.corners.append(self)
+
+    def add_outer_entries(self, dial, entries, r0, r1, start, step):
+        """Entries in the outer ring (``r0 .. r1``, inside ``cover``), ``step`` degrees each
+        counter-clockwise from ``start`` -- not the full circle: the rest stays backdrop.
+        Call after :meth:`add_entries` (the ring itself stays the dial's last corner)."""
+        if self in dial.corners:
+            dial.corners.remove(self)
+        for i, entry in enumerate(entries):
+            entry.r0, entry.r1 = r0, min(r1, self.cover)
             entry.a0, entry.a1 = start + i * step, start + (i + 1) * step
             entry.drag_release = True
             self.add(entry)

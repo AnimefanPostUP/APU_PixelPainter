@@ -21,6 +21,11 @@ from .mask.tool import MaskTool
 from .pen.tool import PenBarTool
 from .registry import ToolRegistry
 from .selection.tool import SelectionTool
+from .special.noise_blur import NoiseBlurTool
+from .special.particles import ParticlesTool
+from .special.pull import PullTool
+from .special.repair import RepairTool
+from .special.rust import RustBrushTool
 from .subtools.tool_switch import ToolSwitchShortcuts
 
 
@@ -34,6 +39,13 @@ TOOLS = ToolRegistry(
         LineBrushTool(),
         EraserTool(),
         SelectionTool(),
+        # The Brushes window's tools (group 'SPECIAL': not in the pen menu's tool ring /
+        # the tool pie; past Shift+9).
+        RustBrushTool(),
+        ParticlesTool(),
+        NoiseBlurTool(),
+        PullTool(),
+        RepairTool(),
     ],
     default_id='SQUARE',
 )

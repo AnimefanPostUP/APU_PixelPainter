@@ -113,6 +113,9 @@ class ToolBase(ToolFrame):
     icon: Optional[str] = None            # image file in textures/
     outline_color: Tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.9)
     outline_shape: str = 'CIRCLE'         # 'SQUARE' or 'CIRCLE'
+    # 'MAIN': in the pen menu's tool ring and the tool pie; 'SPECIAL': only in the pen
+    # menu's Brushes window (tools/special/) -- still a normal tool otherwise.
+    group: str = 'MAIN'
 
     # ---- behaviour flags -----------------------------------------------------
     defaults: SettingDefaults = SettingDefaults()

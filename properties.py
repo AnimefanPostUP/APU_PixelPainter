@@ -151,6 +151,18 @@ def _static_properties():
         'smear_falloff': bpy.props.EnumProperty(
             name="Smear Falloff", items=falloff.enum_items(), default='CONSTANT',
             update=_falloff_updater('pixel_painter_smear_falloff')),
+        'rust_falloff': bpy.props.EnumProperty(
+            name="Rust Falloff", items=falloff.enum_items(), default='SMOOTH',
+            update=_falloff_updater('pixel_painter_rust_falloff')),
+        'noise_blur_falloff': bpy.props.EnumProperty(
+            name="Noise Blur Falloff", items=falloff.enum_items(), default='SMOOTH',
+            update=_falloff_updater('pixel_painter_noise_blur_falloff')),
+        'pull_falloff': bpy.props.EnumProperty(
+            name="Pull Falloff", items=falloff.enum_items(), default='SMOOTH',
+            update=_falloff_updater('pixel_painter_pull_falloff')),
+        'repair_falloff': bpy.props.EnumProperty(
+            name="Repair Falloff", items=falloff.enum_items(), default='PLATEAU',
+            update=_falloff_updater('pixel_painter_repair_falloff')),
         'spray_falloff': bpy.props.EnumProperty(
             name="Spray Falloff", items=falloff.enum_items(), default='LINEAR',
             update=_falloff_updater('pixel_painter_spray_falloff')),
@@ -367,6 +379,46 @@ def _static_properties():
         'extras_ao_curve': bpy.props.StringProperty(
             name="AO Curve", description="Ambient occlusion curve anchors (JSON, model/value_curve.py)",
             default="", options={'HIDDEN'}, update=_persist),
+        # ---- Brushes window (tools/special/) ----
+        'rust_scale': bpy.props.IntProperty(
+            name="Rust Scale", description="Rust: size of the patches, in pixels",
+            min=1, max=128, soft_min=2, soft_max=48, default=8, update=_persist),
+        'rust_coverage': _factor(
+            "Rust Coverage", 0.6, description="Rust: how much of the brush gets rust (1 = all, less = patchy)",
+            update=_persist),
+        'particle_count': bpy.props.IntProperty(
+            name="Particle Count", description="Particles: bodies thrown per stamp",
+            min=1, max=64, soft_min=1, soft_max=24, default=6, update=_persist),
+        'particle_bounces': bpy.props.IntProperty(
+            name="Particle Bounces", description="Particles: how often a body bounces off the model (a dent each time)",
+            min=0, max=8, soft_min=0, soft_max=6, default=2, update=_persist),
+        'noise_scatter': bpy.props.IntProperty(
+            name="Noise Scatter", description="Noise Blur: how far pixels are taken from, in pixels",
+            min=1, max=32, soft_min=1, soft_max=16, default=3, update=_persist),
+        'noise_grain': _factor(
+            "Noise Grain", 0.5, description="Noise Blur: 1 = one random neighbour per pixel (grainy), "
+                                           "0 = the average of several (smoother)", update=_persist),
+        'pull_mode': bpy.props.EnumProperty(
+            name="Pull Mode", description="What the Pull brush does with the pixels under it",
+            items=[
+                ('DRAG', "Drag", "The pixels follow the cursor"),
+                ('PINCH', "Pinch", "Suck the pixels into the brush's center (right button: push)"),
+                ('PUSH', "Push", "Push the pixels away from the brush's center (right button: pinch)"),
+            ],
+            default='DRAG', update=_persist),
+        'pull_smooth': bpy.props.BoolProperty(
+            name="Pull Smooth", description="Pull: blend between pixels (bilinear) instead of moving whole pixels",
+            default=False, update=_persist),
+        'repair_mode': bpy.props.EnumProperty(
+            name="Repair Mode", description="Where the Repair brush takes its texture from",
+            items=[
+                ('AUTO', "Auto", "Spot healing: every stamp finds a matching patch around itself"),
+                ('SOURCE', "Source", "Healing from the source set with the right button (aligned)"),
+            ],
+            default='AUTO', update=_persist),
+        'repair_texture': _factor(
+            "Repair Texture", 1.0, description="Repair: 1 = the source's full texture, 0 = only a smooth fill "
+                                              "from the surrounding colors", update=_persist),
         # ---- color selector (pen bar color pad) ----
         'color_selector_layout': bpy.props.EnumProperty(
             name="Color Selector Layout", description="Shape of the pen bar color selector",
@@ -499,6 +551,10 @@ def reset_tool_settings(wm):
     wm.pixel_painter_spray_falloff = 'LINEAR'
     wm.pixel_painter_smooth_falloff = 'CONSTANT'
     wm.pixel_painter_smear_falloff = 'CONSTANT'
+    wm.pixel_painter_rust_falloff = 'SMOOTH'
+    wm.pixel_painter_noise_blur_falloff = 'SMOOTH'
+    wm.pixel_painter_pull_falloff = 'SMOOTH'
+    wm.pixel_painter_repair_falloff = 'PLATEAU'
     wm.pixel_painter_falloff_hardness, wm.pixel_painter_falloff_sharpness = falloff.SHAPE_DEFAULT
     wm.pixel_painter_spray_strength = 0.1
     wm.pixel_painter_spacing = 'FREE'

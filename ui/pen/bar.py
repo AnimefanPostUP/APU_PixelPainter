@@ -131,6 +131,7 @@ from .menu.drag_drop import ColorDragDrop
 from .menu.window_layout import WindowLayout
 from .windows.dialog import ConfirmDialog
 from .windows.extras import build_extras_window
+from .windows.brushes import build_brushes_window
 from .windows.mask import build_mask_window
 from .icons.palettes import paint_library
 from .windows.palettes import PaletteLibrary
@@ -214,6 +215,7 @@ class PenBar(DialControls, Flyouts, ColorDragDrop, WindowLayout, Readouts):
             'library': (lambda bar: build_body_window("Palettes", self.library_menu.content, paint_library),
                         body_shapes, False),
             'extras': (build_extras_window, window_shapes, True),
+            'brushes': (build_brushes_window, window_shapes, True),
         }
         self.tool_windows = {}
         for name in TOOL_WINDOWS:

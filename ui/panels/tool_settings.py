@@ -12,7 +12,7 @@ def _draw_tool_mode_buttons(layout, current_mode):
     for index, tool in enumerate(TOOLS, start=1):
         grid.operator(
             "image.pixel_painter_set_mode",
-            text=f"{tool.label} ({index})",
+            text=f"{tool.label} ({index})" if index <= 9 else tool.label,   # Shift+1..9 only
             depress=(current_mode == tool.tool_id),
         ).mode = tool.tool_id
 

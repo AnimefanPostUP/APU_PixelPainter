@@ -43,6 +43,10 @@ class WindowRingTest(unittest.TestCase):
         self.entries = [kit.RingSegment(name, key=name, on_click=lambda n=name: self.clicked.append(n))
                         for name in ("Settings", "Mask", "View", "Color", "Palettes")]
         self.ring.add_entries(dial, self.entries, pen_metrics.WINDOW_RING_START)
+        self.outer = kit.RingSegment("Brushes", key='Brushes', on_click=lambda: self.clicked.append('Brushes'))
+        self.ring.add_outer_entries(dial, [self.outer], *pen_metrics.WINDOW_OUTER_RING,
+                                    pen_metrics.WINDOW_OUTER_START, pen_metrics.WINDOW_OUTER_STEP)
+        self.dial = dial
         self.overlay = kit.Overlay(dial, modal=False, animate=False)
         self.theme = self.overlay.theme
 
@@ -77,10 +81,11 @@ class WindowRingTest(unittest.TestCase):
         x, y = self._at(self.tool)
         self.assertIs(self.overlay.root.pick(x, y), self.tool)
         self.ring.visible = True
-        self.assertIs(self.overlay.root.pick(x, y), self.ring)
+        # The ring (or its outer entry, which may lie over the tools) takes the press.
+        self.assertIn(self.overlay.root.pick(x, y), (self.ring, self.outer))
         self.overlay.handle(_event('LEFTMOUSE', events.PRESS, x, y))
         self.overlay.handle(_event('LEFTMOUSE', events.RELEASE, x, y))
-        self.assertEqual(self.clicked, [])
+        self.assertNotIn('tool', self.clicked)
 
     def test_press_opener_drag_release_on_entry(self):
         ox, oy = self._at(self.opener)
@@ -102,6 +107,32 @@ class WindowRingTest(unittest.TestCase):
         self.overlay.handle(_event('LEFTMOUSE', events.PRESS, mx, my))
         self.overlay.handle(_event('LEFTMOUSE', events.RELEASE, mx, my))
         self.assertEqual(self.clicked, ['Mask'])
+
+    def test_outer_entry_sits_in_the_outer_ring(self):
+        self.assertEqual((self.outer.r0, self.outer.r1), tuple(pen_metrics.WINDOW_OUTER_RING))
+        self.assertAlmostEqual(self.outer.a0, pen_metrics.WINDOW_OUTER_START)
+        self.assertAlmostEqual(self.outer.a1 - self.outer.a0, pen_metrics.WINDOW_OUTER_STEP)
+        self.assertIs(self.outer.parent, self.ring)
+        self.assertIs(self.dial.corners[-1], self.ring)     # the ring stays last (drawn on top)
+
+    def test_outer_entry_hidden_with_the_ring(self):
+        x, y = self._at(self.outer)
+        self.assertIsNot(self.overlay.root.pick(x, y), self.outer)
+
+    def test_tap_outer_entry(self):
+        self.ring.visible = True
+        x, y = self._at(self.outer)
+        self.assertIs(self.overlay.root.pick(x, y), self.outer)
+        self.overlay.handle(_event('LEFTMOUSE', events.PRESS, x, y))
+        self.overlay.handle(_event('LEFTMOUSE', events.RELEASE, x, y))
+        self.assertEqual(self.clicked, ['Brushes'])
+
+    def test_outer_ring_outside_the_entries_is_backdrop(self):
+        self.ring.visible = True
+        a = math.radians(self.outer.a1 + 90.0)
+        r = (self.outer.pr0 + self.outer.pr1) * 0.5
+        self.assertIs(self.overlay.root.pick(self.ring.cx + math.cos(a) * r, self.ring.cy + math.sin(a) * r),
+                      self.ring)
 
 
 if __name__ == '__main__':
