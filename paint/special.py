@@ -1,5 +1,7 @@
 """Pixel kernels of the special brushes (the pen menu's Brushes window, ``tools/special/``):
-pure NumPy, no Blender.
+NumPy, no Blender. :func:`stamps`, :func:`heal` and the Noise Blur brush's draw step
+(:func:`disk_kernel` + ``utils.native.noise_blur``) run in the C# backend when it is
+available (:mod:`utils.native`).
 
 Images are ``(H, W, 4)`` float32 views of the flat RGBA buffer (row ``y`` = image row
 ``y``); pixel coordinates are integer ``(x, y)`` arrays.
@@ -22,6 +24,8 @@ Images are ``(H, W, 4)`` float32 views of the flat RGBA buffer (row ``y`` = imag
 import math
 
 import numpy as np
+
+from ..utils import native
 
 
 FALLOFF_SAMPLES = 65            # falloff lookup table size (normalized distance 0..1)
@@ -60,6 +64,16 @@ def disk(cx, cy, radius, lut=None, w=None, h=None):
     return xs, ys, wts, d
 
 
+def disk_kernel(radius, lut=None):
+    """:func:`disk`'s weights as a (2r+1)^2 float32 kernel (row-major by dy, then dx;
+    0 outside the disk) for the C# stamps."""
+    r = max(0, int(radius))
+    xs, ys, wts, _d = disk(0, 0, r, lut)
+    kernel = np.zeros((2 * r + 1, 2 * r + 1), dtype=np.float32)
+    kernel[ys + r, xs + r] = wts
+    return kernel.reshape(-1)
+
+
 def stamps(centers, radius, lut, w, h):
     """``(xs, ys, weights)`` of round stamps at every center, overlapping stamps keeping
     the strongest weight (a stroke step's footprint), clipped to the image."""
@@ -75,6 +89,13 @@ def stamps(centers, radius, lut, w, h):
     if x1 <= x0 or y1 <= y0:
         empty = np.zeros(0, dtype=np.int64)
         return empty, empty, np.zeros(0, dtype=np.float32)
+    if native.enabled():
+        result = native.stamp(centers, r, disk_kernel(r, lut), w, h)
+        if result is not None:
+            xy, wts = result
+            order = np.argsort(xy[:, 1].astype(np.int64) * w + xy[:, 0], kind='stable')   # row-major
+            xy, wts = xy[order], wts[order]
+            return xy[:, 0].astype(np.int64), xy[:, 1].astype(np.int64), wts.astype(np.float32)
     grid = np.zeros((y1 - y0, x1 - x0), dtype=np.float32)
     for cx, cy in centers:
         xs, ys, wts, _d = disk(cx, cy, r, lut, w, h)
@@ -305,6 +326,10 @@ def heal(src_inner, src_ring, dst_ring, inner_xy, ring_xy, texture=1.0):
     smooth fill from the destination's border (no texture), 1 the full source texture."""
     if len(ring_xy) == 0:
         return np.asarray(src_inner, dtype=np.float32)
+    if native.enabled() and len(inner_xy) > 0:
+        result = native.heal(src_inner, src_ring, dst_ring, inner_xy, ring_xy, texture)
+        if result is not None:
+            return result
     p = np.asarray(inner_xy, dtype=np.float32)
     q = np.asarray(ring_xy, dtype=np.float32)
     d2 = ((p[:, None, :] - q[None, :, :]) ** 2).sum(axis=2)

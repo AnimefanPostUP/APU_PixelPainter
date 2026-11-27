@@ -19,7 +19,7 @@ namespace PixelPainterNative;
 /// </summary>
 public static unsafe class Exports
 {
-    public const int ApiVersion = 4;
+    public const int ApiVersion = 6;
     private const int Failed = -1000;
 
     [UnmanagedCallersOnly(EntryPoint = "pp_api_version")]
@@ -156,6 +156,35 @@ public static unsafe class Exports
                                       double reach, double* outp)
     {
         try { return Occlusion.Trace(handle, origins, frames, n, local, k, reach, outp); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_segment_distance")]
+    public static int SegmentDistanceExport(double* seg, int* segLabel, int n, int* labels, int w, int h,
+                                            double reach, double* outp)
+    {
+        try { return Edges.SegmentDistance(seg, segLabel, n, labels, w, h, reach, outp); }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_noise_blur")]
+    public static int NoiseBlurExport(float* buf, int w, int h, int* centers, int nc, int radius, float* kernel,
+                                      int* labelMap, int* centerLabels, int protect, double scatter, int samples,
+                                      int seed, double opacity)
+    {
+        try
+        {
+            return Special.NoiseBlur(buf, w, h, centers, nc, radius, kernel, labelMap, centerLabels, protect != 0,
+                                     scatter, samples, (uint)seed, opacity);
+        }
+        catch { return Failed; }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "pp_heal")]
+    public static int HealExport(float* srcInner, float* srcRing, float* dstRing, float* innerXY, float* ringXY,
+                                 int n, int m, double texture, float* outp)
+    {
+        try { return Special.Heal(srcInner, srcRing, dstRing, innerXY, ringXY, n, m, texture, outp); }
         catch { return Failed; }
     }
 }

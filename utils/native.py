@@ -27,7 +27,7 @@ import numpy as np
 from ..paths import NATIVE_RUNTIMES_DIR
 
 
-API_VERSION = 4  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
+API_VERSION = 6  # must match Exports.ApiVersion in native/PixelPainterNative/Exports.cs
 SETTING = 'pixel_painter_use_native'
 
 # Blend mode ids, must match Blend.cs.
@@ -89,6 +89,9 @@ _SIGNATURES = {
     'pp_bvh_build': (_I, (_P, _I)),
     'pp_bvh_free': (_I, (_I,)),
     'pp_occlusion': (_I, (_I, _P, _P, _I, _P, _I, _D, _P)),
+    'pp_segment_distance': (_I, (_P, _P, _I, _P, _I, _I, _D, _P)),
+    'pp_noise_blur': (_I, (_P, _I, _I, _P, _I, _I, _P, _P, _P, _I, _D, _I, _I, _D)),
+    'pp_heal': (_I, (_P, _P, _P, _P, _P, _I, _I, _D, _P)),
 }
 
 
@@ -425,6 +428,70 @@ def fill_uv_triangles(buf, w, h, tri_uv, color):
     r = lib.pp_fill_uv_triangles(_ptr(buf), w, h, _ptr(tris), len(tris),
                                  float(color[0]), float(color[1]), float(color[2]))
     return r if _ok(r) else None
+
+
+
+def segment_distance(seg_px, seg_label, labels, w, h, reach):
+    """paint/edge_ramp.segment_distance for already split segments (S, 2, 2): the
+    distance (w*h float64, inf = no segment box covers the texel), or None."""
+    lib = _load()
+    seg = np.ascontiguousarray(seg_px, dtype=np.float64).reshape(-1, 4)
+    seg_label = np.ascontiguousarray(seg_label, dtype=np.int32).reshape(-1)
+    labels = np.ascontiguousarray(labels, dtype=np.int32).reshape(-1)
+    if len(seg_label) != len(seg) or labels.size != int(w) * int(h):
+        raise ValueError("segment_distance: size mismatch")
+    out = np.full(int(w) * int(h), np.inf)
+    r = lib.pp_segment_distance(_ptr(seg), _ptr(seg_label), len(seg), _ptr(labels),
+                                int(w), int(h), float(reach), _ptr(out))
+    return out if _ok(r) else None
+
+
+
+# ---------------------------------------------------------------------------
+# Special brushes
+# ---------------------------------------------------------------------------
+
+def noise_blur(buf, w, h, centers, radius, kernel, scatter, samples, seed, opacity,
+               protect=False, islands=None):
+    """A Noise Blur draw step: a stamp at every center, in order, into ``buf`` (in place).
+
+    ``kernel``: (2r+1)^2 float32 stamp weights (0 = not covered); ``samples`` random
+    pixels within ``scatter`` px averaged per pixel; ``islands`` as in :func:`stamp`.
+    Returns the number of pixels written, or None."""
+    lib = _load()
+    _image_buffer(buf, w, h)
+    centers = coords(centers)
+    kernel = np.ascontiguousarray(kernel, dtype=np.float32).reshape(-1)
+    r = max(0, int(radius))
+    if kernel.size != (2 * r + 1) ** 2:
+        raise ValueError("noise_blur: kernel size mismatch")
+    label_map = center_labels = None
+    if islands is not None:
+        label_map = np.ascontiguousarray(islands[0], dtype=np.int32)
+        center_labels = np.ascontiguousarray(islands[1], dtype=np.int32)
+        if label_map.size != w * h or center_labels.size != len(centers):
+            raise ValueError("noise_blur: island labels size mismatch")
+    n = lib.pp_noise_blur(_ptr(buf), w, h, _ptr(centers), len(centers), r, _ptr(kernel),
+                          _ptr(label_map), _ptr(center_labels), int(bool(protect)), float(scatter),
+                          int(samples), int(seed) & 0x7FFFFFFF, float(opacity))
+    return n if _ok(n) else None
+
+
+def heal(src_inner, src_ring, dst_ring, inner_xy, ring_xy, texture):
+    """paint/special.heal (needs at least one ring pixel): (N, 4) float32, or None."""
+    lib = _load()
+    src_inner = np.ascontiguousarray(src_inner, dtype=np.float32).reshape(-1, 4)
+    src_ring = np.ascontiguousarray(src_ring, dtype=np.float32).reshape(-1, 4)
+    dst_ring = np.ascontiguousarray(dst_ring, dtype=np.float32).reshape(-1, 4)
+    inner_xy = np.ascontiguousarray(inner_xy, dtype=np.float32).reshape(-1, 2)
+    ring_xy = np.ascontiguousarray(ring_xy, dtype=np.float32).reshape(-1, 2)
+    n, m = len(src_inner), len(src_ring)
+    if len(inner_xy) != n or len(ring_xy) != m or len(dst_ring) != m:
+        raise ValueError("heal: size mismatch")
+    out = np.empty((n, 4), dtype=np.float32)
+    r = lib.pp_heal(_ptr(src_inner), _ptr(src_ring), _ptr(dst_ring), _ptr(inner_xy), _ptr(ring_xy),
+                    n, m, float(texture), _ptr(out))
+    return out if _ok(r) else None
 
 
 # ---------------------------------------------------------------------------

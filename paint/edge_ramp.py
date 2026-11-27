@@ -1,4 +1,5 @@
-"""Edge band math for the Extras window's Edges tool (pure NumPy, no bpy).
+"""Edge band math for the Extras window's Edges tool (NumPy, no bpy; the distance
+runs in the C# backend when it is available, see :mod:`utils.native`).
 
 The tool paints a band along the model's edges (not the UV borders). Every texel
 belongs to an element (UV island / mesh part; -1 = none); each model edge is drawn in
@@ -23,6 +24,8 @@ the same on both sides of the edge:
 """
 
 import numpy as np
+
+from ..utils import native
 
 
 EDGE_MODES = ('ANGLE', 'ALL', 'MARKED')
@@ -136,6 +139,10 @@ def segment_distance(seg_px, seg_label, labels, w, h, reach):
         return out
     reach = float(reach)
     seg, seg_label = _split(seg, seg_label, max(4.0, 2.0 * reach))
+    if native.enabled():
+        result = native.segment_distance(seg, seg_label, lab, w, h, reach)
+        if result is not None:
+            return result
     lo = np.minimum(seg[:, 0], seg[:, 1]) - reach
     hi = np.maximum(seg[:, 0], seg[:, 1]) + reach
     x0 = np.clip(np.ceil(lo[:, 0] - 0.5), 0, w).astype(np.int64)

@@ -80,7 +80,7 @@ _LOADED = {name: importlib.import_module(f'{_PACKAGE}.{name}') for name in (
     'tools.selection.geometry', 'tools.base', 'tools.brushes.square', 'tools.brushes.circle',
     'tools.brushes.spray', 'tools.brushes.eraser', 'tools.filters.smooth', 'tools.filters.smear',
     'core.view3d.mesh', 'core.view3d.islands', 'core.view3d.footprint', 'core.view3d.patch',
-    'tools.extras.ao')}
+    'tools.extras.ao', 'paint.edge_ramp', 'paint.special')}
 
 for _name in set(sys.modules) - _MODULES_BEFORE:
     del sys.modules[_name]
@@ -803,6 +803,112 @@ class OcclusionParityTest(NativeTestCase):
         cache.tri_pos, cache.verts = floor, floor.reshape(-1, 3)
         occ = ao.occlusion(cache, pos, nrm, samples=16, distance=1.0)
         np.testing.assert_array_equal(occ, 0.0)    # an open floor: nothing above
+
+
+class SegmentDistanceParityTest(NativeTestCase):
+    def test_matches_python(self):
+        edge = _mod('paint.edge_ramp')
+        rng = np.random.default_rng(5)
+        for w, h, reach in ((37, 29, 3.0), (64, 48, 6.5), (20, 70, 1.0)):
+            labels = rng.integers(-1, 3, w * h)
+            labels[: w * h // 2] = 0                       # a big element, and noise
+            seg = rng.uniform(-5, max(w, h) + 5, (40, 2, 2))
+            seg[:5, 1] = seg[:5, 0]                        # degenerate (point) segments
+            seg[5:10] = np.floor(seg[5:10]) + 0.5          # snapped onto texel centers
+            seg_label = rng.integers(0, 3, len(seg))
+            results = []
+            for use_native in (False, True):
+                native.set_override(use_native)
+                results.append(edge.segment_distance(seg, seg_label, labels, w, h, reach))
+            py, cs = results
+            np.testing.assert_array_equal(np.isinf(py), np.isinf(cs))
+            fin = np.isfinite(py)
+            self.assertTrue(fin.any())
+            np.testing.assert_allclose(cs[fin], py[fin], rtol=0, atol=1e-12)
+
+    def test_no_segments(self):
+        native.set_override(True)
+        out = _mod('paint.edge_ramp').segment_distance(np.zeros((0, 2, 2)), [], np.zeros(12, int), 4, 3, 2.0)
+        self.assertTrue(np.isinf(out).all())
+
+
+class SpecialBrushParityTest(NativeTestCase):
+    def setUp(self):
+        self.sp = _mod('paint.special')
+
+    def _both(self, fn):
+        out = []
+        for use_native in (False, True):
+            native.set_override(use_native)
+            out.append(fn())
+        native.set_override(None)
+        return out
+
+    def test_stamps_match(self):
+        lut = self.sp.smooth_lut()
+        rng = np.random.default_rng(3)
+        for r in (0, 1, 4, 11):
+            centers = [tuple(c) for c in rng.integers(-5, 45, (7, 2))]
+            py, cs = self._both(lambda: self.sp.stamps(centers, r, lut, 40, 30))
+            for a, b in zip(py, cs):
+                np.testing.assert_array_equal(a, b, err_msg=f"r={r}")
+
+    def test_heal_matches(self):
+        rng = np.random.default_rng(4)
+        for texture in (1.0, 0.4, 0.0):
+            xs, ys, _w, _d = self.sp.disk(20, 20, 9, None, 60, 60)
+            rx, ry = self.sp.ring(20, 20, 9, 60, 60)
+            args = (rng.random((len(xs), 4), dtype=np.float32), rng.random((len(rx), 4), dtype=np.float32),
+                    rng.random((len(rx), 4), dtype=np.float32), np.stack((xs, ys), 1), np.stack((rx, ry), 1),
+                    texture)
+            py, cs = self._both(lambda: self.sp.heal(*args))
+            self.assertClose(py, cs, atol=1e-5, msg=f"texture {texture}")
+
+    def _blur(self, base, centers, r, scatter=4.0, samples=4, protect=False, islands=None, opacity=1.0):
+        buf = base.copy().reshape(-1)
+        h, w = base.shape[:2]
+        n = native.noise_blur(buf, w, h, centers, r, self.sp.disk_kernel(r, self.sp.smooth_lut()), scatter,
+                              samples, 99, opacity, protect=protect, islands=islands)
+        self.assertIsNotNone(n)
+        return buf.reshape(h, w, 4)
+
+    def test_noise_blur_footprint_and_clipping(self):
+        w, h, r = 40, 30, 6
+        base = np.random.default_rng(5).random((h, w, 4), dtype=np.float32)
+        out = self._blur(base, [(20, 15)], r)
+        xs, ys, wts, _d = self.sp.disk(20, 15, r, self.sp.smooth_lut(), w, h)
+        inside = np.zeros((h, w), bool)
+        inside[ys[wts > 0], xs[wts > 0]] = True
+        changed = np.any(out != base, axis=2)
+        self.assertFalse((changed & ~inside).any())              # nothing outside the stamp
+        self.assertGreater(changed[inside].mean(), 0.9)
+        # Alphalock: transparent pixels untouched, alpha kept
+        base[..., 3] = np.where(np.arange(w) < 20, 0.0, 1.0)[None, :]
+        out = self._blur(base, [(20, 15)], r, protect=True)
+        np.testing.assert_array_equal(out[:, :20], base[:, :20])
+        np.testing.assert_array_equal(out[..., 3], base[..., 3])
+        # island clipping: label 1 on the right half, the stamp's center on it
+        labels = np.where(np.arange(w) >= 20, 1, 0)[None, :].repeat(h, 0).reshape(-1)
+        out = self._blur(base, [(22, 15)], r, islands=(labels, [1]))
+        np.testing.assert_array_equal(out[:, :20], base[:, :20])
+        out = self._blur(base, [(22, 15)], r, islands=(labels, [native.CLIP_SKIP]))
+        np.testing.assert_array_equal(out, base)
+
+    def test_noise_blur_statistics(self):
+        # a checkerboard blurred with a wide scatter tends to its mean, like the Python version
+        w = h = 64
+        board = ((np.arange(w)[None, :] + np.arange(h)[:, None]) % 2).astype(np.float32)
+        base = np.repeat(board[..., None], 4, axis=2)
+        out = self._blur(base, [(32, 32)], 20, scatter=6.0, samples=8)
+        xs, ys, wts, _d = self.sp.disk(32, 32, 20, None, w, h)
+        core = (wts > 0.99)
+        py = self.sp.noise_blur(base, xs[core], ys[core], 6.0, 0.0, np.random.default_rng(1))
+        cs = out[ys[core], xs[core]]
+        self.assertAlmostEqual(float(cs[:, 0].mean()), float(py[:, 0].mean()), delta=0.03)
+        self.assertAlmostEqual(float(cs[:, 0].std()), float(py[:, 0].std()), delta=0.03)
+        # a flat image stays flat
+        flat = np.full((h, w, 4), 0.25, np.float32)
+        np.testing.assert_allclose(self._blur(flat, [(10, 10), (40, 30)], 8), flat, atol=1e-6)
 
 
 if __name__ == '__main__':

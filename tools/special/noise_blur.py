@@ -7,6 +7,7 @@ Brushes window; Strength blends the result in.
 import numpy as np
 
 from ...paint import special
+from ...utils import native
 from ..base import SettingDefaults
 from .common import (SpecialBrush, commit, falloff_lut, image_view, island_keep, opaque_keep, wm_value)
 
@@ -37,6 +38,10 @@ class NoiseBlurTool(SpecialBrush):
         lut = falloff_lut(env, self.falloff_property)
         scatter = float(wm_value(env, 'noise_scatter', 3))
         grain = float(wm_value(env, 'noise_grain', 0.5))
+        if native.enabled() and self._draw_native(env, flat, centers, lut, scatter, grain):
+            commit(env, flat)
+            env.mark_painted()
+            return
         for cx, cy in centers:
             xs, ys, wts, _d = special.disk(cx, cy, env.radius, lut, w, h)
             keep = island_keep(env, cx, cy, xs, ys)
@@ -54,3 +59,17 @@ class NoiseBlurTool(SpecialBrush):
             view[ys, xs] = out
         commit(env, flat)
         env.mark_painted()
+
+    def _draw_native(self, env, flat, centers, lut, scatter, grain):
+        """The draw step's stamps in C# (same footprint, clipping and blend; its own random
+        sampling). False when the native call failed (nothing was written)."""
+        w, h = env.img.size
+        r = max(0, int(env.radius))
+        try:
+            islands = env.island_labels(centers) if env.islands is not None else None
+            n = native.noise_blur(flat, w, h, centers, r, special.disk_kernel(r, lut), scatter,
+                                  special.noise_samples(grain), int(self._rng.integers(1 << 31)), env.opacity,
+                                  protect=env.protect_transparent, islands=islands)
+        except ValueError:      # unexpected buffer layout: the Python path
+            return False
+        return n is not None
