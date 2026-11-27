@@ -21,10 +21,10 @@ from mathutils import Vector
 
 DT = 1.0 / 90.0             # time step, s
 MAX_STEPS = 900             # safety cap per body (10 s)
-RESTITUTION = 0.3           # bounce: share of the speed into the surface that comes back out
-GLANCE = 0.55               # bounce: share of the speed along the surface that is kept
+RESTITUTION = 0.15          # bounce: share of the speed into the surface that comes back out
+GLANCE = 0.7                # bounce: share of the speed along the surface that is kept
                             # (small hops that settle into a slide, not shots off the model)
-BOUNCE_SPEED = 0.35         # mesh sizes / s into the surface needed to bounce (slower: it slides)
+BOUNCE_SPEED = 0.6          # mesh sizes / s into the surface needed to bounce (slower: it slides)
 FRICTION = 0.25             # sliding friction coefficient
 ADHESION = 0.3              # it clings to the surface: falls off only where gravity pulls it away harder
                             # than this share of itself (walls and slight overhangs keep it: runs down them)
